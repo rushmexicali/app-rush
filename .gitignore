@@ -25,3 +25,6 @@ node_modules/
 build/
 .dart_tool/
 *.log
+
+# === Archivos temporales del CLI de Supabase ===
+supabase/.temp/
