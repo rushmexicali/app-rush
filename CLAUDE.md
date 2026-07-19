@@ -201,8 +201,8 @@ acumulando desde el día uno aunque todavía no se use.
 
 ### La nota de caja los prellena (implementado 19/jul/2026)
 
-La cajera puede escribir una nota en la venta de Zettle. Llega en el webhook dentro de
-`products[0].comment` y la app la interpreta sola. Formato acordado:
+La cajera puede escribir una nota en la venta de Zettle y la app la interpreta sola.
+Formato acordado:
 
 ```
 <CODIGO> <COLOR> - <NOMBRE DEL CLIENTE>
@@ -213,6 +213,17 @@ AU = automovil    PA = pasajeros (tipo combi, 5 hileras)
 
 - `CA NEGRA` → camioneta negra
 - `PU NEGRA - LUIS GONZALEZ` → pickup negra, 6to lavado gratis de Luis González
+
+**La nota viene en uno de DOS lugares** (aprendido a golpes el 19/jul/2026):
+1. `products[0].comment` — el lugar acordado, donde llega la mayoría.
+2. `discounts[].name` — el nombre del descuento. Pasa en los **6to lavado gratis**, porque
+   ese se cobra aplicando un descuento del 100% y hay cajeras que escriben ahí el nombre
+   del cliente en vez de en el comentario.
+
+No es "los gratis van por descuento": de los dos lavados gratis que había, uno traía la nota
+en el comentario y el otro en el descuento. Depende de cada cajera, así que se leen los dos.
+Un descuento solo se toma como nota si empieza con código conocido (PU/CA/AU/PA) — así
+"Descuento empleado" o "Promo martes" se ignoran solos y nunca acaban en la ficha del carro.
 
 Reglas de interpretación:
 - Si el código no se reconoce, **no se adivina nada** — se deja vacío. Un dato inventado es
