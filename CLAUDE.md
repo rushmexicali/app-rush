@@ -68,6 +68,10 @@ Pago (Zettle, automático) → Prelavado → Túnel → Asignar línea + secador
 
 - **Pago**: no hay botón. Llega solo por el webhook de Zettle y crea el carro en la cola,
   con la hora de inicio.
+- **Express → línea 1**: si la venta trae el producto `Express`, el carro se marca con una
+  **banderita / identificador gráfico bien visible** en la cola. Los express van directo a
+  la **línea 1**, que se dedica exclusivamente a ellos. El supervisor no tiene que leer el
+  producto ni acordarse: lo ve de un vistazo.
 - **Prelavado / Túnel**: el supervisor toca el botón de etapa (modelo "lap" de cronómetro)
   para marcar cuándo el carro pasa a la siguiente etapa. Se guarda el tiempo de cada una.
 - **Asignar**: al salir del túnel se abre pantalla completa: elige línea (1, 2, 3…) y
@@ -106,6 +110,36 @@ Pago (Zettle, automático) → Prelavado → Túnel → Asignar línea + secador
 - El endpoint debe responder **200 rápido**; si truena, Zettle marca el destino como
   fallido. Y en Supabase la función se despliega con **`--no-verify-jwt`** (si no, rechaza
   el POST de Zettle por no traer token de Supabase).
+
+### Trampas ya descubiertas (aprendidas a golpes, no repetirlas)
+
+- **La fecha viene como número de milisegundos**, no como texto ISO. Postgres la rechaza con
+  el error `22008` y **tumba la fila completa**. Una venta real se perdió por esto antes de
+  detectarlo. Regla general: si un dato secundario no se entiende, se guarda en blanco — la
+  venta nunca se pierde por un campo que no era esencial.
+- **Al suscribir el webhook, Zettle manda un evento `TestMessage`** que no trae venta. Es
+  normal, no es error.
+- **El `uuid` de la suscripción debe ser versión 1** (los que llevan la hora adentro), no
+  versión 4. Si no, Zettle la rechaza.
+- **`GET /purchases/v2` sin filtro de fechas devuelve las ventas MÁS VIEJAS primero.** Para
+  ver lo reciente hay que mandar `startDate` / `endDate`. Fácil sacar conclusiones falsas.
+- El webhook manda `purchaseUUID` con guiones; la API REST llama a ese mismo valor
+  `purchaseUUID1`. Usar siempre ese para no duplicar filas.
+- Existe `scripts/4-recuperar-venta.ps1` para rescatar una venta que no llegó por webhook.
+
+### Qué trae el pago (útil para fases futuras)
+
+Cada venta incluye producto, variante, categoría, sucursal, cajero, forma de pago y
+coordenadas. Todo se guarda completo en la columna `payload`, así que el histórico se está
+acumulando desde el día uno aunque todavía no se use.
+
+- **Los productos son paquetes de servicio, no líneas de secado.** Catálogo real: `Express`,
+  `Completo`, `Completo Cera`, `Manual`, `Gratis`, más extras (`Lodo Extra`, `Pinito`).
+  Por lo tanto **la línea NO viene en el pago** y el supervisor sí tiene que asignarla.
+- **Cada paquete trae variante de tamaño**: `Completo` vs `Completo Grande`, `Express` vs
+  `Express Grande`. Esto ya distingue carro normal de camioneta grande **sin necesidad de
+  capturar marca y modelo**, y sirve para normalizar la analítica de la Fase 5 desde el
+  principio.
 
 ## 8. Integración con Jibble (empleados activos)
 
@@ -171,6 +205,9 @@ Pago (Zettle, automático) → Prelavado → Túnel → Asignar línea + secador
 - ¿Cuántos secadores/personas por línea? ¿Un carro puede tener más de un secador asignado?
 - ¿Los tiempos "normales" de cada etapa (para pintar en rojo las demoras)?
 - ¿Se marca la transición solo con botón manual, o a futuro con sensores (fotocelda/RFID)?
-- ¿Cómo se configuran en Zettle los productos? (si se hace por línea, la línea podría venir
-  ya en el pago)
+- ~~¿Cómo se configuran en Zettle los productos?~~ **RESUELTO (19/jul/2026):** son paquetes
+  de servicio con variante de tamaño, no líneas. La línea se asigna a mano. Detalle en la
+  sección 7.
+- La **línea 1 es exclusiva de express** (confirmado 19/jul/2026). Falta definir qué pasa si
+  no hay express en cola: ¿la línea 1 se queda vacía esperando, o toma carros normales?
 - ¿Qué reportes de eficiencia quieres ver exactamente al final?
