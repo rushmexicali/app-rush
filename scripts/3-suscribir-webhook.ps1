@@ -16,6 +16,10 @@
 param(
   # Sin esta bandera el script solo lista lo que ya existe.
   [switch]$Crear,
+  # Borra las suscripciones que apunten a nuestra Edge Function y crea una
+  # nueva. Se usa para cambiar el signingKey: no se puede cambiar solo,
+  # nace junto con la suscripcion.
+  [switch]$Rotar,
   # Correo al que Zettle avisa si el webhook empieza a fallar.
   [string]$Email = "rushmexicali@gmail.com"
 )
@@ -54,6 +58,26 @@ else {
     Write-Host "OJO: ya hay una suscripcion apuntando a tu Edge Function." -ForegroundColor Yellow
     Write-Host "     Crear otra haria que cada venta llegue dos veces.`n" -ForegroundColor Yellow
   }
+}
+
+# --- 1.5) Rotar: borrar las que apunten a nuestro destino --------------
+if ($Rotar) {
+  Write-Host "=== Borrando suscripciones que apuntan a nuestra funcion ===" -ForegroundColor Cyan
+  $lista = $null
+  try { $lista = $existentes | ConvertFrom-Json } catch { }
+
+  $aBorrar = @($lista | Where-Object { $_.destination -eq $destino })
+  if ($aBorrar.Count -eq 0) {
+    Write-Host "  (no habia ninguna que borrar)`n"
+  }
+  foreach ($s in $aBorrar) {
+    $r = curl.exe -s -m 30 -o NUL -w "%{http_code}" -X DELETE `
+      -H "Authorization: Bearer $token" "$api/$($s.uuid)"
+    Write-Host "  borrada $($s.uuid) -> HTTP $r"
+  }
+  Write-Host ""
+  # Rotar implica crear la nueva enseguida; si no, quedaria sin webhook.
+  $Crear = $true
 }
 
 # --- 2) Crear (solo si se pidio) --------------------------------------
