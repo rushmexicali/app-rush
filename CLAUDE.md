@@ -169,7 +169,37 @@ acumulando desde el día uno aunque todavía no se use.
 - Siempre debe existir un botón **"No aparece el empleado / agregar manual"** como
   respaldo.
 
-## 9. Datos del carro (marca, modelo, año, foto)
+## 9. Datos del carro (tipo, color, foto)
+
+### La nota de caja los prellena (implementado 19/jul/2026)
+
+La cajera puede escribir una nota en la venta de Zettle. Llega en el webhook dentro de
+`products[0].comment` y la app la interpreta sola. Formato acordado:
+
+```
+<CODIGO> <COLOR> [NOMBRE DEL CLIENTE]
+
+PU = pickup       CA = camioneta
+AU = automovil    PA = pasajeros (tipo combi, 5 hileras)
+```
+
+- `CA NEGRA` → camioneta negra
+- `PU NEGRA LUIS GONZALEZ` → pickup negra, 6to lavado gratis de Luis González
+
+Reglas de interpretación:
+- Si el código no se reconoce, **no se adivina nada** — se deja vacío. Un dato inventado es
+  peor que uno faltante, porque el supervisor confía en lo que ve.
+- En ventas normales todo lo que sigue al código es el color (así `AU AZUL MARINO` funciona).
+  Solo en las **gratis** se separa el nombre del cliente, porque solo ahí lo hay.
+- La columna `carros.datos_de_nota` dice si el dato vino de la nota o lo capturó el
+  supervisor. Sirve para medir qué tan seguido se está llenando la nota en caja.
+
+> ⚠️ **Esto depende de un hábito, no del código.** Al 19/jul/2026, de 25 ventas del día solo
+> 2 traían nota, y las puso el dueño a propósito. El código está listo; falta que las cajeras
+> lo hagan en cada venta. Mientras no pase, el supervisor captura a mano — que es justo el
+> respaldo que el diseño ya contempla.
+
+### Captura manual (respaldo)
 
 - Es **opcional** y **no bloquea** el flujo. Aparece como botón (ícono de cámara) en la
   tarjeta de cada carro; el supervisor lo captura cuando tiene un momento libre. Si el carro
