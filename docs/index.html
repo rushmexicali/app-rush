@@ -61,8 +61,11 @@
   }
   .demorado .reloj { color:#ff7875; }
 
+  /* Ocupa SOLO la primera columna. Antes se extendia a todo el ancho
+     (1 / -1) en la misma fila del boton de la foto, y aunque no se veia,
+     se montaba encima y se robaba los toques. */
   .estado {
-    grid-column: 1 / -1; grid-row: 3;
+    grid-column: 1; grid-row: 3;
     margin-top: 12px;
     display:flex; align-items:center; gap:8px; flex-wrap:wrap;
   }
@@ -90,7 +93,7 @@
      tarjeta, no en una pantalla aparte: el supervisor tiene que verlo
      sin ir a buscarlo. */
   .ausente {
-    grid-column: 1 / -1;
+    grid-column: 1 / -1; grid-row: 4;
     margin-top: 10px;
     background:#3d1418; color:#ffb3b3;
     border-left: 5px solid #ff4d4f;
@@ -103,7 +106,7 @@
   /* Los botones son lo mas importante de la pantalla: gigantes, uno por
      accion, y el texto dice QUE HACE, no algo generico. */
   .acciones {
-    grid-column: 1 / -1; grid-row: 4;
+    grid-column: 1 / -1; grid-row: 5;
     margin-top: 14px;
     display: flex; gap: 10px;
   }
@@ -137,8 +140,12 @@
      reloj, para que en dia pesado se ignore sin siquiera notarlo. */
   .foto {
     grid-column: 2; grid-row: 3;
-    justify-self: end;
-    width: 62px; height: 52px;
+    justify-self: end; align-self: center;
+    margin-top: 12px;
+    /* Mas grande que el icono para que el area de toque sea generosa:
+       el supervisor lo va a picar con el pulgar, a veces con guantes
+       mojados. */
+    width: 70px; height: 58px;
     background: transparent;
     border: 2px solid #30363d; border-radius: 12px;
     color: #8b949e; font-size: 24px;
