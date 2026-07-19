@@ -14,7 +14,11 @@ param(
   # Identificador de la venta. Por defecto uno nuevo en cada corrida.
   [string]$Uuid = "prueba-$([guid]::NewGuid())",
   # Monto en PESOS. El script lo convierte a centavos, como manda Zettle.
-  [decimal]$Pesos = 150.00
+  [decimal]$Pesos = 150.00,
+  # Producto del catalogo real. Usa "Express" para probar la bandera.
+  [string]$Producto = "Completo Cera",
+  # Variante: distingue carro normal de camioneta grande.
+  [string]$Variante = "Completo"
 )
 
 $ErrorActionPreference = "Stop"
@@ -48,7 +52,18 @@ $datosVenta = @{
   purchaseUUID = $Uuid
   amount       = $centavos
   timestamp    = $epochMs
-} | ConvertTo-Json -Compress
+  # Los productos importan: de aqui sale la bandera del express y el
+  # tamano del carro. Sin esto la prueba no ejercita el disparador.
+  products     = @(
+    @{
+      name        = $Producto
+      variantName = $Variante
+      unitPrice   = $centavos
+      quantity    = "1"
+      category    = @{ name = "Paquetes" }
+    }
+  )
+} | ConvertTo-Json -Compress -Depth 5
 
 $aviso = @{
   eventName    = "PurchaseCreated"
