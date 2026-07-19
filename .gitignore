@@ -7,6 +7,9 @@
 # Excepcion: la plantilla SIN valores si se sube, para saber que variables hacen falta.
 !.env.example
 
+# === Herramientas descargadas (72 MB de binario, se vuelven a bajar) ===
+herramientas/
+
 # === Ajustes locales de Claude Code (son de esta maquina, no del proyecto) ===
 .claude/settings.local.json
 
