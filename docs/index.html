@@ -167,6 +167,35 @@
   .rejilla.lineas    { grid-template-columns: repeat(3, 1fr); }
   .rejilla.secadores { grid-template-columns: repeat(2, 1fr); }
 
+  /* Secador: circulo de color con iniciales + nombre. Sin fotos en
+     Jibble, el color es lo que hace el trabajo de la cara: es unico por
+     persona y no cambia nunca. */
+  .persona {
+    display:flex; align-items:center; gap:11px;
+    text-align:left; padding:9px 11px; min-height:72px;
+  }
+  .circulo {
+    width:46px; height:46px; flex:0 0 46px;
+    border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:18px; font-weight:900; color:#08090b;
+    letter-spacing:.5px;
+  }
+  .persona .quien2 { font-size:18px; font-weight:700; line-height:1.15; }
+  .persona .nota2 { font-size:14px; color:#e3b341; font-weight:700; margin-top:2px; }
+
+  /* En descanso: atenuado pero SI se puede tocar. El CLAUDE.md pide no
+     quitarlos, porque pueden regresar en un minuto. */
+  .opcion.descansando { opacity:.5; border-style:dashed; }
+  .opcion.descansando.elegida { opacity:1; }
+
+  #sin-secadores {
+    grid-column: 1 / -1;
+    color:#ff7875; font-size:17px; font-weight:700;
+    padding:14px; border:2px dashed #3d1418; border-radius:12px;
+    text-align:center;
+  }
+
   .opcion {
     min-height: 68px;
     font-size: 20px; font-weight: 800;
@@ -529,11 +558,19 @@ var MARCAS_EXTRA = [
   "BAIC", "GEELY", "ISUZU", "OTRA"
 ];
 
-// Nombres genericos hasta que Jibble traiga los reales (Fase 3).
-var SECADORES = [
-  "Secador 1", "Secador 2", "Secador 3", "Secador 4",
-  "Secador 5", "Secador 6", "Secador 7", "Secador 8"
-];
+// Se llenan desde Jibble, que se sincroniza solo cada minuto.
+var SECADORES = [];
+var FUERA = 0;
+
+function cargarSecadores() {
+  return pedir("/secadores")
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      SECADORES = d.secadores || [];
+      FUERA = d.fuera || 0;
+    })
+    .catch(function () { /* se conserva la lista anterior */ });
+}
 
 var asig = null;          // { carro, express, marca, linea, secadores[] }
 var verMasMarcas = false;
@@ -559,6 +596,10 @@ function abrirAsignacion(c) {
   document.getElementById("barra").style.display = "flex";
   window.scrollTo(0, 0);
   pintarAsignacion();
+
+  // Se refresca al abrir: entre que se cargo la pantalla y llego este
+  // carro, alguien pudo haber checado, salido o entrado a descanso.
+  cargarSecadores().then(pintarAsignacion);
 }
 
 function cerrarAsignacion() {
@@ -602,13 +643,32 @@ function pintarAsignacion() {
 
   // --- Secadores ---
   h = "";
+  if (SECADORES.length === 0) {
+    // Si Jibble falla o nadie checo, no se deja al supervisor sin salida.
+    h += '<div id="sin-secadores">Nadie aparece checado.<br>Usa "No aparece" para agregarlo a mano.</div>';
+  }
   for (var s = 0; s < SECADORES.length; s++) {
-    var puesto = asig.secadores.indexOf(SECADORES[s]) >= 0;
+    var p = SECADORES[s];
+    var puesto = asig.secadores.indexOf(p.id) >= 0;
     // Al llegar a 4 se apagan los demas, en vez de avisar despues del
     // error. Mas vale que el boton no se deje tocar a que regane.
     var lleno = asig.secadores.length >= 4 && !puesto;
-    h += botonOpcion(SECADORES[s], puesto, 'data-secador="' + escapar(SECADORES[s]) + '"' + (lleno ? " disabled" : ""));
+    var clases = "persona" + (p.estado === "descanso" ? " descansando" : "");
+
+    var dentro = '<span class="circulo" style="background:' + escapar(p.color || "#6e7681") + '">' +
+                   escapar(p.iniciales || "?") + '</span>' +
+                 '<span><span class="quien2">' + escapar(p.mostrar) + '</span>' +
+                   (p.estado === "descanso" ? '<span class="nota2">en descanso</span>' : '') +
+                   (p.manual ? '<span class="nota2">agregado a mano</span>' : '') +
+                 '</span>';
+
+    h += '<button class="opcion ' + clases + (puesto ? " elegida" : "") + '" ' +
+         'data-secador="' + escapar(p.id) + '"' + (lleno ? " disabled" : "") + '>' +
+         dentro + '</button>';
   }
+  // Respaldo obligatorio del CLAUDE.md: la app nunca se queda bloqueada
+  // porque una integracion externa fallo.
+  h += botonOpcion("+ No aparece", false, 'data-manual="1"');
   document.getElementById("asig-secadores").innerHTML = h;
 
   // --- Que falta ---
@@ -619,8 +679,16 @@ function pintarAsignacion() {
   }
   marcar("asig-marca-estado", !!asig.marca, asig.marca ? "— " + asig.marca : "— falta");
   marcar("asig-linea-estado", !!asig.linea, asig.linea ? "— línea " + asig.linea : "— falta");
-  marcar("asig-sec-estado", asig.secadores.length > 0,
-         asig.secadores.length ? "— " + asig.secadores.length + " de 4" : "— falta");
+  // Resumen tipo el tablero de Jibble: cuantos hay de cada cosa. Da el
+  // panorama sin tener que contar botones.
+  var enDescanso = SECADORES.filter(function (x) { return x.estado === "descanso"; }).length;
+  var disponibles = SECADORES.length - enDescanso;
+  var resumen = asig.secadores.length
+    ? "— " + asig.secadores.length + " de 4"
+    : "— falta  (" + disponibles + " activos" +
+      (enDescanso ? ", " + enDescanso + " en descanso" : "") +
+      (FUERA ? ", " + FUERA + " fuera" : "") + ")";
+  marcar("asig-sec-estado", asig.secadores.length > 0, resumen);
 
   document.getElementById("confirmar").disabled =
     !(asig.marca && asig.linea && asig.secadores.length > 0);
@@ -634,6 +702,27 @@ document.addEventListener("DOMContentLoaded", function () {
     if (b.dataset.mas) { verMasMarcas = true; }
     else if (b.dataset.marca) { asig.marca = b.dataset.marca; }
     else if (b.dataset.linea) { asig.linea = Number(b.dataset.linea); }
+    else if (b.dataset.manual) {
+      var nom = prompt("¿Cómo se llama? (no aparece en Jibble)");
+      if (!nom || nom.trim().length < 2) return;
+      pedir("/secador-manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre: nom.trim() })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.ok === false) { alert(d.error || "No se pudo agregar"); return; }
+          return cargarSecadores().then(function () {
+            // Queda elegido de una vez: si el supervisor se tomo la
+            // molestia de agregarlo, es porque lo va a usar ahora.
+            if (d && d.id && asig && asig.secadores.length < 4) asig.secadores.push(d.id);
+            pintarAsignacion();
+          });
+        })
+        .catch(function () { alert("Sin conexión."); });
+      return;
+    }
     else if (b.dataset.secador) {
       var i = asig.secadores.indexOf(b.dataset.secador);
       if (i >= 0) asig.secadores.splice(i, 1);
@@ -655,9 +744,18 @@ document.addEventListener("DOMContentLoaded", function () {
     pedir("/asignar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      // Se mandan las dos cosas: el id para medir eficiencia por persona,
+      // y el nombre tal como se ve hoy, para que el historial siga
+      // diciendo quien seco aunque esa persona salga de Jibble.
       body: JSON.stringify({
-        carro: asig.carro, linea: asig.linea,
-        secadores: asig.secadores, marca: asig.marca
+        carro: asig.carro,
+        linea: asig.linea,
+        marca: asig.marca,
+        empleados: asig.secadores,
+        secadores: asig.secadores.map(function (id) {
+          var p = SECADORES.filter(function (x) { return x.id === id; })[0];
+          return p ? p.mostrar : id;
+        })
       })
     })
       .then(function (r) { return r.json(); })

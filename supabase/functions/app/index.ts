@@ -158,6 +158,48 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ carros, servidor: new Date().toISOString() });
   }
 
+  // --- Quien puede secar ---------------------------------------------
+  // Solo activos y en descanso. Los que estan fuera NO se mandan: si el
+  // supervisor los viera, podria asignarle un carro a alguien que ya se
+  // fue del taller.
+  if (ruta === "/secadores") {
+    const { data, error } = await db
+      .from("secadores")
+      .select("id, mostrar, iniciales, color, estado, desde, manual")
+      .in("estado", ["activo", "descanso"])
+      .order("mostrar");
+
+    if (error) {
+      console.error("Fallo al leer secadores:", error);
+      return json({ error: error.message }, 500);
+    }
+
+    // Cuantos hay fuera, solo para el resumen de arriba. Es la misma
+    // informacion que el dueno ve en su tablero de Jibble.
+    const { count: fuera } = await db
+      .from("empleados")
+      .select("id", { count: "exact", head: true })
+      .eq("estado", "fuera");
+
+    return json({ secadores: data ?? [], fuera: fuera ?? 0 });
+  }
+
+  // --- Agregar a alguien que no aparece en Jibble ---------------------
+  if (ruta === "/secador-manual") {
+    if (req.method !== "POST") return json({ error: "usa POST" }, 405);
+    let cuerpo: any;
+    try { cuerpo = await req.json(); } catch { return json({ ok: false, error: "cuerpo invalido" }, 400); }
+
+    const { data, error } = await db.rpc("agregar_secador_manual", {
+      p_nombre: String(cuerpo?.nombre ?? ""),
+    });
+    if (error) {
+      console.error("Fallo al agregar secador manual:", error);
+      return json({ ok: false, error: error.message }, 500);
+    }
+    return json(data);
+  }
+
   // --- Asignar linea, marca y secadores ------------------------------
   if (ruta === "/asignar") {
     if (req.method !== "POST") return json({ error: "usa POST" }, 405);
@@ -174,6 +216,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       p_linea: Number(cuerpo?.linea),
       p_secadores: Array.isArray(cuerpo?.secadores) ? cuerpo.secadores : [],
       p_marca: cuerpo?.marca ?? null,
+      p_empleados: Array.isArray(cuerpo?.empleados) ? cuerpo.empleados : null,
     });
 
     if (error) {
