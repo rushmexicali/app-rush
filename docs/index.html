@@ -299,7 +299,7 @@
   <div class="seccion">Línea <span id="asig-linea-estado" class="pendiente">— falta</span></div>
   <div class="rejilla lineas" id="asig-lineas"></div>
 
-  <div class="seccion">Secadores <span id="asig-sec-estado" class="pendiente">— falta</span></div>
+  <div class="seccion">Secadores <span id="asig-sec-estado" class="pendiente">— elige de 1 a 4</span></div>
   <div class="rejilla secadores" id="asig-secadores"></div>
 </div>
 
@@ -743,15 +743,28 @@ function pintarAsignacion() {
   // panorama sin tener que contar botones.
   var enDescanso = SECADORES.filter(function (x) { return x.estado === "descanso"; }).length;
   var disponibles = SECADORES.length - enDescanso;
+  // "1 de 4" se leia como "llevas 1 de los 4 que necesitas". Nunca fue
+  // un requisito: con UNO basta, y caben hasta 4.
   var resumen = asig.secadores.length
-    ? "— " + asig.secadores.length + " de 4"
-    : "— falta  (" + disponibles + " activos" +
+    ? "— " + asig.secadores.length + (asig.secadores.length === 1 ? " elegido" : " elegidos")
+    : "— elige al menos 1  (" + disponibles + " activos" +
       (enDescanso ? ", " + enDescanso + " en descanso" : "") +
       (FUERA ? ", " + FUERA + " fuera" : "") + ")";
   marcar("asig-sec-estado", asig.secadores.length > 0, resumen);
 
-  document.getElementById("confirmar").disabled =
-    !(asig.marca && asig.linea && asig.secadores.length > 0);
+  // Un boton gris sin explicacion se ve igual que un boton roto. Si no
+  // se puede confirmar, el boton DICE que falta en vez de quedarse mudo.
+  var faltan = [];
+  if (!asig.marca) faltan.push("la marca");
+  if (!asig.linea) faltan.push("la línea");
+  if (asig.secadores.length === 0) faltan.push("un secador");
+
+  var btn = document.getElementById("confirmar");
+  btn.disabled = faltan.length > 0;
+  btn.textContent = faltan.length === 0
+    ? "Empezar a secar"
+    : "Falta " + (faltan.length === 1 ? faltan[0]
+                : faltan.slice(0, -1).join(", ") + " y " + faltan[faltan.length - 1]);
 }
 
 document.addEventListener("DOMContentLoaded", function () {
