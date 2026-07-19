@@ -17,7 +17,7 @@ param(
   # Sin esta bandera el script solo lista lo que ya existe.
   [switch]$Crear,
   # Correo al que Zettle avisa si el webhook empieza a fallar.
-  [string]$Email = "luis.gonzalezr1@gmail.com"
+  [string]$Email = "rushmexicali@gmail.com"
 )
 
 $ErrorActionPreference = "Stop"
@@ -63,8 +63,33 @@ if (-not $Crear) {
   return
 }
 
+# Zettle exige un UUID "version 1" (el que lleva la fecha codificada adentro).
+# PowerShell solo sabe hacer los de version 4 (puro azar), asi que se arma a mano.
+function New-UuidV1 {
+  # Los UUID v1 cuentan intervalos de 100 nanosegundos desde el 15/oct/1582
+  # (cuando entro en vigor el calendario gregoriano).
+  $origen = [datetime]::new(1582, 10, 15, 0, 0, 0, [DateTimeKind]::Utc)
+  $ts = [uint64]([datetime]::UtcNow - $origen).Ticks
+
+  # Ojo: la "L" es obligatoria. Sin ella PowerShell lee 0xFFFFFFFF como -1
+  # y la mascara no recorta nada.
+  $timeLow = [uint32]($ts -band 0xFFFFFFFFL)
+  $timeMid = [uint16](($ts -shr 32) -band 0xFFFF)
+  # El "1" de la version va en los 4 bits altos de este bloque.
+  $timeHi  = [uint16]((($ts -shr 48) -band 0x0FFF) -bor 0x1000)
+  # Los dos bits altos en "10" marcan la variante estandar.
+  $clockSeq = [uint16]((Get-Random -Minimum 0 -Maximum 0x4000) -bor 0x8000)
+
+  $nodo = New-Object byte[] 6
+  (New-Object System.Random).NextBytes($nodo)
+  $nodo[0] = $nodo[0] -bor 0x01  # marca "nodo aleatorio", no una MAC real
+
+  '{0:x8}-{1:x4}-{2:x4}-{3:x4}-{4}' -f $timeLow, $timeMid, $timeHi, $clockSeq,
+    (($nodo | ForEach-Object { $_.ToString('x2') }) -join '')
+}
+
 $cuerpo = @{
-  uuid          = [guid]::NewGuid().ToString()
+  uuid          = New-UuidV1
   transportName = "WEBHOOK"
   eventNames    = @("PurchaseCreated")
   destination   = $destino
@@ -90,7 +115,9 @@ finally {
 }
 
 Write-Host "Respuesta de Zettle:" -ForegroundColor DarkGray
-Write-Host $respuesta
+# Se tapa el signingKey antes de imprimir: es un secreto y no debe quedar
+# en el historial de la terminal. Mas abajo se guarda en el .env.
+Write-Host ($respuesta -replace '("signingKey"\s*:\s*")[^"]+(")', '$1<oculto>$2')
 
 # --- 3) El signingKey -------------------------------------------------
 $json = $null
