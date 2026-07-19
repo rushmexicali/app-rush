@@ -59,16 +59,19 @@ function autorizado(req: Request, url: URL): boolean {
 // ---------------------------------------------------------------------
 // Cuando una etapa se considera demorada (se pinta de rojo).
 //
-// OJO: estos numeros son PROVISIONALES. El CLAUDE.md tiene pendiente
-// definir los tiempos reales de cada etapa. Estan aqui para que el rojo
-// exista y se pueda calibrar viendo la pantalla con el supervisor, no
-// porque sepamos que son correctos.
+// secando: 35 min — calibrado por el dueno el 19/jul/2026 viendo la
+// operacion real. Antes estaba en 15 y pintaba de rojo carros que iban
+// perfectamente bien; un rojo que aparece cuando no hay problema enseña
+// al supervisor a ignorar el rojo.
+//
+// Los otros tres SIGUEN SIENDO PROVISIONALES, puestos por Claude sin
+// datos. Falta calibrarlos igual, con un dia de operacion limpia.
 // ---------------------------------------------------------------------
 const DEMORA_SEG: Record<string, number> = {
-  prelavado: 300,    // 5 min
-  tunel: 300,        // 5 min
-  por_asignar: 120,  // 2 min — aqui el carro esta parado sin hacer nada
-  secando: 900,      // 15 min
+  prelavado: 300,    // 5 min  — provisional
+  tunel: 300,        // 5 min  — provisional
+  por_asignar: 120,  // 2 min  — provisional; aqui el carro esta parado
+  secando: 2100,     // 35 min — calibrado con la operacion real
 };
 
 function json(cuerpo: unknown, status = 200): Response {
