@@ -177,20 +177,26 @@ La cajera puede escribir una nota en la venta de Zettle. Llega en el webhook den
 `products[0].comment` y la app la interpreta sola. Formato acordado:
 
 ```
-<CODIGO> <COLOR> [NOMBRE DEL CLIENTE]
+<CODIGO> <COLOR> - <NOMBRE DEL CLIENTE>
 
 PU = pickup       CA = camioneta
 AU = automovil    PA = pasajeros (tipo combi, 5 hileras)
 ```
 
 - `CA NEGRA` → camioneta negra
-- `PU NEGRA LUIS GONZALEZ` → pickup negra, 6to lavado gratis de Luis González
+- `PU NEGRA - LUIS GONZALEZ` → pickup negra, 6to lavado gratis de Luis González
 
 Reglas de interpretación:
 - Si el código no se reconoce, **no se adivina nada** — se deja vacío. Un dato inventado es
   peor que uno faltante, porque el supervisor confía en lo que ve.
-- En ventas normales todo lo que sigue al código es el color (así `AU AZUL MARINO` funciona).
-  Solo en las **gratis** se separa el nombre del cliente, porque solo ahí lo hay.
+- **El guion es el separador** entre color y nombre del cliente (instrucción dada a las
+  cajeras el 19/jul/2026). Se parte en el primer guion, con espacios o sin ellos, porque una
+  cajera con prisa va a escribir `BLANCA-JUAN` de corrido.
+  - Costo aceptado: un color con guion (`AZUL-MARINO`) se parte mal. Se prefiere así porque
+    perder el nombre duele más — es el registro del 6to lavado gratis — y el color sí lo
+    puede corregir el supervisor de un vistazo, mientras que el nombre no lo adivina nadie.
+- Si falta el guion, hay un respaldo: en ventas **gratis** se asume que lo que sigue al color
+  es el nombre; en las demás todo lo que sigue al código es color.
 - La columna `carros.datos_de_nota` dice si el dato vino de la nota o lo capturó el
   supervisor. Sirve para medir qué tan seguido se está llenando la nota en caja.
 
