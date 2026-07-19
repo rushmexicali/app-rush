@@ -281,12 +281,51 @@ Reglas de interpretación:
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
-## 12. Estado actual
+## 12. Estado actual — al 19/jul/2026
 
-- Ya existe un **mockup interactivo** de las pantallas (cola de carros, cronómetro/etapas,
-  asignar línea+secador con Jibble, datos del carro). Sirve para probar la usabilidad con el
-  supervisor antes de programar en serio.
-- El primer demo (Fase 1) está definido y listo para construirse.
+**Fases 1 a 4 construidas y corriendo en producción.** El sistema captura ventas reales desde
+el primer día.
+
+### Lo que ya funciona
+
+| Fase | Estado |
+|---|---|
+| 1 · Ventas de Zettle | ✅ Webhook activo. Toda venta entra sola en ~1.8s |
+| 2 · Interfaz del supervisor | ✅ Publicada. Cola, etapas, corregir, asignar |
+| 3 · Jibble | ✅ Sincroniza cada minuto. 13 secadores reales |
+| 4 · Foto del carro | ✅ Opcional, cámara directa, bucket privado |
+| 5 · Analítica | ⬜ Pendiente — necesita días de uso real |
+
+### Dónde vive cada cosa
+
+- **App del supervisor:** `https://rushmexicali.github.io/app-rush/` (GitHub Pages, carpeta
+  `docs/`). Requiere código de acceso — está en el `.env` como `CODIGO_ACCESO`.
+- **Repo:** `github.com/rushmexicali/app-rush` (público — por eso existe el código de acceso).
+- **Supabase:** proyecto `rwoyfvddhlabmmuvkpjx`, región West US.
+- **Edge Functions:** `zettle-webhook` (recibe ventas), `app` (API de la pantalla),
+  `sincronizar-jibble` (cron cada minuto).
+- **CLI de Supabase:** en `herramientas/` (ignorado por Git). Se despliega con
+  `supabase functions deploy <nombre> --no-verify-jwt`.
+- **SQL:** se corre por la API de administración, no pegando en el panel. Ver los scripts.
+
+### Cómo trabajar aquí
+
+- **Desplegar función:** CLI de Supabase con el token del `.env`.
+- **Correr SQL:** `POST api.supabase.com/v1/projects/<ref>/database/query` con
+  `SUPABASE_ACCESS_TOKEN`.
+- **Publicar la app:** commit + `git push` con `GITHUB_TOKEN`. Pages republica en ~1 min.
+- **Verificar:** siempre con `curl.exe` contra la API real, nunca asumiendo.
+
+### Lo siguiente
+
+1. **Probar con el supervisor real** (el Paso 7 que se saltó a propósito): darle el teléfono
+   sin explicarle nada y anotar dónde se traba.
+2. **Lectura automática de placas** desde la foto (en discusión). Bloqueante técnico
+   detectado: la app comprime a 1280px y la placa quedaría con ~130px de ancho, al límite de
+   lo legible. Subir a 2000px antes de construirlo. Requiere API key de Anthropic (~$6
+   USD/mes). El dueño ve el tema legal por separado.
+3. **Fase 5 — analítica.** No arrancar hasta tener varios días de operación limpia; hoy solo
+   hay un puñado de carros medibles (ver `es_prueba` y la vista `etapas_medibles`).
 
 ## 13. Decisiones pendientes (llenar con el tiempo)
 
