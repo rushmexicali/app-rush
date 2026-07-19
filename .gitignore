@@ -1,0 +1,21 @@
+# === SECRETOS — NUNCA subir a Git ===
+# Aqui viven la API key de Zettle y la service_role de Supabase, que mueven pagos.
+.env
+.env.local
+.env.*.local
+
+# Excepcion: la plantilla SIN valores si se sube, para saber que variables hacen falta.
+!.env.example
+
+# === Archivos basura de Windows / editores ===
+Thumbs.db
+desktop.ini
+*.swp
+.vscode/
+.idea/
+
+# === Dependencias y compilados (para cuando llegue la app Flutter) ===
+node_modules/
+build/
+.dart_tool/
+*.log
