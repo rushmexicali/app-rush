@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1117">
+<title>RUSH — Cola</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    background:#0d1117; color:#fff;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 12px 12px 40px;
+    font-size: 18px;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:baseline;
+    padding: 6px 4px 14px;
+  }
+  h1 { font-size: 26px; letter-spacing:1px; }
+  #cuantos { font-size: 20px; color:#8b949e; font-weight:700; }
+
+  .carro {
+    border-radius: 16px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+    border-left: 14px solid var(--color);
+    background: #161b22;
+    display: grid;
+    /* Columnas explicitas: el texto a la izquierda, el reloj a la
+       derecha. Sin esto el reloj se colaba a la primera columna. */
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 12px;
+  }
+  .carro.demorado { background:#3d1418; border-color:#ff4d4f; }
+
+  .unidad {
+    grid-column: 1; grid-row: 1;
+    font-size: 27px; font-weight: 800; line-height:1.15;
+  }
+  .unidad .falta { color:#6e7681; font-weight:600; font-style:italic; font-size:21px; }
+
+  .servicio {
+    grid-column: 1; grid-row: 2;
+    font-size: 17px; color:#adbac7; margin-top:3px; line-height:1.25;
+  }
+
+  .reloj {
+    grid-column: 2; grid-row: 1 / span 2;
+    align-self: center;
+    font-size: 38px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .demorado .reloj { color:#ff7875; }
+
+  .estado {
+    grid-column: 1 / -1; grid-row: 3;
+    margin-top: 12px;
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  }
+  .etiqueta {
+    background: var(--color); color:#08090b;
+    font-weight: 800; font-size: 17px;
+    padding: 5px 14px; border-radius: 999px;
+    text-transform: uppercase; letter-spacing:.5px;
+  }
+  .demorado .etiqueta { background:#ff4d4f; color:#fff; }
+
+  /* El express tiene que saltar a la vista sin leerlo. Como el amarillo
+     ya lo usa el estado "en tunel", no basta el color: la tarjeta
+     completa lleva marco amarillo y la etiqueta lleva banderita. */
+  .carro.expreso { box-shadow: inset 0 0 0 3px #ffd400; }
+  .express {
+    background:#ffd400; color:#000;
+    font-weight:900; font-size:17px;
+    padding:5px 14px; border-radius:999px;
+    letter-spacing:.5px;
+  }
+  .linea { font-size:18px; color:#8b949e; font-weight:700; }
+
+  #vacio { text-align:center; color:#6e7681; padding:70px 20px; font-size:22px; }
+  #error {
+    display:none; background:#3d1418; color:#ffb3b3;
+    padding:12px; border-radius:12px; margin-bottom:12px; font-size:17px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>RUSH</h1>
+  <div id="cuantos"></div>
+</header>
+
+<div id="error"></div>
+<div id="lista"></div>
+<div id="vacio" style="display:none">No hay carros en proceso</div>
+
+<script>
+// De donde salen los datos. No es un secreto: la llave de la base vive
+// en la Edge Function y nunca llega al telefono.
+var API = "https://rwoyfvddhlabmmuvkpjx.supabase.co/functions/v1/app";
+
+// Colores por estado. Vienen del CLAUDE.md: el supervisor reconoce el
+// estado por color, sin tener que leer.
+var COLORES = {
+  prelavado:   "#2f81f7",  // azul
+  tunel:       "#e3b341",  // amarillo
+  por_asignar: "#a371f7",  // morado
+  secando:     "#3fb950",  // verde
+  entregado:   "#6e7681"
+};
+
+var TEXTOS = {
+  prelavado:   "Prelavado",
+  tunel:       "En tunel",
+  por_asignar: "Falta asignar",
+  secando:     "Secando",
+  entregado:   "Entregado"
+};
+
+var TIPOS = {
+  pickup:    "PICKUP",
+  camioneta: "CAMIONETA",
+  automovil: "AUTO",
+  pasajeros: "PASAJEROS"
+};
+
+var carros = [];
+
+function escapar(t) {
+  return String(t).replace(/[&<>"']/g, function (c) {
+    return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
+  });
+}
+
+function reloj(segundos) {
+  if (segundos < 0) segundos = 0;
+  var m = Math.floor(segundos / 60);
+  var s = segundos % 60;
+  if (m < 60) return m + ":" + (s < 10 ? "0" : "") + s;
+  var h = Math.floor(m / 60);
+  m = m % 60;
+  return h + ":" + (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+}
+
+function describir(c) {
+  // Lo primero que ve el supervisor debe ser como reconocer el carro a
+  // simple vista: que tipo es y de que color.
+  var partes = [];
+  if (c.tipo_unidad) partes.push(TIPOS[c.tipo_unidad] || c.tipo_unidad.toUpperCase());
+  if (c.color) partes.push(c.color);
+  if (partes.length === 0) return '<span class="falta">Sin datos del carro</span>';
+  return escapar(partes.join(" "));
+}
+
+function pintar() {
+  var ahora = Date.now();
+  var html = "";
+
+  for (var i = 0; i < carros.length; i++) {
+    var c = carros[i];
+    var seg = Math.floor((ahora - new Date(c.etapa_inicio).getTime()) / 1000);
+    var demorado = c.limite > 0 && seg > c.limite;
+    var servicio = (c.producto || "") + (c.variante && c.variante !== c.producto ? " · " + c.variante : "");
+
+    html += '<div class="carro' + (demorado ? " demorado" : "") + (c.es_express ? " expreso" : "") + '" style="--color:' + (COLORES[c.estado] || "#6e7681") + '">';
+    html +=   '<div class="unidad">' + describir(c) + '</div>';
+    html +=   '<div class="reloj">' + reloj(seg) + '</div>';
+    html +=   '<div class="servicio">' + escapar(servicio) + '</div>';
+    html +=   '<div class="estado">';
+    html +=     '<span class="etiqueta">' + escapar(TEXTOS[c.estado] || c.estado) + '</span>';
+    // Mientras no tenga linea, la etiqueta recuerda a donde va. Ya
+    // asignado seria repetir lo que dice la etiqueta de al lado.
+    if (c.es_express) {
+      html += '<span class="express">&#9873; EXPRESS' + (c.linea ? "" : " &rarr; LINEA 1") + '</span>';
+    }
+    if (c.linea)      html += '<span class="linea">Linea ' + escapar(c.linea) + '</span>';
+    html +=   '</div>';
+    html += '</div>';
+  }
+
+  document.getElementById("lista").innerHTML = html;
+  document.getElementById("vacio").style.display = carros.length ? "none" : "block";
+  document.getElementById("cuantos").textContent = carros.length ? carros.length + " en proceso" : "";
+}
+
+function avisarError(hay) {
+  // Solo se avisa si de plano no hay datos. Un parpadeo del wifi no debe
+  // llenar la pantalla de alarmas: la siguiente consulta lo arregla sola.
+  var e = document.getElementById("error");
+  e.style.display = (hay && carros.length === 0) ? "block" : "none";
+  e.textContent = "Sin conexion. Reintentando...";
+}
+
+function consultar() {
+  fetch(API + "/cola", { cache: "no-store" })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      carros = d.carros || [];
+      avisarError(false);
+      pintar();
+    })
+    .catch(function () { avisarError(true); });
+}
+
+// El reloj corre solo cada segundo; los datos se piden cada 3. Asi el
+// cronometro se ve fluido sin castigar el wifi del taller.
+setInterval(pintar, 1000);
+setInterval(consultar, 3000);
+consultar();
+</script>
+</body>
+</html>
