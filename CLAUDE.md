@@ -195,8 +195,19 @@ Reglas de interpretación:
   - Costo aceptado: un color con guion (`AZUL-MARINO`) se parte mal. Se prefiere así porque
     perder el nombre duele más — es el registro del 6to lavado gratis — y el color sí lo
     puede corregir el supervisor de un vistazo, mientras que el nombre no lo adivina nadie.
-- Si falta el guion, hay un respaldo: en ventas **gratis** se asume que lo que sigue al color
-  es el nombre; en las demás todo lo que sigue al código es color.
+- **Si falta el guion, se usa una lista de colores conocidos** para saber dónde acaba el
+  color. Hay dos listas separadas por una razón concreta: *hay nombres de persona que son
+  colores*. `PU NEGRA ROSA MARTINEZ` no es un carro negro-rosa, es el carro negro de Rosa
+  Martínez.
+  - **Colores base** — un carro tiene uno. Al encontrar otro, el color termina ahí.
+  - **Modificadores** (`MARINO`, `REY`, `OLIVO`, `OSCURO`…) — solo valen *después* de un
+    color base, nunca lo inician. Por eso `AZUL MARINO` se lee completo pero `NEGRA ROSA`
+    corta en `NEGRA`.
+  - `VINO` y `TINTO` están en ambas listas, para que `VINO TINTO` funcione. `ROSA` está solo
+    como color base a propósito: ahí proteger el nombre vale más que el color compuesto.
+  - Se ignoran acentos y mayúsculas: `ca café luis` funciona igual.
+- Si el color tampoco está en la lista, último respaldo: en ventas **gratis** lo que sigue al
+  color es el nombre; en las demás todo es color.
 - La columna `carros.datos_de_nota` dice si el dato vino de la nota o lo capturó el
   supervisor. Sirve para medir qué tan seguido se está llenando la nota en caja.
 
