@@ -66,7 +66,23 @@ tecnología.** Toda decisión de diseño se juzga contra esto:
 - El botón dice **qué acción hace**, no algo genérico. Ej.: mientras el carro está en
   prelavado, el botón dice "Terminó prelavado"; al tocarlo cambia a "Salió del túnel".
 - **Colores por estado**, no texto que haya que leer: prelavado = azul, túnel = amarillo,
-  secando = verde, falta asignar = morado, demora = rojo.
+  secando = verde, demora = rojo.
+- **Cuándo se pinta de rojo** (calibrado por el dueño el 19/jul/2026 viendo el taller, ya no
+  hay números inventados):
+
+  | Etapa | Rojo |
+  |---|---|
+  | Prelavado | a los 15 min |
+  | Túnel | **nunca** — es automático y siempre tarda lo mismo |
+  | Falta asignar | **siempre**, desde el primer segundo |
+  | Secando | a los 35 min |
+
+  El túnel no cambia de color porque un rojo que aparece sin que haya problema enseña al
+  supervisor a ignorar el rojo. "Falta asignar" es rojo siempre porque no es una demora que
+  se acumula: es una acción que debe ocurrir en cuanto el carro sale del túnel.
+
+  > Efecto secundario: el morado que tenía "falta asignar" ya no aparece nunca, porque el
+  > rojo lo tapa. Queda libre por si se necesita para otro estado.
 - **Sonido + vibración** cuando entra un carro nuevo (el supervisor no siempre ve la
   pantalla).
 - Botón **"Corregir"** siempre visible por carro, por si tocan la etapa equivocada. Nunca
@@ -267,7 +283,8 @@ Reglas de interpretación:
 
 - ¿Cuántas líneas de secado hay realmente? (el mockup asume 3)
 - ¿Cuántos secadores/personas por línea? ¿Un carro puede tener más de un secador asignado?
-- ¿Los tiempos "normales" de cada etapa (para pintar en rojo las demoras)?
+- ~~¿Los tiempos "normales" de cada etapa?~~ **RESUELTO (19/jul/2026):** prelavado 15 min,
+  túnel nunca, falta asignar siempre, secando 35 min. Detalle en la sección 4.
 - ¿Se marca la transición solo con botón manual, o a futuro con sensores (fotocelda/RFID)?
 - ~~¿Cómo se configuran en Zettle los productos?~~ **RESUELTO (19/jul/2026):** son paquetes
   de servicio con variante de tamaño, no líneas. La línea se asigna a mano. Detalle en la
