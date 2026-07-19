@@ -365,7 +365,8 @@ function pintar() {
   for (var i = 0; i < carros.length; i++) {
     var c = carros[i];
     var seg = Math.floor((ahora - new Date(c.etapa_inicio).getTime()) / 1000);
-    var demorado = c.limite > 0 && seg > c.limite;
+    // limite -1 = rojo siempre (falta asignar), 0 = nunca (tunel).
+    var demorado = c.limite === -1 || (c.limite > 0 && seg > c.limite);
     var servicio = (c.producto || "") + (c.variante && c.variante !== c.producto ? " · " + c.variante : "");
 
     html += '<div class="carro' + (demorado ? " demorado" : "") + (c.es_express ? " expreso" : "") + '" style="--color:' + (COLORES[c.estado] || "#6e7681") + '">';

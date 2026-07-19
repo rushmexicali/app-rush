@@ -57,21 +57,29 @@ function autorizado(req: Request, url: URL): boolean {
 }
 
 // ---------------------------------------------------------------------
-// Cuando una etapa se considera demorada (se pinta de rojo).
+// Cuando una etapa se pinta de rojo. Calibrado por el dueno el
+// 19/jul/2026 viendo la operacion real, no inventado.
 //
-// secando: 35 min — calibrado por el dueno el 19/jul/2026 viendo la
-// operacion real. Antes estaba en 15 y pintaba de rojo carros que iban
-// perfectamente bien; un rojo que aparece cuando no hay problema enseña
-// al supervisor a ignorar el rojo.
-//
-// Los otros tres SIGUEN SIENDO PROVISIONALES, puestos por Claude sin
-// datos. Falta calibrarlos igual, con un dia de operacion limpia.
+//    0  = nunca se pone rojo
+//   -1  = rojo siempre, desde el primer segundo
+//   >0  = segundos despues de los cuales se pone rojo
 // ---------------------------------------------------------------------
 const DEMORA_SEG: Record<string, number> = {
-  prelavado: 300,    // 5 min  — provisional
-  tunel: 300,        // 5 min  — provisional
-  por_asignar: 120,  // 2 min  — provisional; aqui el carro esta parado
-  secando: 2100,     // 35 min — calibrado con la operacion real
+  // Prelavado: 15 minutos.
+  prelavado: 900,
+
+  // Tunel: NUNCA. Es automatico y siempre tarda casi lo mismo, asi que
+  // un color que cambia ahi no informaria nada. Y un rojo que aparece
+  // sin que haya problema enseña al supervisor a ignorar el rojo.
+  tunel: 0,
+
+  // Falta asignar: rojo SIEMPRE. No es una demora que se acumula, es una
+  // accion que debe ocurrir en cuanto el carro sale del tunel. Mientras
+  // este asi, alguien tiene algo que hacer ya.
+  por_asignar: -1,
+
+  // Secando: 35 minutos.
+  secando: 2100,
 };
 
 function json(cuerpo: unknown, status = 200): Response {
