@@ -39,10 +39,15 @@ $urlFn   = if ($v['ZETTLE_WEBHOOK_URL']) { $v['ZETTLE_WEBHOOK_URL'] } else { "$u
 $centavos = [int]($Pesos * 100)
 $ahora    = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
 
+# La fecha va como NUMERO de milisegundos, que es como la manda Zettle
+# de verdad. Antes este script la mandaba como texto ISO, y por eso no
+# detecto el error 22008 que si tumbo una venta real.
+$epochMs = [int64]([datetimeoffset]::UtcNow.ToUnixTimeMilliseconds())
+
 $datosVenta = @{
   purchaseUUID = $Uuid
   amount       = $centavos
-  timestamp    = $ahora
+  timestamp    = $epochMs
 } | ConvertTo-Json -Compress
 
 $aviso = @{
