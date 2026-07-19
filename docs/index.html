@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0d1117">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icono-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>RUSH — Cola</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -407,6 +412,76 @@ function pedir(ruta, opciones) {
   return fetch(API + ruta, opciones);
 }
 
+// --- Aviso cuando entra un carro -------------------------------------
+// El CLAUDE.md lo pide asi: el supervisor no siempre ve la pantalla, y
+// un carro que entra sin que nadie se entere es justo el problema que
+// esta app existe para resolver.
+
+var conocidos = null;   // null = primera carga, no se avisa de nada
+var audio = null;
+
+// El sonido se genera aqui mismo en vez de traer un archivo: funciona
+// aunque no haya wifi y no hay nada que descargar.
+function despertarAudio() {
+  if (audio) return;
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) audio = new AC();
+  } catch (e) {}
+}
+
+function sonar() {
+  if (!audio) return;
+  try {
+    if (audio.state === "suspended") audio.resume();
+    // Dos notas cortas ascendentes: se oyen sobre el ruido del taller
+    // sin ser una alarma molesta.
+    [[880, 0], [1320, 0.16]].forEach(function (par) {
+      var osc = audio.createOscillator();
+      var vol = audio.createGain();
+      osc.type = "square";
+      osc.frequency.value = par[0];
+      osc.connect(vol);
+      vol.connect(audio.destination);
+      var t = audio.currentTime + par[1];
+      vol.gain.setValueAtTime(0.0001, t);
+      vol.gain.exponentialRampToValueAtTime(0.35, t + 0.02);
+      vol.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+      osc.start(t);
+      osc.stop(t + 0.15);
+    });
+  } catch (e) {}
+}
+
+function avisarCarrosNuevos(nuevos) {
+  var ids = nuevos.map(function (c) { return c.id; });
+
+  if (conocidos === null) { conocidos = ids; return; }   // primera carga
+
+  var entraron = ids.filter(function (id) { return conocidos.indexOf(id) < 0; });
+  conocidos = ids;
+
+  if (entraron.length > 0) {
+    sonar();
+    // Patron largo-corto-largo: se siente distinto a una notificacion
+    // cualquiera del telefono.
+    if (navigator.vibrate) navigator.vibrate([250, 120, 250]);
+  }
+}
+
+// La pantalla no se debe apagar sola mientras el supervisor trabaja.
+var candado = null;
+function mantenerPantallaEncendida() {
+  if (!navigator.wakeLock) return;
+  navigator.wakeLock.request("screen")
+    .then(function (c) { candado = c; })
+    .catch(function () {});
+}
+document.addEventListener("visibilitychange", function () {
+  // Android suelta el candado al minimizar; se vuelve a pedir al volver.
+  if (document.visibilityState === "visible" && !candado) mantenerPantallaEncendida();
+});
+
 function consultar() {
   if (!CODIGO) { pedirCodigo(false); return; }
 
@@ -424,6 +499,7 @@ function consultar() {
     .then(function (d) {
       if (!d) return;
       carros = d.carros || [];
+      avisarCarrosNuevos(carros);
       avisarError(false);
       pintar();
     })
@@ -639,6 +715,23 @@ document.getElementById("lista").addEventListener("click", function (ev) {
 
 // El reloj corre solo cada segundo; los datos se piden cada 3. Asi el
 // cronometro se ve fluido sin castigar el wifi del taller.
+// El navegador no deja sonar ni encender la pantalla hasta que la
+// persona toca algo. Se aprovecha el primer toque, sea cual sea.
+function primerToque() {
+  despertarAudio();
+  mantenerPantallaEncendida();
+  document.removeEventListener("pointerdown", primerToque);
+}
+document.addEventListener("pointerdown", primerToque);
+
+// El service worker permite instalarla en la pantalla de inicio y que
+// abra aunque el wifi este caido.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("sw.js").catch(function () {});
+  });
+}
+
 cargarCodigo();
 setInterval(pintar, 1000);
 setInterval(consultar, 3000);
