@@ -147,6 +147,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ carros, servidor: new Date().toISOString() });
   }
 
+  // --- Asignar linea, marca y secadores ------------------------------
+  if (ruta === "/asignar") {
+    if (req.method !== "POST") return json({ error: "usa POST" }, 405);
+
+    let cuerpo: any;
+    try {
+      cuerpo = await req.json();
+    } catch {
+      return json({ ok: false, error: "cuerpo invalido" }, 400);
+    }
+
+    const { data, error } = await db.rpc("asignar_carro", {
+      p_carro: Number(cuerpo?.carro),
+      p_linea: Number(cuerpo?.linea),
+      p_secadores: Array.isArray(cuerpo?.secadores) ? cuerpo.secadores : [],
+      p_marca: cuerpo?.marca ?? null,
+    });
+
+    if (error) {
+      console.error("Fallo al asignar el carro", cuerpo?.carro, ":", error);
+      return json({ ok: false, error: error.message }, 500);
+    }
+    return json(data);
+  }
+
   // --- Mover el carro de etapa, y deshacer ---------------------------
   // La logica vive en la base (avanzar_etapa / regresar_etapa) para que
   // sea atomica. Aqui solo se traduce el toque del boton a una llamada.

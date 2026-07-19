@@ -27,7 +27,10 @@ Estas reglas aplican en **todas** las sesiones:
   1. **Borrar datos** (filas, archivos, tablas) — di exactamente qué se va a borrar.
   2. **Cambiar configuración de un servicio externo** — suscripciones de Zettle, webhooks,
      llaves, cualquier cosa que altere la cuenta real.
-  3. **`git push`** o cualquier cosa que salga de esta computadora.
+  3. **Publicar algo nuevo hacia afuera.** El `git push` de rutina al repo `app-rush` ya no
+     se pregunta — el dueño creó el token justamente para eso el 19/jul/2026. Sí se pregunta
+     antes de publicar en un lugar nuevo, hacer público algo que era privado, o subir
+     archivos que no sean código del proyecto.
   4. **Cambios de arquitectura** — cambiar de tecnología, rehacer el modelo de datos,
      reescribir algo que ya funcionaba.
 - **Usa Git desde el inicio.** Inicializa el repo, haz commits chicos y descriptivos después
