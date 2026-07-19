@@ -136,6 +136,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return json({ error: error.message }, 500);
     }
 
+    // Carros cuyo secador ya se poncho. Se consulta aparte para no
+    // complicar la consulta principal, que es la que corre cada 3s.
+    const { data: huerfanos } = await db
+      .from("carros_sin_secador")
+      .select("carro_id, ausentes");
+    const sinSecador = new Map<number, string[]>();
+    for (const h of huerfanos ?? []) sinSecador.set(h.carro_id, h.ausentes ?? []);
+
     const carros = (data ?? []).map((c: any) => {
       // El cronometro cuenta desde que arranco la etapa ABIERTA (sin fin).
       // Si no hay ninguna abierta, se cae a la hora de entrada del carro.
@@ -152,6 +160,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
         cliente: c.cliente,
         etapa_inicio: abierta?.inicio ?? c.creado_en,
         limite: DEMORA_SEG[c.estado] ?? 0,
+        // Nombres de los secadores que ya se poncharon, si los hay.
+        ausentes: sinSecador.get(c.id) ?? [],
       };
     });
 

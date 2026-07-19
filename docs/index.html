@@ -86,6 +86,20 @@
   }
   .linea { font-size:18px; color:#8b949e; font-weight:700; }
 
+  /* Aviso de secador que se poncho con el carro asignado. Va en la
+     tarjeta, no en una pantalla aparte: el supervisor tiene que verlo
+     sin ir a buscarlo. */
+  .ausente {
+    grid-column: 1 / -1;
+    margin-top: 10px;
+    background:#3d1418; color:#ffb3b3;
+    border-left: 5px solid #ff4d4f;
+    border-radius: 10px;
+    padding: 9px 12px;
+    font-size: 17px; font-weight: 700;
+    line-height: 1.25;
+  }
+
   /* Los botones son lo mas importante de la pantalla: gigantes, uno por
      accion, y el texto dice QUE HACE, no algo generico. */
   .acciones {
@@ -412,6 +426,13 @@ function pintar() {
     if (c.linea)      html += '<span class="linea">Línea ' + escapar(c.linea) + '</span>';
     html +=   '</div>';
 
+    // Se poncho quien lo estaba secando. No se reasigna solo: el
+    // supervisor decide, porque puede ser que otro ya lo haya tomado.
+    if (c.ausentes && c.ausentes.length) {
+      html += '<div class="ausente">&#9888; Se poncho ' + escapar(c.ausentes.join(", ")) +
+              '<br>Reasigna este carro</div>';
+    }
+
     html +=   '<div class="acciones">';
     html +=     '<button class="avanzar" data-accion="avanzar" data-carro="' + c.id + '">' +
                   escapar(ACCIONES[c.estado] || "Siguiente") + '</button>';
@@ -725,8 +746,25 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     else if (b.dataset.secador) {
       var i = asig.secadores.indexOf(b.dataset.secador);
-      if (i >= 0) asig.secadores.splice(i, 1);
-      else if (asig.secadores.length < 4) asig.secadores.push(b.dataset.secador);
+      if (i >= 0) {
+        asig.secadores.splice(i, 1);       // quitarlo nunca pregunta
+      } else if (asig.secadores.length < 4) {
+        var quien = SECADORES.filter(function (x) { return x.id === b.dataset.secador; })[0];
+
+        // Se PUEDE asignar a alguien en descanso: muchos regresan antes
+        // de que se acabe su hora porque les conviene por la propina.
+        // Pero se confirma, para que nunca sea por accidente.
+        if (quien && quien.estado === "descanso") {
+          var min = quien.desde
+            ? Math.floor((Date.now() - new Date(quien.desde).getTime()) / 60000)
+            : null;
+          var aviso = quien.mostrar + " está en DESCANSO" +
+                      (min !== null ? " desde hace " + min + " min" : "") +
+                      ".\n\n¿Asignarlo de todos modos?";
+          if (!confirm(aviso)) return;
+        }
+        asig.secadores.push(b.dataset.secador);
+      }
     } else return;
 
     if (navigator.vibrate) navigator.vibrate(15);

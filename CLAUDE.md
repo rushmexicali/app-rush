@@ -183,6 +183,15 @@ acumulando desde el día uno aunque todavía no se use.
 - En la pantalla de asignar secador, la grilla solo muestra a quien está marcado ahora, con
   **foto** (reconocimiento visual, no lectura).
 - Si alguien está "en descanso", **no se quita** de la lista: se muestra atenuado/gris.
+- **Sí se le puede asignar un carro a alguien en descanso**, con una confirmación que avisa
+  que lo está y desde hace cuánto. *(Regla del dueño, 19/jul/2026.)* La razón es económica:
+  el descanso es de una hora, pero **muchos regresan antes porque ganan bien de propina y les
+  conviene trabajar más**. Bloquearlos sería trabajar en contra de ellos y del negocio. La
+  confirmación existe para que nunca sea por accidente, no para desalentarlo.
+- **Si un secador se poncha con un carro asignado**, la tarjeta del carro muestra un aviso
+  rojo con el nombre de quien se fue. No se reasigna solo ni se borra el registro: quién secó
+  ese carro es dato de eficiencia, y además puede que otro ya lo haya tomado. El supervisor
+  decide.
 - Si alguien se ponchó (clock-out) mientras secaba un carro, ese carro se marca visualmente
   para reasignarlo, sin perder quién lo estaba secando.
 - Siempre debe existir un botón **"No aparece el empleado / agregar manual"** como
