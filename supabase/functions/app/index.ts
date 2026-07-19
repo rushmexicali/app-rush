@@ -30,9 +30,31 @@ const db = createClient(SUPABASE_URL, SUPABASE_KEY, {
 // exige permiso explicito para llamar aqui.
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "content-type",
+  "Access-Control-Allow-Headers": "content-type, x-codigo",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
+
+// ---------------------------------------------------------------------
+// Codigo de acceso
+//
+// El repositorio es publico (GitHub Pages gratis lo exige), asi que la
+// URL de esta funcion es facil de encontrar. Sin esto, cualquiera podria
+// ver la cola y mover carros ajenos.
+//
+// El codigo NO esta en el repositorio: vive en los secretos de Supabase.
+// El supervisor lo teclea una sola vez en el telefono y ahi se queda.
+//
+// Si el secreto no esta configurado se bloquea TODO a proposito. Es
+// preferible que falle de forma obvia y ruidosa a que quede abierto sin
+// que nadie se entere.
+// ---------------------------------------------------------------------
+const CODIGO = Deno.env.get("CODIGO_ACCESO") ?? "";
+
+function autorizado(req: Request, url: URL): boolean {
+  if (!CODIGO) return false;
+  const dado = req.headers.get("x-codigo") ?? url.searchParams.get("c") ?? "";
+  return dado === CODIGO;
+}
 
 // ---------------------------------------------------------------------
 // Cuando una etapa se considera demorada (se pinta de rojo).
@@ -68,12 +90,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // Supabase entrega el path de formas distintas segun por donde entre
   // (/app, /functions/v1/app...). En vez de adivinar el prefijo, se toma
   // el ultimo tramo: si es el nombre de la funcion, es la raiz.
-  const tramos = new URL(req.url).pathname.split("/").filter(Boolean);
+  const url = new URL(req.url);
+  const tramos = url.pathname.split("/").filter(Boolean);
   const ultimo = tramos.length ? tramos[tramos.length - 1] : "";
   const ruta = (ultimo === "" || ultimo === "app") ? "/" : "/" + ultimo;
 
+  // Señal de vida. No revela nada, asi que no pide codigo.
   if (ruta === "/") {
-    return json({ ok: true, servicio: "app", nota: "la pantalla vive en GitHub Pages" });
+    return json({ ok: true, servicio: "app", configurado: CODIGO !== "" });
+  }
+
+  if (!autorizado(req, url)) {
+    if (!CODIGO) {
+      console.error("CODIGO_ACCESO no esta configurado. Todo queda bloqueado.");
+      return json({ error: "El servidor no tiene codigo configurado" }, 503);
+    }
+    return json({ error: "Codigo incorrecto" }, 401);
   }
 
   // --- La cola de carros ---------------------------------------------

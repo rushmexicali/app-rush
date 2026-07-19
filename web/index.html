@@ -114,6 +114,32 @@
   .corregir:active { background:#30363d; }
   .corregir[disabled] { opacity:.3; }
 
+  /* Pantalla de acceso. Se teclea una sola vez por telefono. */
+  #acceso {
+    display:none;
+    position:fixed; inset:0; z-index:50;
+    background:#0d1117;
+    padding:28px 22px;
+    flex-direction:column; justify-content:center; gap:18px;
+  }
+  #acceso h2 { font-size:28px; }
+  #acceso p { color:#8b949e; font-size:18px; line-height:1.4; }
+  #campo {
+    width:100%; min-height:70px;
+    font-size:26px; font-weight:700; text-align:center;
+    letter-spacing:2px; text-transform:uppercase;
+    background:#161b22; color:#fff;
+    border:2px solid #30363d; border-radius:14px;
+    padding:12px;
+  }
+  #entrar {
+    width:100%; min-height:76px;
+    font-size:24px; font-weight:800;
+    background:#2f81f7; color:#fff;
+    border:none; border-radius:14px; cursor:pointer;
+  }
+  #malcodigo { color:#ff7875; font-size:18px; font-weight:700; display:none; }
+
   #vacio { text-align:center; color:#6e7681; padding:70px 20px; font-size:22px; }
   #error {
     display:none; background:#3d1418; color:#ffb3b3;
@@ -131,6 +157,14 @@
 <div id="error"></div>
 <div id="lista"></div>
 <div id="vacio" style="display:none">No hay carros en proceso</div>
+
+<div id="acceso">
+  <h2>Código de acceso</h2>
+  <p>Escribe el código que te dieron. Solo se pide esta vez: el teléfono lo recuerda.</p>
+  <input id="campo" type="text" autocomplete="off" autocapitalize="characters" placeholder="RUSH-----">
+  <div id="malcodigo">Ese código no es correcto</div>
+  <button id="entrar">Entrar</button>
+</div>
 
 <script>
 // De donde salen los datos. No es un secreto: la llave de la base vive
@@ -173,6 +207,47 @@ var TIPOS = {
 };
 
 var carros = [];
+
+// --- Codigo de acceso ------------------------------------------------
+// El repositorio es publico, asi que la URL de la API se puede
+// encontrar. El codigo evita que un desconocido vea la cola o mueva
+// carros. Se teclea una vez por telefono y ahi se queda.
+//
+// Tambien se acepta en la direccion (...?c=CODIGO) para poder mandar un
+// enlace listo por WhatsApp y que el supervisor no teclee nada.
+var CODIGO = "";
+
+function cargarCodigo() {
+  var enLiga = new URLSearchParams(location.search).get("c");
+  if (enLiga) {
+    CODIGO = enLiga.trim().toUpperCase();
+    try { localStorage.setItem("rush_codigo", CODIGO); } catch (e) {}
+    // Se limpia de la barra de direcciones para que no ande a la vista.
+    history.replaceState({}, "", location.pathname);
+    return;
+  }
+  try { CODIGO = localStorage.getItem("rush_codigo") || ""; } catch (e) { CODIGO = ""; }
+}
+
+function pedirCodigo(fallo) {
+  document.getElementById("acceso").style.display = "flex";
+  document.getElementById("malcodigo").style.display = fallo ? "block" : "none";
+  document.getElementById("campo").focus();
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  document.getElementById("entrar").addEventListener("click", function () {
+    var v = document.getElementById("campo").value.trim().toUpperCase();
+    if (!v) return;
+    CODIGO = v;
+    try { localStorage.setItem("rush_codigo", CODIGO); } catch (e) {}
+    document.getElementById("acceso").style.display = "none";
+    consultar();
+  });
+  document.getElementById("campo").addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter") document.getElementById("entrar").click();
+  });
+});
 
 function escapar(t) {
   return String(t).replace(/[&<>"']/g, function (c) {
@@ -246,10 +321,30 @@ function avisarError(hay) {
   e.textContent = "Sin conexion. Reintentando...";
 }
 
+function pedir(ruta, opciones) {
+  opciones = opciones || {};
+  opciones.headers = opciones.headers || {};
+  opciones.headers["x-codigo"] = CODIGO;
+  opciones.cache = "no-store";
+  return fetch(API + ruta, opciones);
+}
+
 function consultar() {
-  fetch(API + "/cola", { cache: "no-store" })
-    .then(function (r) { return r.json(); })
+  if (!CODIGO) { pedirCodigo(false); return; }
+
+  pedir("/cola")
+    .then(function (r) {
+      if (r.status === 401) {
+        // Codigo malo: se olvida para que no siga fallando en silencio.
+        try { localStorage.removeItem("rush_codigo"); } catch (e) {}
+        CODIGO = "";
+        pedirCodigo(true);
+        return null;
+      }
+      return r.json();
+    })
     .then(function (d) {
+      if (!d) return;
       carros = d.carros || [];
       avisarError(false);
       pintar();
@@ -272,7 +367,7 @@ document.getElementById("lista").addEventListener("click", function (ev) {
   boton.disabled = true;
   if (navigator.vibrate) navigator.vibrate(30);
 
-  fetch(API + "/" + boton.dataset.accion, {
+  pedir("/" + boton.dataset.accion, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ carro: Number(boton.dataset.carro) })
@@ -290,6 +385,7 @@ document.getElementById("lista").addEventListener("click", function (ev) {
 
 // El reloj corre solo cada segundo; los datos se piden cada 3. Asi el
 // cronometro se ve fluido sin castigar el wifi del taller.
+cargarCodigo();
 setInterval(pintar, 1000);
 setInterval(consultar, 3000);
 consultar();

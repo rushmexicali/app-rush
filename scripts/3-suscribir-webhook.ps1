@@ -21,7 +21,9 @@ param(
   # nace junto con la suscripcion.
   [switch]$Rotar,
   # Correo al que Zettle avisa si el webhook empieza a fallar.
-  [string]$Email = "rushmexicali@gmail.com"
+  # Se lee del .env para no dejarlo escrito en el repositorio, que es
+  # publico: los robots cosechan correos de GitHub y llega spam.
+  [string]$Email = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -36,6 +38,11 @@ Get-Content $rutaEnv | Where-Object { $_ -match '^\s*[A-Z_]+=' } | ForEach-Objec
 
 $destino = $v['ZETTLE_WEBHOOK_URL']
 if ([string]::IsNullOrWhiteSpace($destino)) { throw "ZETTLE_WEBHOOK_URL esta vacia en el .env." }
+
+if ([string]::IsNullOrWhiteSpace($Email)) { $Email = $v['CONTACTO_EMAIL'] }
+if ([string]::IsNullOrWhiteSpace($Email)) {
+  throw "Falta el correo de contacto. Ponlo como CONTACTO_EMAIL en el .env, o pasalo con -Email."
+}
 
 # --- Conseguir el token (dura 2 horas) --------------------------------
 Write-Host "Pidiendo token a Zettle..." -ForegroundColor DarkGray
