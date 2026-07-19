@@ -33,6 +33,39 @@ function responder(cuerpo: unknown, status = 200): Response {
   });
 }
 
+// Zettle manda la fecha como NUMERO de milisegundos (1784484296491), no como
+// texto. Postgres no entiende ese formato y rechazaba la fila completa.
+// Devuelve null si no se puede convertir: mejor una venta sin hora que
+// una venta perdida.
+function aFechaIso(valor: unknown): string | null {
+  if (valor === null || valor === undefined) return null;
+
+  if (typeof valor === "number") {
+    // Puede venir en segundos o en milisegundos. Arriba de 1e12 son ms.
+    const ms = valor > 1e12 ? valor : valor * 1000;
+    const f = new Date(ms);
+    return isNaN(f.getTime()) ? null : f.toISOString();
+  }
+
+  if (typeof valor === "string") {
+    // A veces el numero viene envuelto en comillas.
+    if (/^\d+$/.test(valor.trim())) return aFechaIso(Number(valor.trim()));
+    const f = new Date(valor);
+    return isNaN(f.getTime()) ? null : f.toISOString();
+  }
+
+  return null;
+}
+
+// El monto tambien puede venir como texto segun la version de la API.
+function aCentavos(valor: unknown): number | null {
+  if (typeof valor === "number" && isFinite(valor)) return valor;
+  if (typeof valor === "string" && /^-?\d+$/.test(valor.trim())) {
+    return Number(valor.trim());
+  }
+  return null;
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   // Abrir la URL en el navegador cae aqui. Sirve para confirmar
   // "si, la funcion esta viva" sin tener que cobrar nada.
@@ -94,11 +127,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
     null;
 
   // Zettle manda el monto en CENTAVOS (12300 = $123.00). Lo pasamos a pesos.
-  const centavos = (datos as any)?.amount;
-  const monto = typeof centavos === "number" ? centavos / 100 : null;
+  const centavos = aCentavos((datos as any)?.amount);
+  const monto = centavos === null ? null : centavos / 100;
 
   const recibidoEn =
-    (datos as any)?.timestamp ?? (evento as any)?.timestamp ?? null;
+    aFechaIso((datos as any)?.timestamp) ??
+    aFechaIso((evento as any)?.timestamp);
+
+  if (recibidoEn === null) {
+    // No tumbamos la venta por esto. Se guarda sin hora y queda el aviso.
+    console.warn(
+      "No se entendio la fecha del aviso. Se guarda sin hora. valor:",
+      (datos as any)?.timestamp ?? (evento as any)?.timestamp,
+    );
+  }
+
+  // Al crear la suscripcion, Zettle manda un aviso de prueba llamado
+  // TestMessage que no trae venta. Es normal, no es un error.
+  if (nombreEvento === "TestMessage") {
+    console.log("Aviso de prueba de Zettle (TestMessage). Todo bien.");
+    return responder({ ok: true, nota: "test message" });
+  }
 
   // Sin purchase_uuid no podemos guardar (es la llave unica que evita
   // duplicados). Lo registramos y respondemos 200: si el aviso viene
