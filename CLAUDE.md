@@ -17,20 +17,34 @@ secador con el tiempo.
 
 Estas reglas aplican en **todas** las sesiones:
 
-- **Pide permiso y explica antes de actuar.** Antes de editar archivos o correr comandos,
-  di qué vas a hacer y por qué. No hagas cambios grandes sin confirmación. El dueño del
-  proyecto es principiante en Claude Code y quiere revisar antes de aprobar.
+- **Avanza sin pedir permiso en lo rutinario.** Editar archivos, correr comandos de lectura,
+  desplegar Edge Functions, hacer commits, consultar APIs: hazlo y luego cuenta qué hiciste.
+  Explicar sigue siendo obligatorio; pedir permiso ya no.
+  *(Actualizado el 19/jul/2026: al inicio la regla era pedir permiso para todo, cuando el
+  dueño no sabía qué esperar de Claude Code. Ya trabajando, esa regla costaba más de lo que
+  protegía.)*
+- **Sí para antes de estas cuatro cosas**, siempre, aunque el resto vaya en automático:
+  1. **Borrar datos** (filas, archivos, tablas) — di exactamente qué se va a borrar.
+  2. **Cambiar configuración de un servicio externo** — suscripciones de Zettle, webhooks,
+     llaves, cualquier cosa que altere la cuenta real.
+  3. **`git push`** o cualquier cosa que salga de esta computadora.
+  4. **Cambios de arquitectura** — cambiar de tecnología, rehacer el modelo de datos,
+     reescribir algo que ya funcionaba.
 - **Usa Git desde el inicio.** Inicializa el repo, haz commits chicos y descriptivos después
   de cada paso que funcione, para poder deshacer sin perder trabajo.
 - **Secretos SIEMPRE en `.env`, nunca en Git.** La API key de Zettle y la `service_role` de
   Supabase mueven pagos: van en un archivo `.env` que debe estar en `.gitignore`. Nunca las
   pongas en código, ni en archivos que se suban al repo, ni en este `CLAUDE.md`. Mantén un
   `.env.example` con los nombres de las variables (sin valores).
-- **Una cosa a la vez.** Trabaja la tarea acotada que se te pide (p. ej. una sola fase) y no
-  avances a la siguiente hasta que el dueño confirme que la anterior funcionó. No metas
-  varias integraciones juntas.
-- **Usa Plan Mode.** Para cualquier tarea con más de un par de pasos, primero presenta el
-  plan y espera visto bueno antes de ejecutar.
+- **Una fase a la vez, pero los pasos dentro de una fase van seguidos.** No mezcles
+  integraciones distintas (Zettle y Jibble juntas, no). Pero dentro de una fase ya aprobada,
+  encadena los pasos y verifica sobre la marcha en vez de detenerte en cada uno. Párate solo
+  si algo falla, si aparece una decisión de verdad, o si toca una de las cuatro cosas de
+  arriba.
+- **Usa Plan Mode al empezar una fase**, no para cada tarea suelta dentro de ella.
+- **Verifica desde afuera, no confíes en la pantalla.** Después de cada cosa que construyas,
+  compruébala con una llamada real (`curl.exe`, consulta a la base) en vez de suponer que
+  quedó bien. Varios errores de la Fase 1 se detectaron así, no viendo el panel.
 
 ## 3. Problema que resuelve
 
