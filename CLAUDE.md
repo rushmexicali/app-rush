@@ -255,6 +255,31 @@ Reglas de interpretación:
 > lo hagan en cada venta. Mientras no pase, el supervisor captura a mano — que es justo el
 > respaldo que el diseño ya contempla.
 
+### La placa se lee sola de la foto (implementado 19/jul/2026)
+
+Cuando el supervisor sube la foto, la Edge Function `app` se la manda a **Claude Sonnet 5**
+y guarda la placa en `carros.placa`. La placa aparece en la tarjeta con su propio recuadro,
+antes de tipo/color/marca: es el único identificador que no se repite.
+
+- **No hubo que subir la resolución.** El `CLAUDE.md` decía que a 1280px la placa quedaría
+  con ~130px y habría que subir a 2000px. Se midió con una foto real: la placa medía ~170px
+  y se lee perfecto. Incluso a la **cuarta parte** de resolución (placa de ~42px) seguía
+  leyéndola. La foto sigue pesando ~150 KB en vez de ~450 KB — importante con el wifi flojo
+  del taller.
+- **Sonnet 5 y no Opus:** tiene visión de alta resolución (lo que hacía falta) y cuesta un
+  tercio. Va con `thinking` apagado y esfuerzo bajo porque esto es OCR, no razonamiento.
+  Si algún día las lecturas salen flojas, ahí es donde hay que subirle.
+- **Costo medido:** 1,698 tokens por foto → **~$3.20 USD/mes** con ~30 carros al día
+  (~$4.90 cuando termine el precio de introducción de Sonnet 5 en agosto/2026).
+- **Nunca inventa.** Se probó tapando los dígitos centrales de una placa real y dejando
+  visibles solo las letras de los extremos: devolvió vacío las tres veces, teniendo toda la
+  información para "completarla". Es la misma regla de oro de la nota de caja.
+- **Nunca bloquea.** La placa se lee *después* de que la foto ya quedó guardada, con corte a
+  los 25 segundos. Si Anthropic se cae o tarda, la foto se guarda igual y el carro sigue.
+- **Dos columnas, y la diferencia importa:** `placa_en` nula = no se ha intentado;
+  `placa_en` con fecha y `placa` vacía = **sí se intentó y no se pudo**. Ese segundo caso es
+  dato, no error: sirve para medir qué tan seguido salen fotos ilegibles.
+
 ### Captura manual (respaldo)
 
 - Es **opcional** y **no bloquea** el flujo. Aparece como botón (ícono de cámara) en la
@@ -331,10 +356,8 @@ el primer día.
 
 1. **Probar con el supervisor real** (el Paso 7 que se saltó a propósito): darle el teléfono
    sin explicarle nada y anotar dónde se traba.
-2. **Lectura automática de placas** desde la foto (en discusión). Bloqueante técnico
-   detectado: la app comprime a 1280px y la placa quedaría con ~130px de ancho, al límite de
-   lo legible. Subir a 2000px antes de construirlo. Requiere API key de Anthropic (~$6
-   USD/mes). El dueño ve el tema legal por separado.
+2. ~~**Lectura automática de placas**~~ **RESUELTO (19/jul/2026)** — ya está en producción.
+   Detalle en la sección 9. El dueño ve el tema legal por separado.
 3. **Fase 5 — analítica.** No arrancar hasta tener varios días de operación limpia; hoy solo
    hay un puñado de carros medibles (ver `es_prueba` y la vista `etapas_medibles`).
 

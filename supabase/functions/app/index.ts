@@ -93,6 +93,120 @@ function json(cuerpo: unknown, status = 200): Response {
   });
 }
 
+// ---------------------------------------------------------------------
+// Leer la placa de la foto (Claude Sonnet 5)
+//
+// Se le manda la MISMA imagen que ya se subio, sin agrandarla. Se midio
+// el 19/jul/2026 con una foto real del taller: la placa medira ~170px de
+// ancho y se lee bien; incluso a la cuarta parte de resolucion seguia
+// leyendola. La nota del CLAUDE.md que pedia subir a 2000px estaba
+// basada en una estimacion pesimista y resulto innecesaria.
+//
+// Devuelve la placa, o null si no se pudo leer. NUNCA lanza: si Anthropic
+// se cae, tarda, o contesta algo raro, se devuelve null y la foto queda
+// guardada igual. La foto es opcional y no debe bloquear al carro.
+//
+// Sonnet 5 y no Opus: tiene vision de alta resolucion (lo que se
+// necesita) y cuesta un tercio. Esto es OCR, no razonamiento — por eso
+// tambien va con "thinking" apagado y esfuerzo bajo. Si algun dia las
+// lecturas salen flojas, ahi es donde hay que subirle.
+// ---------------------------------------------------------------------
+const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
+
+const INSTRUCCION_PLACA = `Eres un lector de placas vehiculares. En la foto hay un vehiculo.
+
+Devuelve la placa EXACTAMENTE como se ve. Son placas mexicanas, en su mayoria de Baja California.
+
+Reglas estrictas:
+- Si la placa esta borrosa, cortada, tapada, en angulo, o NO puedes leer todos los caracteres con certeza, devuelve legible=false y placa=null.
+- NUNCA adivines un caracter. NUNCA completes ni corrijas el formato para que "se vea bien".
+- Si dudas entre dos caracteres (0 y O, 1 e I, 8 y B), eso cuenta como no legible.
+- Un dato inventado es peor que uno vacio.`;
+
+async function leerPlaca(imagenBase64: string): Promise<string | null> {
+  if (!ANTHROPIC_API_KEY) {
+    console.error("ANTHROPIC_API_KEY no configurada. No se leen placas.");
+    return null;
+  }
+
+  // Si Anthropic se tarda, se corta. Vale mas devolverle la pantalla al
+  // supervisor sin placa que dejarlo esperando con el boton en "subiendo".
+  const cortar = new AbortController();
+  const reloj = setTimeout(() => cortar.abort(), 25000);
+
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      signal: cortar.signal,
+      headers: {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-5",
+        max_tokens: 200,
+        thinking: { type: "disabled" },
+        output_config: {
+          effort: "low",
+          // Salida obligada a esta forma: no hay que adivinar como vino
+          // la respuesta ni parsear texto libre.
+          format: {
+            type: "json_schema",
+            schema: {
+              type: "object",
+              properties: {
+                placa: { anyOf: [{ type: "string" }, { type: "null" }] },
+                legible: { type: "boolean" },
+              },
+              required: ["placa", "legible"],
+              additionalProperties: false,
+            },
+          },
+        },
+        messages: [{
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: { type: "base64", media_type: "image/jpeg", data: imagenBase64 },
+            },
+            { type: "text", text: INSTRUCCION_PLACA },
+          ],
+        }],
+      }),
+    });
+
+    if (!r.ok) {
+      console.error("Anthropic respondio", r.status, ":", (await r.text()).slice(0, 300));
+      return null;
+    }
+
+    const datos = await r.json();
+
+    // Puede negarse a contestar por politica de contenido. No es un error
+    // nuestro; simplemente no hay placa.
+    if (datos?.stop_reason === "refusal") {
+      console.error("Anthropic se nego a leer la foto.");
+      return null;
+    }
+
+    const texto = datos?.content?.find((b: any) => b?.type === "text")?.text ?? "";
+    const leido = JSON.parse(texto);
+
+    // La regla de oro: solo se acepta si el modelo dijo que SI se lee.
+    if (leido?.legible !== true) return null;
+
+    const placa = String(leido?.placa ?? "").trim().toUpperCase();
+    return placa === "" ? null : placa;
+  } catch (e) {
+    console.error("Fallo al leer la placa:", e);
+    return null;
+  } finally {
+    clearTimeout(reloj);
+  }
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: CORS });
@@ -125,7 +239,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .from("carros")
       .select(`
         id, estado, linea, es_express, producto, variante,
-        tipo_unidad, color, marca, cliente, nota, creado_en, foto_path,
+        tipo_unidad, color, marca, cliente, nota, creado_en, foto_path, placa,
         etapas ( etapa, inicio, fin )
       `)
       .neq("estado", "entregado")
@@ -173,6 +287,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         color: c.color,
         marca: c.marca,
         cliente: c.cliente,
+        placa: c.placa,
         etapa_inicio: abierta?.inicio ?? c.creado_en,
         limite: DEMORA_SEG[c.estado] ?? 0,
         // Nombres de los secadores que ya se poncharon, si los hay.
@@ -234,7 +349,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return json({ ok: false, error: errGuardar.message }, 500);
     }
 
-    return json({ ok: true, camino });
+    // La placa se lee DESPUES de que la foto ya quedo guardada, para que
+    // un problema aqui nunca se lleve entre las patas la foto. Si no se
+    // pudo leer se guarda placa_en de todas formas: eso distingue "se
+    // intento y no se pudo" de "nunca se intento".
+    const placa = await leerPlaca(puro);
+    const { error: errPlaca } = await db
+      .from("carros")
+      .update({ placa, placa_en: new Date().toISOString() })
+      .eq("id", carro);
+
+    if (errPlaca) {
+      // No se le devuelve error al telefono: la foto SI se guardo.
+      console.error("No se pudo guardar la placa del carro", carro, ":", errPlaca);
+    }
+
+    return json({ ok: true, camino, placa });
   }
 
   // --- Quien puede secar ---------------------------------------------
