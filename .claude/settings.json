@@ -28,10 +28,13 @@
       "PowerShell(Get-Date*)"
     ],
     "ask": [
-      "PowerShell(git push*)",
-      "PowerShell(git reset*)",
-      "PowerShell(git rebase*)",
-      "PowerShell(Remove-Item*)"
+      "PowerShell(git reset --hard*)",
+      "PowerShell(git rebase*)"
+    ],
+    "deny": [
+      "PowerShell(Remove-Item C:\\Windows*)",
+      "PowerShell(Remove-Item C:\\Program Files*)",
+      "PowerShell(Format-Volume*)"
     ]
   }
 }
