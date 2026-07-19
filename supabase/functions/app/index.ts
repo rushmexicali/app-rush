@@ -115,5 +115,32 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ carros, servidor: new Date().toISOString() });
   }
 
+  // --- Mover el carro de etapa, y deshacer ---------------------------
+  // La logica vive en la base (avanzar_etapa / regresar_etapa) para que
+  // sea atomica. Aqui solo se traduce el toque del boton a una llamada.
+  if (ruta === "/avanzar" || ruta === "/corregir") {
+    if (req.method !== "POST") return json({ error: "usa POST" }, 405);
+
+    let carro: number | null = null;
+    try {
+      const cuerpo = await req.json();
+      carro = Number(cuerpo?.carro);
+    } catch {
+      return json({ error: "cuerpo invalido" }, 400);
+    }
+    if (!carro || !Number.isFinite(carro)) {
+      return json({ error: "falta el numero de carro" }, 400);
+    }
+
+    const funcion = ruta === "/avanzar" ? "avanzar_etapa" : "regresar_etapa";
+    const { data, error } = await db.rpc(funcion, { p_carro: carro });
+
+    if (error) {
+      console.error("Fallo", funcion, "carro", carro, ":", error);
+      return json({ ok: false, error: error.message }, 500);
+    }
+    return json(data);
+  }
+
   return json({ error: "ruta desconocida" }, 404);
 });

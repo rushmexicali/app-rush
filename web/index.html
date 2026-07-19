@@ -81,6 +81,39 @@
   }
   .linea { font-size:18px; color:#8b949e; font-weight:700; }
 
+  /* Los botones son lo mas importante de la pantalla: gigantes, uno por
+     accion, y el texto dice QUE HACE, no algo generico. */
+  .acciones {
+    grid-column: 1 / -1; grid-row: 4;
+    margin-top: 14px;
+    display: flex; gap: 10px;
+  }
+  .avanzar {
+    flex: 1;
+    min-height: 76px;
+    font-size: 23px; font-weight: 800;
+    color:#08090b; background: var(--color);
+    border: none; border-radius: 14px;
+    padding: 10px 12px;
+    line-height:1.15;
+    cursor: pointer;
+  }
+  .demorado .avanzar { background:#ff4d4f; color:#fff; }
+  .avanzar:active { filter: brightness(.8); }
+  .avanzar[disabled] { opacity:.45; }
+
+  /* Corregir siempre visible, pero claramente secundario para que nadie
+     lo confunda con el boton de avanzar. */
+  .corregir {
+    width: 96px; min-height: 76px;
+    font-size: 17px; font-weight: 700;
+    color:#adbac7; background: transparent;
+    border: 2px solid #30363d; border-radius: 14px;
+    cursor: pointer;
+  }
+  .corregir:active { background:#30363d; }
+  .corregir[disabled] { opacity:.3; }
+
   #vacio { text-align:center; color:#6e7681; padding:70px 20px; font-size:22px; }
   #error {
     display:none; background:#3d1418; color:#ffb3b3;
@@ -116,10 +149,20 @@ var COLORES = {
 
 var TEXTOS = {
   prelavado:   "Prelavado",
-  tunel:       "En tunel",
+  tunel:       "En túnel",
   por_asignar: "Falta asignar",
   secando:     "Secando",
   entregado:   "Entregado"
+};
+
+// El boton dice QUE ACCION HACE, no el estado ni algo generico como
+// "siguiente". Regla del CLAUDE.md: el supervisor lee el boton y sabe
+// exactamente que va a pasar al tocarlo.
+var ACCIONES = {
+  prelavado:   "Terminó prelavado",
+  tunel:       "Salió del túnel",
+  por_asignar: "Asignar línea",
+  secando:     "Entregado"
 };
 
 var TIPOS = {
@@ -176,9 +219,16 @@ function pintar() {
     // Mientras no tenga linea, la etiqueta recuerda a donde va. Ya
     // asignado seria repetir lo que dice la etiqueta de al lado.
     if (c.es_express) {
-      html += '<span class="express">&#9873; EXPRESS' + (c.linea ? "" : " &rarr; LINEA 1") + '</span>';
+      html += '<span class="express">&#9873; EXPRESS' + (c.linea ? "" : " &rarr; LÍNEA 1") + '</span>';
     }
-    if (c.linea)      html += '<span class="linea">Linea ' + escapar(c.linea) + '</span>';
+    if (c.linea)      html += '<span class="linea">Línea ' + escapar(c.linea) + '</span>';
+    html +=   '</div>';
+
+    html +=   '<div class="acciones">';
+    html +=     '<button class="avanzar" data-accion="avanzar" data-carro="' + c.id + '">' +
+                  escapar(ACCIONES[c.estado] || "Siguiente") + '</button>';
+    html +=     '<button class="corregir" data-accion="corregir" data-carro="' + c.id +
+                  '"' + (c.estado === "prelavado" ? " disabled" : "") + '>Corregir</button>';
     html +=   '</div>';
     html += '</div>';
   }
@@ -206,6 +256,37 @@ function consultar() {
     })
     .catch(function () { avisarError(true); });
 }
+
+// --- Los botones -----------------------------------------------------
+// Se escucha en el contenedor y no en cada boton, porque la lista se
+// vuelve a dibujar cada segundo y los botones se recrean.
+var ocupado = false;
+
+document.getElementById("lista").addEventListener("click", function (ev) {
+  var boton = ev.target.closest("button[data-accion]");
+  if (!boton || ocupado) return;
+
+  // Bloqueo mientras viaja la peticion: el supervisor va a picar dos
+  // veces si no ve respuesta inmediata, y eso saltaria una etapa.
+  ocupado = true;
+  boton.disabled = true;
+  if (navigator.vibrate) navigator.vibrate(30);
+
+  fetch(API + "/" + boton.dataset.accion, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ carro: Number(boton.dataset.carro) })
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d && d.ok === false) alert(d.error || "No se pudo");
+    })
+    .catch(function () { alert("Sin conexión. Intenta otra vez."); })
+    .then(function () {
+      ocupado = false;
+      consultar();  // se repinta con lo que diga la base, no con lo que supongamos
+    });
+});
 
 // El reloj corre solo cada segundo; los datos se piden cada 3. Asi el
 // cronometro se ve fluido sin castigar el wifi del taller.
