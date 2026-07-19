@@ -90,7 +90,10 @@ tecnología.** Toda decisión de diseño se juzga contra esto:
 - Fuente grande, alto contraste.
 - Siempre un **respaldo manual** por si una integración externa (Zettle/Jibble) falla — la
   app nunca se debe quedar bloqueada.
-- La foto abre **directo la cámara**, no la galería.
+- La foto abre **directo la cámara**, sin preguntar nada. Al lado hay un segundo botón más
+  chico y más apagado para escoger de la **galería**, por si la foto se tomó fuera de la app.
+  *(Agregado el 19/jul/2026 a pedido del dueño.)* Son dos botones y no un menú a propósito:
+  el caso común sigue siendo un solo toque, y el pulgar cae en la cámara por default.
 - Toda la UI en **español**.
 
 ## 5. Flujo operativo real
