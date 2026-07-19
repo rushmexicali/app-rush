@@ -133,6 +133,23 @@
   .corregir:active { background:#30363d; }
   .corregir[disabled] { opacity:.3; }
 
+  /* La foto es OPCIONAL y no debe estorbar. Boton chico, al lado del
+     reloj, para que en dia pesado se ignore sin siquiera notarlo. */
+  .foto {
+    grid-column: 2; grid-row: 3;
+    justify-self: end;
+    width: 62px; height: 52px;
+    background: transparent;
+    border: 2px solid #30363d; border-radius: 12px;
+    color: #8b949e; font-size: 24px;
+    cursor: pointer; padding: 0;
+    overflow: hidden;
+  }
+  .foto:active { background:#30363d; }
+  .foto img { width:100%; height:100%; object-fit:cover; display:block; }
+  .foto.subiendo { opacity:.4; }
+  #camara { display: none; }
+
   /* Pantalla de acceso. Se teclea una sola vez por telefono. */
   #acceso {
     display:none;
@@ -284,6 +301,10 @@
   <button id="cancelar">Cancelar</button>
 </div>
 
+<!-- capture="environment" abre la camara TRASERA directo, no la galeria.
+     Lo pide el CLAUDE.md: el supervisor no debe navegar por archivos. -->
+<input id="camara" type="file" accept="image/*" capture="environment">
+
 <div id="acceso">
   <h2>Código de acceso</h2>
   <p>Escribe el código que te dieron. Solo se pide esta vez: el teléfono lo recuerda.</p>
@@ -421,6 +442,12 @@ function pintar() {
     html +=   '<div class="unidad">' + describir(c) + '</div>';
     html +=   '<div class="reloj">' + reloj(seg) + '</div>';
     html +=   '<div class="servicio">' + escapar(servicio) + '</div>';
+    // Foto: si ya hay, se ve la miniatura; si no, el icono de camara.
+    // Nunca estorba ni bloquea: el carro puede salir sin foto.
+    html +=   '<button class="foto" data-foto="' + c.id + '" title="Foto del carro">' +
+                (c.foto ? '<img src="' + escapar(c.foto) + '" alt="">' : '&#128247;') +
+              '</button>';
+
     html +=   '<div class="estado">';
     html +=     '<span class="etiqueta">' + escapar(TEXTOS[c.estado] || c.estado) + '</span>';
     // Mientras no tenga linea, la etiqueta recuerda a donde va. Ya
@@ -811,12 +838,86 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 });
 
+// --- La foto del carro (opcional) ------------------------------------
+// Nunca bloquea nada. En dia pesado el supervisor la ignora y el carro
+// sale igual; el CLAUDE.md lo pide asi.
+
+var carroDeLaFoto = null;
+
+// El wifi del taller es flojo, asi que la foto se achica AQUI antes de
+// subirla. Una foto de celular pesa 3-5 MB; asi queda en ~150 KB.
+function achicar(archivo) {
+  return new Promise(function (listo, falla) {
+    var lector = new FileReader();
+    lector.onerror = falla;
+    lector.onload = function () {
+      var img = new Image();
+      img.onerror = falla;
+      img.onload = function () {
+        var max = 1280;
+        var an = img.width, al = img.height;
+        if (an > al && an > max) { al = Math.round(al * max / an); an = max; }
+        else if (al > max)       { an = Math.round(an * max / al); al = max; }
+
+        var lienzo = document.createElement("canvas");
+        lienzo.width = an; lienzo.height = al;
+        lienzo.getContext("2d").drawImage(img, 0, 0, an, al);
+        listo(lienzo.toDataURL("image/jpeg", 0.6));
+      };
+      img.src = lector.result;
+    };
+    lector.readAsDataURL(archivo);
+  });
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  document.getElementById("camara").addEventListener("change", function (ev) {
+    var archivo = ev.target.files && ev.target.files[0];
+    ev.target.value = "";                    // permite repetir la misma foto
+    if (!archivo || !carroDeLaFoto) return;
+
+    var id = carroDeLaFoto;
+    var boton = document.querySelector('[data-foto="' + id + '"]');
+    if (boton) boton.classList.add("subiendo");
+
+    achicar(archivo)
+      .then(function (imagen) {
+        return pedir("/foto", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ carro: id, imagen: imagen })
+        });
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.ok === false) alert(d.error || "No se pudo guardar la foto");
+        if (navigator.vibrate) navigator.vibrate(30);
+        consultar();
+      })
+      .catch(function () {
+        // Si falla, se avisa pero no pasa nada mas: el carro sigue su
+        // camino sin foto.
+        alert("No se pudo subir la foto. El carro sigue igual.");
+        if (boton) boton.classList.remove("subiendo");
+      });
+  });
+});
+
 // --- Los botones -----------------------------------------------------
 // Se escucha en el contenedor y no en cada boton, porque la lista se
 // vuelve a dibujar cada segundo y los botones se recrean.
 var ocupado = false;
 
 document.getElementById("lista").addEventListener("click", function (ev) {
+  // La camara va aparte: no pasa por el bloqueo de "ocupado" porque no
+  // cambia la etapa del carro y no debe estorbarse con los demas toques.
+  var camara = ev.target.closest("button[data-foto]");
+  if (camara) {
+    carroDeLaFoto = Number(camara.dataset.foto);
+    document.getElementById("camara").click();
+    return;
+  }
+
   var boton = ev.target.closest("button[data-accion]");
   if (!boton || ocupado) return;
 

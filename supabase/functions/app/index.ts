@@ -125,7 +125,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .from("carros")
       .select(`
         id, estado, linea, es_express, producto, variante,
-        tipo_unidad, color, marca, cliente, nota, creado_en,
+        tipo_unidad, color, marca, cliente, nota, creado_en, foto_path,
         etapas ( etapa, inicio, fin )
       `)
       .neq("estado", "entregado")
@@ -143,6 +143,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .select("carro_id, ausentes");
     const sinSecador = new Map<number, string[]>();
     for (const h of huerfanos ?? []) sinSecador.set(h.carro_id, h.ausentes ?? []);
+
+    // Enlaces firmados para las fotos. Caducan en una hora: el bucket
+    // es privado y nadie debe poder guardarse una direccion permanente
+    // a una foto donde se ve una placa.
+    const conFoto = (data ?? []).filter((c: any) => c.foto_path);
+    const enlaces = new Map<number, string>();
+    if (conFoto.length) {
+      const { data: firmados } = await db.storage
+        .from("fotos")
+        .createSignedUrls(conFoto.map((c: any) => c.foto_path), 3600);
+      (firmados ?? []).forEach((f: any, i: number) => {
+        if (f?.signedUrl) enlaces.set(conFoto[i].id, f.signedUrl);
+      });
+    }
 
     const carros = (data ?? []).map((c: any) => {
       // El cronometro cuenta desde que arranco la etapa ABIERTA (sin fin).
@@ -163,10 +177,64 @@ Deno.serve(async (req: Request): Promise<Response> => {
         limite: DEMORA_SEG[c.estado] ?? 0,
         // Nombres de los secadores que ya se poncharon, si los hay.
         ausentes: sinSecador.get(c.id) ?? [],
+        foto: enlaces.get(c.id) ?? null,
       };
     });
 
     return json({ carros, servidor: new Date().toISOString() });
+  }
+
+  // --- Guardar la foto del carro -------------------------------------
+  // Llega en base64 desde el telefono, ya reducida por el navegador. El
+  // bucket es privado porque en las fotos se ven placas.
+  if (ruta === "/foto") {
+    if (req.method !== "POST") return json({ error: "usa POST" }, 405);
+
+    let cuerpo: any;
+    try { cuerpo = await req.json(); } catch { return json({ ok: false, error: "cuerpo invalido" }, 400); }
+
+    const carro = Number(cuerpo?.carro);
+    const datos = String(cuerpo?.imagen ?? "");
+    if (!carro || !datos) return json({ ok: false, error: "falta carro o imagen" }, 400);
+
+    // "data:image/jpeg;base64,XXXX" -> solo XXXX
+    const coma = datos.indexOf(",");
+    const puro = coma >= 0 ? datos.slice(coma + 1) : datos;
+
+    let binario: Uint8Array;
+    try {
+      const cruda = atob(puro);
+      binario = new Uint8Array(cruda.length);
+      for (let i = 0; i < cruda.length; i++) binario[i] = cruda.charCodeAt(i);
+    } catch {
+      return json({ ok: false, error: "imagen ilegible" }, 400);
+    }
+
+    // Nombre con la fecha para que las fotos queden ordenadas en el
+    // almacen, y con el id del carro para poder rastrearlas.
+    const dia = new Date().toISOString().slice(0, 10);
+    const camino = `${dia}/carro-${carro}-${Date.now()}.jpg`;
+
+    const { error: errSubir } = await db.storage
+      .from("fotos")
+      .upload(camino, binario, { contentType: "image/jpeg", upsert: true });
+
+    if (errSubir) {
+      console.error("Fallo al subir la foto del carro", carro, ":", errSubir);
+      return json({ ok: false, error: errSubir.message }, 500);
+    }
+
+    const { error: errGuardar } = await db
+      .from("carros")
+      .update({ foto_path: camino, foto_en: new Date().toISOString() })
+      .eq("id", carro);
+
+    if (errGuardar) {
+      console.error("Foto subida pero no se pudo guardar la ruta:", errGuardar);
+      return json({ ok: false, error: errGuardar.message }, 500);
+    }
+
+    return json({ ok: true, camino });
   }
 
   // --- Quien puede secar ---------------------------------------------
