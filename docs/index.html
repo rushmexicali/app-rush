@@ -393,10 +393,15 @@ function reloj(segundos) {
 
 function describir(c) {
   // Lo primero que ve el supervisor debe ser como reconocer el carro a
-  // simple vista: que tipo es y de que color.
+  // simple vista. El orden es el que usaria alguien senalando al carro:
+  // que tipo es, de que color, y de que marca.
+  //
+  // La marca aparece hasta que el supervisor la captura al asignar; la
+  // cajera solo pone tipo y color en la nota.
   var partes = [];
   if (c.tipo_unidad) partes.push(TIPOS[c.tipo_unidad] || c.tipo_unidad.toUpperCase());
   if (c.color) partes.push(c.color);
+  if (c.marca) partes.push(c.marca);
   if (partes.length === 0) return '<span class="falta">Sin datos del carro</span>';
   return escapar(partes.join(" "));
 }

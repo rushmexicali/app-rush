@@ -125,7 +125,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .from("carros")
       .select(`
         id, estado, linea, es_express, producto, variante,
-        tipo_unidad, color, cliente, nota, creado_en,
+        tipo_unidad, color, marca, cliente, nota, creado_en,
         etapas ( etapa, inicio, fin )
       `)
       .neq("estado", "entregado")
@@ -157,6 +157,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         variante: c.variante,
         tipo_unidad: c.tipo_unidad,
         color: c.color,
+        marca: c.marca,
         cliente: c.cliente,
         etapa_inicio: abierta?.inicio ?? c.creado_en,
         limite: DEMORA_SEG[c.estado] ?? 0,
