@@ -469,9 +469,15 @@ function abrirAsignacion(c) {
   // menos, y se elimina la posibilidad de equivocarse.
   if (asig.express) asig.linea = 1;
 
+  var detalle = [c.producto];
+  if (c.variante && c.variante !== c.producto) detalle.push(c.variante);
+  // En los express se dice a donde va, que es lo unico que cambia para
+  // el gerente. Repetir "EXPRESS" cuando el producto ya se llama asi no
+  // aporta nada.
+  if (c.es_express) detalle.push("va a la LÍNEA 1");
+
   document.getElementById("asig-quien").innerHTML = describir(c);
-  document.getElementById("asig-cual").textContent =
-    (c.producto || "") + (c.es_express ? "  ·  EXPRESS" : "");
+  document.getElementById("asig-cual").textContent = detalle.filter(Boolean).join("  ·  ");
   document.getElementById("asignar").style.display = "block";
   document.getElementById("barra").style.display = "flex";
   window.scrollTo(0, 0);
