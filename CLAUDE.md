@@ -182,6 +182,25 @@ completa que ya tiene "Asignar", que el supervisor ya conoce.
 Restaurar reusa `regresar_etapa` (`entregado → secando`), que ya existía y ya estaba
 probado. No se escribió lógica nueva para deshacer.
 
+**Cada tarjeta tiene además "Corregir"** (agregado 20/jul/2026, a pedido del dueño): abre la
+**misma pantalla** que el Corregir de la cola, para arreglar una captura mala *después* de
+entregar. Sale más apagado que Restaurar a propósito — los dos son acciones raras, pero
+restaurar es la que el supervisor viene buscando cuando entra aquí.
+
+- **No mueve nada del reloj.** `editar_carro` sólo toca tipo/color/marca y no conoce el
+  estado; y la línea ni se manda, porque el carro ya no está secando. Medido sobre un carro
+  ya entregado: `creado_en`, `entregado_en` y las tres etapas quedaron idénticos al
+  microsegundo.
+- **No se escribió backend nuevo.** `editar_carro` ya servía para cualquier estado; sólo
+  faltaba el botón.
+- ⚠️ **Trampa de capas:** `#entregados` tiene `z-index:45` y `#asignar` `40`, así que la
+  pantalla de corregir se abriría **por debajo** de la lista. Hay que esconder `#entregados`
+  al abrirla y volver a mostrarla al cerrar (recargada, para que el dato salga ya corregido).
+  Se regresa a los entregados y no a la cola: el supervisor estaba revisando esa lista.
+- `/entregados` ahora manda `estado` explícito. Antes funcionaba **por accidente**
+  (`undefined` nunca es `"secando"`), y el primero que agregara lógica sobre el estado lo
+  habría roto sin verlo.
+
 ⚠️ **"Corregir" cambió de significado el 19/jul/2026.** Antes era el deshacer; ahora eso es
 "Regresar". En el API la ruta de deshacer se sigue llamando `/corregir` para no romper nada.
 

@@ -661,6 +661,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // purchase_uuid ni el monto de la venta.
     const carros = (data ?? []).map((c: any) => ({
       id: c.id,
+      // Va explicito porque "Corregir" abre la misma pantalla que la cola
+      // y esa decide con el estado si muestra linea y secadores. Sin este
+      // campo funcionaba por accidente (undefined nunca es "secando"), y
+      // el primero que agregue logica sobre el estado lo rompe sin verlo.
+      estado: c.estado,
       producto: c.producto,
       variante: c.variante,
       tipo_unidad: c.tipo_unidad,

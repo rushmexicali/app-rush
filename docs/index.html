@@ -304,6 +304,19 @@
   }
   .restaurar:active { background:#30363d; }
 
+  /* Corregir va al lado de Restaurar, apilados. Mas apagado a proposito:
+     los dos son acciones raras, pero restaurar es la que el supervisor
+     viene buscando cuando entra aqui. */
+  .corregir-ent {
+    background:#21262d; color:#adbac7; border:1px solid #30363d;
+    border-radius:12px; padding:12px 16px; font-size:17px; font-weight:700;
+    flex-shrink:0; margin-top:8px;
+  }
+  .corregir-ent:active { background:#30363d; }
+
+  /* Los dos botones de la tarjeta, uno debajo del otro. */
+  .entregado .acciones { display:flex; flex-direction:column; flex-shrink:0; }
+
   /* Boton para entrar a los entregados. Al final de la cola, no arriba:
      no debe competir con los carros que si necesitan atencion. */
   #ver-entregados {
@@ -911,6 +924,15 @@ function cerrarAsignacion() {
   asig = null;
   document.getElementById("asignar").style.display = "none";
   document.getElementById("barra").style.display = "none";
+
+  // Si se venia de los entregados, se regresa ahi y no a la cola: el
+  // supervisor estaba revisando esa lista y perderla seria hacerlo
+  // buscar el carro otra vez. Se recarga para que el dato ya salga
+  // corregido.
+  if (volverAEntregados) {
+    volverAEntregados = false;
+    abrirEntregados();
+  }
 }
 
 function botonOpcion(texto, elegida, atributos, clases) {
@@ -1335,6 +1357,18 @@ document.getElementById("ent-cerrar").addEventListener("click", cerrarEntrega);
 // --- Los entregados de hoy -------------------------------------------
 // Por si se entrego uno por equivocacion. Restaurar reusa la misma ruta
 // de deshacer que el boton "Regresar" de la cola.
+//
+// "Corregir" abre la MISMA pantalla que en la cola, en modo corregir, asi
+// que solo toca tipo/color/marca: editar_carro no mueve estado ni
+// tiempos, y la linea no se manda porque el carro ya no esta secando.
+// Sirve para arreglar una captura mala despues de entregar.
+var ENTREGADOS = [];
+
+// #entregados esta ENCIMA de #asignar (z-index 45 contra 40), asi que
+// hay que esconderlo o la pantalla de corregir se abriria por debajo y
+// no se veria. Al cerrar se vuelve, recargado para ver el cambio.
+var volverAEntregados = false;
+
 function abrirEntregados() {
   document.getElementById("entregados").style.display = "block";
   document.getElementById("entregados-lista").innerHTML =
@@ -1345,6 +1379,9 @@ function abrirEntregados() {
     .then(function (r) { return r.json(); })
     .then(function (d) {
       var lista = d.carros || [];
+      // Se guarda para que "Corregir" pueda abrir la pantalla con los
+      // datos que ya vinieron, sin pedirlos otra vez.
+      ENTREGADOS = lista;
       document.getElementById("entregados-cuantos").textContent =
         lista.length ? lista.length + " del más reciente al más viejo" : "";
 
@@ -1374,7 +1411,10 @@ function abrirEntregados() {
                  '<div class="titulo">' + quien + '</div>' +
                  '<div class="pie">' + placa + escapar(pie) + '</div>' +
                '</div>' +
-               '<button class="restaurar" data-restaurar="' + c.id + '">Restaurar</button>' +
+               '<div class="acciones">' +
+                 '<button class="restaurar" data-restaurar="' + c.id + '">Restaurar</button>' +
+                 '<button class="corregir-ent" data-corregir-ent="' + c.id + '">Corregir</button>' +
+               '</div>' +
              '</div>';
       }
       document.getElementById("entregados-lista").innerHTML = h;
@@ -1391,6 +1431,19 @@ document.getElementById("entregados-cerrar").addEventListener("click", function 
 });
 
 document.getElementById("entregados-lista").addEventListener("click", function (ev) {
+  // Corregir no pasa por "ocupado": no cambia la etapa del carro, igual
+  // que la camara en la cola.
+  var corr = ev.target.closest("button[data-corregir-ent]");
+  if (corr) {
+    var id = Number(corr.dataset.corregirEnt);
+    var carro = ENTREGADOS.filter(function (x) { return x.id === id; })[0];
+    if (!carro) return;
+    volverAEntregados = true;
+    document.getElementById("entregados").style.display = "none";
+    abrirPantalla(carro, "corregir");
+    return;
+  }
+
   var b = ev.target.closest("button[data-restaurar]");
   if (!b || ocupado) return;
   ocupado = true;
