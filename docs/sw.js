@@ -16,7 +16,8 @@
 // viejos guardados.
 //   v2 (19/jul/2026) — entra el logo y los iconos de verdad.
 //   v3 (19/jul/2026) — confirmar entrega, rechazos y lista de entregados.
-var CACHE = "rush-v3";
+//   v4 (19/jul/2026) — el boton de volver, fijo arriba de los entregados.
+var CACHE = "rush-v4";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./RUSH-Logo.png", "./icono-192.png", "./icono-512.png"
