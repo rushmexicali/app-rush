@@ -834,6 +834,24 @@ el aroma primero se guardara como "Pinito".
 - **Publicar la app:** commit + `git push` con `GITHUB_TOKEN`. Pages republica en ~1 min.
 - **Verificar:** siempre con `curl.exe` contra la API real, nunca asumiendo.
 
+### ⚠️ Los datos de secadores del 19/jul se BORRARON (noche del 20/jul)
+
+El dueño lo pidió y dio la razón: *"estaba asignando secadores a lo menso porque no sabía
+quiénes eran en realidad"*. Se borraron **68 asignaciones** (13 personas) y **2 rechazos**.
+
+- Los rechazos se borraron **aunque no los pidió**: estaban a nombre de Edgar Reyes, y con
+  asignaciones al azar es muy probable que fueran de otra persona. Dejarlos habría marcado un
+  error a alguien que quizá ni tocó ese carro — y el `CLAUDE.md` ya dice que el objetivo de los
+  rechazos "no es castigar, es saber a quién entrenar".
+- **NO se borraron** los carros, las etapas de secado, las líneas, las placas ni las fotos. El
+  carro **sí** tardó ese tiempo en secarse: eso es una medición real del taller. Lo que estaba
+  mal era **a quién** se le atribuía, no el reloj.
+- Por eso el reporte del 19/jul quedó con `equipos: 0` y `rechazos: 0`, pero conserva
+  `secado_promedio 35.5 min` sobre 36 carros. Ese promedio anónimo **sí sirve** como línea base.
+
+> **El 21/jul es día de prueba declarado.** Los primeros datos de equipo que van a significar
+> algo son los de ese día en adelante.
+
 ### Lo siguiente (en este orden)
 
 1. **VIGILAR, no construir.** Los supervisores empezaron a usarla el 19/jul/2026 por la
