@@ -124,14 +124,32 @@ function json(cuerpo: unknown, status = 200): Response {
 // ---------------------------------------------------------------------
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 
-const INSTRUCCION_PLACA = `Eres un lector de placas vehiculares. En la foto hay un vehiculo.
+const INSTRUCCION_PLACA = `Eres un lector de placas vehiculares. La foto es de un auto en un lavado de Mexicali, Baja California.
 
-Devuelve la placa EXACTAMENTE como se ve. Son placas mexicanas, en su mayoria de Baja California.
+En Mexicali circulan TRES tipos de placa, y las tres son normales aqui:
+1. Placa oficial mexicana (Baja California u otro estado).
+2. Placa oficial de Estados Unidos (California, Arizona...). Hay muchos autos fronterizos.
+3. Placa de ASOCIACION CIVIL, para autos de procedencia extranjera todavia no
+   nacionalizados. Llevan impreso el nombre de la organizacion — ONAPPAFA, ANAPROMEX,
+   AMLOPAFA, CONDEFA, CODEFA, APROFAM, APROFA, UCD u otra — y un numero de afiliacion,
+   normalmente de 4 a 7 digitos, a veces con letras. NO tienen el formato de una placa
+   oficial y eso es correcto: NO las rechaces por eso.
+
+Que devolver:
+- "placa": el identificador del vehiculo (el numero grande) tal como se ve, CONSERVANDO
+  los guiones o espacios que la placa tenga impresos. No agregues separadores que no esten.
+- "organizacion": el nombre de la asociacion si la placa es del tipo 3 y alcanzas a
+  leerlo. Si es placa oficial, o no se lee, null.
+- El MARCO del portaplacas no es parte de la placa: nombres de agencia y lemas
+  publicitarios ("Go Further", "Ford", el nombre de una distribuidora) se IGNORAN.
 
 Reglas estrictas:
-- Si la placa esta borrosa, cortada, tapada, en angulo, o NO puedes leer todos los caracteres con certeza, devuelve legible=false y placa=null.
+- legible=true significa: leiste con certeza todos los caracteres del identificador.
+  Que el nombre de la organizacion este tapado NO hace ilegible la placa; deja
+  organizacion=null y devuelve el numero.
+- Si los caracteres del identificador estan borrosos, cortados o tapados, o dudas
+  entre dos (0 y O, 1 e I, 8 y B), entonces legible=false y placa=null.
 - NUNCA adivines un caracter. NUNCA completes ni corrijas el formato para que "se vea bien".
-- Si dudas entre dos caracteres (0 y O, 1 e I, 8 y B), eso cuenta como no legible.
 - Un dato inventado es peor que uno vacio.`;
 
 async function leerPlaca(imagenBase64: string): Promise<string | null> {
@@ -168,9 +186,14 @@ async function leerPlaca(imagenBase64: string): Promise<string | null> {
               type: "object",
               properties: {
                 placa: { anyOf: [{ type: "string" }, { type: "null" }] },
+                // Todavia no se guarda en ninguna columna. Se pide de todas
+                // formas porque le da al modelo DONDE poner el nombre de la
+                // asociacion; sin este campo lo mete dentro de "placa" y
+                // ensucia el historial (ONAPPAFA 72973 != 72973).
+                organizacion: { anyOf: [{ type: "string" }, { type: "null" }] },
                 legible: { type: "boolean" },
               },
-              required: ["placa", "legible"],
+              required: ["placa", "organizacion", "legible"],
               additionalProperties: false,
             },
           },
