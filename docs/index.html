@@ -504,16 +504,6 @@
   .lineas .opcion { min-height:78px; font-size:26px; }
   .lineas .opcion.solo-express { border-color:#ffd400; color:#ffd400; }
 
-  /* Secador de SOLO LECTURA: en Corregir se muestra quien seca el carro,
-     pero no se cambia ahi (para eso Regresar). Se ve distinto a los
-     botones para que nadie intente picarlo esperando cambiarlo. */
-  .secador-ro {
-    min-height:60px; display:flex; align-items:center;
-    padding:10px 14px; font-size:19px; font-weight:800;
-    background:#161b22; border:2px solid #30363d; border-radius:13px;
-  }
-  .secador-ro.vacio { color:#6e7681; font-weight:600; font-style:italic; }
-
   /* Barra fija abajo: el boton de confirmar siempre al alcance del
      pulgar, sin tener que buscar el final de la pantalla. */
   #barra {
@@ -782,6 +772,15 @@ function escapar(t) {
   return String(t).replace(/[&<>"']/g, function (c) {
     return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
   });
+}
+
+// Iniciales para el circulo de un secador ponchado que ya no viene en
+// Jibble: se arman del nombre, para que igual se reconozca.
+function iniciales(nombre) {
+  var p = String(nombre || "").trim().split(/\s+/);
+  var a = (p[0] || "")[0] || "";
+  var b = (p[1] || "")[0] || "";
+  return (a + b).toUpperCase() || "?";
 }
 
 function reloj(segundos) {
@@ -1169,12 +1168,19 @@ function abrirPantalla(c, modo) {
     color: c.color || null,
     marca: c.marca || null,
     linea: c.linea || null,
-    secadores: [],
-    // Quienes secan el carro AHORA (nombres, de la cola). En Corregir se
-    // muestran de solo lectura para que el supervisor vea exactamente lo
-    // que esta puesto, en vez de una rejilla en blanco.
-    secadoresActuales: (c.secadores || []).slice()
+    // Se PRESELECCIONan los secadores que el carro ya tiene (ids), para que
+    // en Corregir salgan marcados y se puedan editar libre, igual que el
+    // tipo y el color. En Asignar viene vacio (el carro aun no tiene). Se
+    // filtran nulos (asignaciones viejas sin id de empleado).
+    secadores: (c.secador_ids || []).filter(Boolean),
+    // id -> nombre de los secadores actuales, para resolver el nombre
+    // aunque la persona haya checado salida (ya no este en Jibble).
+    nombreActualPorId: {}
   };
+  var idsPrev = c.secador_ids || [], nomsPrev = c.secadores || [];
+  for (var kk = 0; kk < idsPrev.length; kk++) {
+    if (idsPrev[kk]) asig.nombreActualPorId[idsPrev[kk]] = nomsPrev[kk] || "Secador";
+  }
   verMasMarcas = false;
   verColorManual = false;
 
@@ -1214,7 +1220,11 @@ function abrirPantalla(c, modo) {
 
   // Se refresca al abrir: entre que se cargo la pantalla y llego este
   // carro, alguien pudo haber checado, salido o entrado a descanso.
-  if (modo === "asignar") cargarSecadores().then(pintarAsignacion);
+  // Tambien en Corregir de un carro secando, porque ahi los secadores ya
+  // se editan y hay que tener la lista fresca.
+  if (modo === "asignar" || (modo === "corregir" && c.estado === "secando")) {
+    cargarSecadores().then(pintarAsignacion);
+  }
 }
 
 function abrirAsignacion(c) { abrirPantalla(c, "asignar"); }
@@ -1318,7 +1328,8 @@ function pintarAsignacion() {
 
     // Al gerente no se le pone "agregado a mano": no es un parche de
     // turno, es de planta. Decirlo confundiria.
-    var nota = p.estado === "descanso" ? "en descanso"
+    var nota = p.fuera ? "ya no aparece"
+             : p.estado === "descanso" ? "en descanso"
              : (p.manual && !p.permanente) ? "agregado a mano"
              : (p.rol && p.rol !== "secador") ? ROLES[p.rol]
              : "";
@@ -1334,41 +1345,47 @@ function pintarAsignacion() {
            dentro + '</button>';
   }
 
-  // En CORREGIR los secadores son de solo lectura: se muestran para que el
-  // supervisor vea quien seca (antes salia la rejilla en blanco y parecia
-  // que nadie estaba puesto). Cambiarlos sigue siendo con Regresar, para no
-  // reiniciar el cronometro de secado.
-  if (asig.modo === "corregir") {
-    var nombres = asig.secadoresActuales || [];
-    h = nombres.length
-      ? nombres.map(function (nm) { return '<div class="secador-ro">' + escapar(nm) + '</div>'; }).join("")
-      : '<div class="secador-ro vacio">Sin secador registrado</div>';
-    document.getElementById("asig-secadores").innerHTML = h;
-    document.getElementById("asig-otros").innerHTML = "";
-    document.getElementById("asig-otros-titulo").style.display = "none";
-  } else {
-    var deSecado = [], deApoyo = [];
-    for (var s = 0; s < SECADORES.length; s++) {
-      (SECADORES[s].orden ? deApoyo : deSecado).push(SECADORES[s]);
-    }
-
-    h = "";
-    if (deSecado.length === 0 && deApoyo.length === 0) {
-      // Si Jibble falla o nadie checo, no se deja al supervisor sin salida.
-      h += '<div id="sin-secadores">Nadie aparece checado.<br>Usa "No aparece" para agregarlo a mano.</div>';
-    }
-    for (var a = 0; a < deSecado.length; a++) h += pintarPersona(deSecado[a]);
-    // Respaldo obligatorio del CLAUDE.md: la app nunca se queda bloqueada
-    // porque una integracion externa fallo.
-    h += botonOpcion("+ No aparece", false, 'data-manual="1"');
-    document.getElementById("asig-secadores").innerHTML = h;
-
-    var otros = "";
-    for (var b2 = 0; b2 < deApoyo.length; b2++) otros += pintarPersona(deApoyo[b2]);
-    document.getElementById("asig-otros").innerHTML = otros;
-    // El titulo solo estorba si abajo no hay nadie.
-    document.getElementById("asig-otros-titulo").style.display = deApoyo.length ? "" : "none";
+  var deSecado = [], deApoyo = [];
+  for (var s = 0; s < SECADORES.length; s++) {
+    (SECADORES[s].orden ? deApoyo : deSecado).push(SECADORES[s]);
   }
+
+  // En Corregir, un secador YA asignado que checo salida no viene en la
+  // lista de Jibble. Se agrega como entrada gris para que se vea marcado y
+  // el supervisor pueda quitarlo: si no, "ver lo que esta seleccionado"
+  // fallaria justo cuando hay algo que corregir.
+  if (asig.modo === "corregir") {
+    var enGrid = {};
+    for (var g = 0; g < SECADORES.length; g++) enGrid[SECADORES[g].id] = true;
+    for (var w = 0; w < asig.secadores.length; w++) {
+      var idw = asig.secadores[w];
+      if (idw && !enGrid[idw]) {
+        var nomw = asig.nombreActualPorId[idw] || "Secador";
+        deSecado.push({
+          id: idw, mostrar: nomw, iniciales: iniciales(nomw),
+          color: "#6e7681", estado: "activo", rol: "secador", orden: 0, fuera: true
+        });
+        enGrid[idw] = true;
+      }
+    }
+  }
+
+  h = "";
+  if (deSecado.length === 0 && deApoyo.length === 0) {
+    // Si Jibble falla o nadie checo, no se deja al supervisor sin salida.
+    h += '<div id="sin-secadores">Nadie aparece checado.<br>Usa "No aparece" para agregarlo a mano.</div>';
+  }
+  for (var a = 0; a < deSecado.length; a++) h += pintarPersona(deSecado[a]);
+  // Respaldo obligatorio del CLAUDE.md: la app nunca se queda bloqueada
+  // porque una integracion externa fallo.
+  h += botonOpcion("+ No aparece", false, 'data-manual="1"');
+  document.getElementById("asig-secadores").innerHTML = h;
+
+  var otros = "";
+  for (var b2 = 0; b2 < deApoyo.length; b2++) otros += pintarPersona(deApoyo[b2]);
+  document.getElementById("asig-otros").innerHTML = otros;
+  // El titulo solo estorba si abajo no hay nadie.
+  document.getElementById("asig-otros-titulo").style.display = deApoyo.length ? "" : "none";
 
   // --- Que falta ---
   function marcar(id, listo, texto) {
@@ -1378,33 +1395,33 @@ function pintarAsignacion() {
   }
   marcar("asig-marca-estado", !!asig.marca, asig.marca ? "— " + asig.marca : "— falta");
   marcar("asig-linea-estado", !!asig.linea, asig.linea ? "— línea " + asig.linea : "— falta");
-  // En Corregir los secadores son de solo lectura: la etiqueta lo dice, en
-  // vez de "elige al menos 1" que aqui no aplica.
-  if (asig.modo === "corregir") {
-    marcar("asig-sec-estado", true, "— para cambiarlos, usa Regresar");
-  } else {
-    // Resumen tipo el tablero de Jibble: cuantos hay de cada cosa. Da el
-    // panorama sin tener que contar botones.
-    var enDescanso = SECADORES.filter(function (x) { return x.estado === "descanso"; }).length;
-    var disponibles = SECADORES.length - enDescanso;
-    // "1 de 4" se leia como "llevas 1 de los 4 que necesitas". Nunca fue
-    // un requisito: con UNO basta, y caben hasta 4.
-    var resumen = asig.secadores.length
-      ? "— " + asig.secadores.length + (asig.secadores.length === 1 ? " elegido" : " elegidos")
-      : "— elige al menos 1  (" + disponibles + " activos" +
-        (enDescanso ? ", " + enDescanso + " en descanso" : "") +
-        (FUERA ? ", " + FUERA + " fuera" : "") + ")";
-    marcar("asig-sec-estado", asig.secadores.length > 0, resumen);
-  }
+  // Resumen tipo el tablero de Jibble: cuantos hay de cada cosa. Da el
+  // panorama sin tener que contar botones. Igual en Asignar y en Corregir:
+  // en los dos se eligen secadores.
+  var enDescanso = SECADORES.filter(function (x) { return x.estado === "descanso"; }).length;
+  var disponibles = SECADORES.length - enDescanso;
+  // "1 de 4" se leia como "llevas 1 de los 4 que necesitas". Nunca fue
+  // un requisito: con UNO basta, y caben hasta 4.
+  var resumen = asig.secadores.length
+    ? "— " + asig.secadores.length + (asig.secadores.length === 1 ? " elegido" : " elegidos")
+    : "— elige al menos 1  (" + disponibles + " activos" +
+      (enDescanso ? ", " + enDescanso + " en descanso" : "") +
+      (FUERA ? ", " + FUERA + " fuera" : "") + ")";
+  marcar("asig-sec-estado", asig.secadores.length > 0, resumen);
 
   var btn = document.getElementById("confirmar");
 
-  // Al corregir NADA es obligatorio: el supervisor entra a poner una cosa
-  // y se sale. Exigirle la marca para poder guardar el color seria
-  // pedirle un dato que quiza no tiene.
+  // Al corregir casi nada es obligatorio: el supervisor entra a poner una
+  // cosa y se sale. La unica regla: un carro que ya seca no puede quedarse
+  // sin ningun secador (se borrarian todas sus asignaciones).
   if (asig.modo === "corregir") {
-    btn.disabled = false;
-    btn.textContent = "Guardar";
+    if (asig.estado === "secando" && asig.secadores.length === 0) {
+      btn.disabled = true;
+      btn.textContent = "Deja al menos un secador";
+    } else {
+      btn.disabled = false;
+      btn.textContent = "Guardar";
+    }
     return;
   }
 
@@ -1537,6 +1554,16 @@ document.addEventListener("DOMContentLoaded", function () {
         // la base la rechaza porque todavia no hay secadores asignados.
         linea: asig.estado === "secando" ? asig.linea : null
       };
+      // Los secadores tambien solo si ya seca: ahi la pantalla los mostro
+      // editables. editar_carro los reconcilia SIN tocar las etapas, asi que
+      // el cronometro de secado no se reinicia (a diferencia de Regresar).
+      if (asig.estado === "secando") {
+        cuerpo.empleados = asig.secadores;
+        cuerpo.secadores = asig.secadores.map(function (id) {
+          var p = SECADORES.filter(function (x) { return x.id === id; })[0];
+          return p ? p.mostrar : (asig.nombreActualPorId[id] || id);
+        });
+      }
     } else {
       ruta = "/asignar";
       // Se mandan las dos cosas: el id para medir eficiencia por persona,

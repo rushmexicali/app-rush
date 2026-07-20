@@ -31,23 +31,24 @@ que hoy describe el botón de galería que se quitó).
 - **10 — foto deshabilitada hasta asignar carril y secador.** El botón se ve apagado (no
   desaparece). Probado: en un carro sin asignar `disabled=true`, en uno secando `false`.
   De paso angosta la ventana del bug de la foto mal pegada del 19/jul.
-- **3 — Corregir muestra los secadores actuales.** En modo corregir, la sección de
-  secadores es de solo lectura (chips con los nombres de quienes secan) con la nota "para
-  cambiarlos, usa Regresar". La línea sigue editable. El modo asignar quedó intacto
-  (interactivo). Probado los dos modos.
-- **3 (backend) — `datos_de_nota` arreglado.** Migración `051`: la bandera solo se apaga si
-  el tipo/color CAMBIA respecto a lo guardado; reenviar lo mismo (lo que hace Asignar al
-  confirmar) ya no la apaga. Probado sobre la base con bloque `do $$ ... raise` (revertido):
-  `inicial=t, reenvío_mismo=t, tras_cambio=f, tras_agregar=f`. **La 051 ya está aplicada en
-  producción** (es solo la función, retrocompatible con el front viejo).
+- **3 — Corregir con los secadores PRESELECCIONados y editables.** (El dueño aclaró: quería
+  memoria como el tipo/color, no solo lectura.) Al abrir Corregir de un carro secando, los
+  secadores actuales salen marcados en la rejilla y se pueden quitar/agregar libremente. Un
+  secador que ya checó salida sale igual, en gris, con la nota "ya no aparece", para que se
+  vea y se pueda quitar. Al guardar, `editar_carro` reconcilia las asignaciones **sin tocar
+  las etapas**, así que el cronómetro de secado NO se reinicia (esa es la diferencia con
+  Regresar). Probado: preselección con un ponchado, body correcto (`empleados` ids +
+  `secadores` nombres), y sobre la base que el `etapa_inicio` de secado no cambia.
+- **3 (backend) — `datos_de_nota` arreglado + reconciliación de secadores.** Migración `051`
+  (datos_de_nota solo se apaga si el valor cambia) y `052` (Corregir reconcilia secadores sin
+  tocar etapas; absorbe la 051). Probadas con bloques `do $$ ... raise` revertidos:
+  `reenvío_mismo=t, cambio=f`; y `Chuy,Pablo → Luis,Pablo` con `etapa_inicio IGUAL = t`.
+  **051, 052 y el Edge Function `app` ya están aplicados/desplegados en producción** — todo
+  retrocompatible con el front viejo (secador_ids es un campo extra; /editar sin secadores no
+  los toca).
 
 Falta el **punto 5** (desglose de un carro activo al tocar su nombre), que también toca
 lógica y se revisa con el dueño.
-
-> ⚠️ **Decisión tomada en el 3:** los secadores en Corregir son de SOLO LECTURA. Cambiarlos
-> sigue siendo con Regresar, para no arriesgar el reinicio del cronómetro de secado. Si el
-> dueño quiere poder EDITARLOS desde Corregir, hace falta una ruta nueva que actualice las
-> asignaciones SIN tocar etapas — es un paso aparte.
 
 ---
 

@@ -321,15 +321,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const { data: asignados } = idsEnCola.length
       ? await db
           .from("asignaciones")
-          .select("carro_id, secador")
+          .select("carro_id, secador, empleado_id")
           .is("fin", null)
           .in("carro_id", idsEnCola)
       : { data: [] as any[] };
     const secadoresDe = new Map<number, string[]>();
+    // Los ids van EN EL MISMO ORDEN que los nombres, para que la pantalla de
+    // Corregir pueda preseleccionar en la rejilla (que empareja por id).
+    const secadorIdsDe = new Map<number, (string | null)[]>();
     for (const a of asignados ?? []) {
-      const lista = secadoresDe.get(a.carro_id) ?? [];
-      lista.push(a.secador);
-      secadoresDe.set(a.carro_id, lista);
+      const nombres = secadoresDe.get(a.carro_id) ?? [];
+      nombres.push(a.secador);
+      secadoresDe.set(a.carro_id, nombres);
+      const ids = secadorIdsDe.get(a.carro_id) ?? [];
+      ids.push(a.empleado_id ?? null);
+      secadorIdsDe.set(a.carro_id, ids);
     }
 
     // Enlaces firmados de las fotos.
@@ -404,6 +410,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
         // Nombres de los secadores que ya se poncharon, si los hay.
         ausentes: sinSecador.get(c.id) ?? [],
         secadores: secadoresDe.get(c.id) ?? [],
+        // Ids en el mismo orden que los nombres: Corregir los usa para
+        // preseleccionar en la rejilla.
+        secador_ids: secadorIdsDe.get(c.id) ?? [],
         foto: enlaces.get(c.id) ?? null,
       };
     });
@@ -720,6 +729,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
       p_color: limpio(cuerpo?.color),
       p_marca: limpio(cuerpo?.marca),
       p_linea: cuerpo?.linea == null ? null : Number(cuerpo.linea),
+      // Solo cuando se mandan (Corregir de un carro secando). Nulo = no
+      // tocar los secadores. Los dos van juntos: nombres para el historial,
+      // ids para medir eficiencia por persona.
+      p_secadores: Array.isArray(cuerpo?.secadores) ? cuerpo.secadores : null,
+      p_empleados: Array.isArray(cuerpo?.empleados) ? cuerpo.empleados : null,
     });
 
     if (error) {
