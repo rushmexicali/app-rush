@@ -66,6 +66,21 @@
   }
   .aviso b { color:#e6edf3; }
 
+  /* Cada tipo de servicio es su propia seccion. Mas chico que h2 para
+     que se lea como subdivision de "Por equipo" y no como tema nuevo. */
+  h3 {
+    font-size:15px; margin:22px 0 6px; color:#e6edf3; font-weight:700;
+    display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;
+  }
+  h3 .cuantos { font-size:13px; font-weight:600; color:#8b949e; }
+
+  /* La nota de cada seccion: explica por que se mide aparte. Sin la
+     barra amarilla, que aqui no hay nada de que advertir. */
+  .aviso.chico {
+    background:transparent; border-left:none; padding:0 0 8px;
+    margin:0; font-size:13px; color:#8b949e;
+  }
+
   #acceso {
     position:fixed; inset:0; background:#0d1117;
     display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px;
@@ -161,21 +176,55 @@ function pintarReporte(r) {
   }
   html += '</div>';
 
-  // --- Equipos ---
+  // --- Equipos, separados por tipo de servicio ---
+  //
+  // No se comparan peras con manzanas: un equipo que seco express no se
+  // mide contra uno que seco completos, y los encerados tardan mas por
+  // naturaleza. Cada seccion se ordena y se lee por separado.
+  //
+  // El ORDEN importa: los completos van primero porque son la gran
+  // mayoria del trabajo y es lo que de verdad hay que medir.
+  var SECCIONES = [
+    { clave: "con_aspirado",   titulo: "Paquetes completos (con aspirado)",
+      nota: "La mayoría del trabajo. Es la sección que más importa medir." },
+    { clave: "sin_aspirado",   titulo: "Express (sin aspirado)",
+      nota: "Menos trabajo por carro; sus tiempos no se comparan con los completos." },
+    { clave: "encerado",       titulo: "Encerado manual y superbrillo",
+      nota: "Tardan más por naturaleza. Se miden solo contra sí mismos." },
+    { clave: "sin_clasificar", titulo: "Sin clasificar",
+      nota: "Productos que no reconozco. Avísame el nombre exacto y los acomodo." }
+  ];
+
   html += "<h2>Por equipo</h2>";
   var eq = r.equipos || [];
+  var porTipo = r.por_tipo || {};
+
   if (!eq.length) {
     html += '<div class="vacio">Ningún carro tuvo secador asignado este día.</div>';
   } else {
-    html += '<table><tr><th>Equipo</th><th class="num">Carros</th><th class="num">Secado promedio</th></tr>';
-    for (var i = 0; i < eq.length; i++) {
-      html += "<tr><td>" + escapar(eq[i].equipo) + "</td>" +
-              '<td class="num">' + eq[i].carros + "</td>" +
-              '<td class="num">' + duracion(eq[i].secado_promedio_seg) + "</td></tr>";
+    for (var s = 0; s < SECCIONES.length; s++) {
+      var sec = SECCIONES[s];
+      var filas = eq.filter(function (x) { return (x.tipo || "sin_clasificar") === sec.clave; });
+      // Una seccion vacia no se pinta. "Sin clasificar" en cero es lo
+      // normal, y un titulo en blanco todos los dias se vuelve ruido.
+      if (!filas.length) continue;
+
+      var carrosDelTipo = porTipo[sec.clave] || 0;
+      html += "<h3>" + escapar(sec.titulo) +
+              (carrosDelTipo ? ' <span class="cuantos">' + carrosDelTipo + " carros</span>" : "") +
+              "</h3>";
+      html += '<div class="aviso chico">' + escapar(sec.nota) + "</div>";
+      html += '<table><tr><th>Equipo</th><th class="num">Carros</th><th class="num">Secado promedio</th></tr>';
+      for (var i = 0; i < filas.length; i++) {
+        html += "<tr><td>" + escapar(filas[i].equipo) + "</td>" +
+                '<td class="num">' + filas[i].carros + "</td>" +
+                '<td class="num">' + duracion(filas[i].secado_promedio_seg) + "</td></tr>";
+      }
+      html += "</table>";
     }
-    html += "</table>";
     html += '<div class="aviso">El promedio de secado sale de los carros que <b>ya terminaron</b>. ' +
-            'Un equipo con carros todavía secando aparece con menos tiempo del que va a tener.</div>';
+            'Un equipo con carros todavía secando aparece con menos tiempo del que va a tener. ' +
+            'Un mismo equipo puede salir en varias secciones: se le mide aparte lo que hizo de cada tipo.</div>';
   }
 
   // --- Placas ---

@@ -592,6 +592,40 @@ pese a los 17,100 s fabricados del primero.
 
 - **Un "equipo" se arma solo.** Es el conjunto de quienes secaron *ese* carro juntos.
   Una persona sola es un equipo de uno. No hay lista de equipos que mantener.
+- **Los equipos se miden por SEPARADO según el tipo de servicio** (20/jul/2026). El dueño:
+  *"no vale la pena comparar equipos que secaron completos con los que secaron express, es
+  como comparar peras con manzanas"*. Tres secciones, y el orden importa:
+
+  | Sección | Qué es | El 19/jul |
+  |---|---|---|
+  | **Paquetes completos** (con aspirado) | La mayoría. Lo que de verdad hay que medir. Va primero | 32 carros · 36.6 min |
+  | **Express** (sin aspirado) | Menos trabajo por carro | 7 carros · 9.7 min |
+  | **Encerado manual y superbrillo** | Tardan más por naturaleza | 1 carro · 42.4 min |
+
+  **Un express tarda ~4× menos que un completo**, así que juntarlos no era un detalle
+  estético. Ejemplo real del 19/jul: *Walter Rodríguez* salía como un solo renglón de
+  **6 carros a 516 s** y parecía por mucho el más rápido del taller. Separado se ve la
+  verdad: **5 express a 619 s y 1 completo**. No era más rápido; estaba haciendo otro
+  trabajo. Un mismo equipo puede salir en varias secciones.
+
+- **`tipo_de_servicio()` se monta sobre `lleva_aspirado()`, NO sobre `es_lavado_express()`.**
+  Se probó con un producto inventado y ahí se vio por qué: `es_lavado_express` es un OR
+  simple y devuelve **`false`** para lo que no conoce, mientras que `lleva_aspirado` tiene la
+  lista blanca y devuelve **NULL**. Preguntándole a la primera, cualquier paquete nuevo dado
+  de alta en Zettle se colaba solo y en silencio a la sección de completos — justo el
+  promedio que toda la separación existe para mantener limpio. Lo no reconocido sale en
+  **"Sin clasificar"**, visible.
+
+> ⚠️ **El nombre del superbrillo NO está verificado.** El dueño lo nombró, pero al
+> 20/jul/2026 no aparece en ninguna venta y **el catálogo de Zettle no se puede leer**: la
+> API key tiene sólo `READ:PURCHASE`, a propósito. Se busca por patrón `%brillo%` sin acentos
+> (atrapa "Superbrillo", "Super Brillo", "Encerado Superbrillo"). **Si en Zettle se llama de
+> otra forma, va a caer en "Sin clasificar"** — que es la falla correcta: visible, no
+> silenciosa. Confirmar el nombre exacto cuando se venda el primero.
+>
+> El encerado **Manual** sí está confirmado: hay una venta real de `Manual`/`Completo Grande`
+> por $500. Ojo con la trampa de siempre — `Manual` + variante `Express` es un **express**,
+> no un encerado.
 - **"Espera" es de que paga a que se lo entregan** — el tiempo completo del cliente,
   no el tiempo muerto.
 - **Express y aspirado son la MISMA regla, no dos.** El dueño lo dijo así: los express no
