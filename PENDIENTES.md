@@ -15,7 +15,9 @@ falsos en el panel, sin tocar la API real:
 
 - **2** — al reabrir Asignar, el contenedor pasó de 628px de scroll a 0 (abre arriba).
 - **4** — "vino tinto" tecleado en minúsculas salió "VINO TINTO" en el campo y en `asig.color`.
-- **6** — glow en los 2 botones de Asignar, ninguno en el verde de "Entregado".
+- **6** — guiones rojos (- - - -) marchando por la orilla de los 2 botones de Asignar,
+  ninguno en el verde de "Entregado". (Primero fue un glow; el dueño lo cambió a guiones
+  girando el 20/jul. El glow alcanzó a estar en vivo un rato; estos guiones lo reemplazan.)
 - **7** — "Jesús Gil, Pablo Cruz" en la tarjeta, mismo tamaño que el renglón del servicio.
 - **9** — cero botones de galería; solo queda la cámara.
 

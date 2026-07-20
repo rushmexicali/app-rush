@@ -191,24 +191,37 @@
   .avanzar:active { filter: brightness(.8); }
   .avanzar[disabled] { opacity:.45; }
 
-  /* Glow SOLO en el boton de Asignar. El supervisor le picaba al icono
-     redondo "Prelavado + Túnel" porque es del mismo azul que el boton;
-     el halo pulsante deja claro cual es el que se toca. En "Entregado"
-     (secando) NO se pone: ahi el boton es verde y no hay con que
-     confundirlo. Se le da a un solo elemento a proposito — si brillaran
-     varios, el glow dejaria de decir "este es". */
-  @keyframes glow-asignar {
-    0%, 100% { box-shadow: 0 0 6px 1px rgba(47,129,247,.55); }
-    50%      { box-shadow: 0 0 22px 6px rgba(47,129,247,.95); }
+  /* Guiones rojos marchando por la orilla del boton de Asignar (- - - -),
+     dando la vuelta. El supervisor le picaba al icono redondo de
+     prelavado por ser del mismo azul; los guiones en movimiento marcan
+     cual es el boton que SI se toca, sin el ruido de un glow. Solo en
+     Asignar; en "Entregado" (verde) no hace falta.
+
+     Son cuatro tiras de guiones, una por lado, que marchan en circulo
+     (arriba -> derecha -> abajo -> izquierda). Se anima
+     'background-position', que se queda DENTRO de la caja: no hay nada
+     que rotar, asi que nunca se sale del boton (que es lo que pasaba al
+     rotar un elemento tan ancho). */
+  .avanzar.girando { position: relative; }
+  .avanzar.girando::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 14px;
+    pointer-events: none;
+    background-image:
+      repeating-linear-gradient(90deg, #ff2626 0 22px, transparent 22px 33px),
+      repeating-linear-gradient(90deg, #ff2626 0 22px, transparent 22px 33px),
+      repeating-linear-gradient(0deg,  #ff2626 0 22px, transparent 22px 33px),
+      repeating-linear-gradient(0deg,  #ff2626 0 22px, transparent 22px 33px);
+    background-size: 33px 3px, 33px 3px, 3px 33px, 3px 33px;
+    background-position: 0 0, 0 100%, 0 0, 100% 0;
+    background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+    animation: girar-lineas 0.8s linear infinite;
   }
-  .avanzar.glow { animation: glow-asignar 1.6s ease-in-out infinite; }
-  /* Si el carro esta demorado el boton es rojo y un halo azul chocaria:
-     el glow se vuelve rojo para que se vea intencional, no roto. */
-  @keyframes glow-asignar-rojo {
-    0%, 100% { box-shadow: 0 0 6px 1px rgba(255,77,79,.6); }
-    50%      { box-shadow: 0 0 22px 6px rgba(255,77,79,1); }
+  @keyframes girar-lineas {
+    to { background-position: 33px 0, -33px 100%, 0 -33px, 100% 33px; }
   }
-  .demorado .avanzar.glow { animation-name: glow-asignar-rojo; }
 
   /* Corregir siempre visible, pero claramente secundario para que nadie
      lo confunda con el boton de avanzar. */
@@ -855,9 +868,10 @@ function pintar() {
     }
 
     html +=   '<div class="acciones">';
-    // El glow va solo cuando el boton dice "Asignar unidad" (todo lo que
-    // no es secando). En "Entregado" no: ahi es verde y no se confunde.
-    html +=     '<button class="avanzar' + (c.estado !== "secando" ? " glow" : "") +
+    // Los rayos rojos giran solo cuando el boton dice "Asignar unidad"
+    // (todo lo que no es secando). En "Entregado" no: ahi es verde y no
+    // se confunde.
+    html +=     '<button class="avanzar' + (c.estado !== "secando" ? " girando" : "") +
                   '" data-accion="avanzar" data-carro="' + c.id + '">' +
                   escapar(ACCIONES[c.estado] || "Siguiente") + '</button>';
     // Corregir abre la pantalla de captura (tipo, color, marca). Sirve
