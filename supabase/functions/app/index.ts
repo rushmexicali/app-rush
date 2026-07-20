@@ -489,8 +489,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (ruta === "/secadores") {
     const { data, error } = await db
       .from("secadores")
-      .select("id, mostrar, iniciales, color, estado, desde, manual")
+      .select("id, mostrar, iniciales, color, estado, desde, manual, permanente, rol, orden")
       .in("estado", ["activo", "descanso"])
+      // Secadores primero (orden=0), luego tunelero/supervisor/gerente.
+      // La pantalla los parte en dos secciones con este mismo campo.
+      .order("orden")
       .order("mostrar");
 
     if (error) {

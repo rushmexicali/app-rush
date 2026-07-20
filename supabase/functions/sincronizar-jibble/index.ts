@@ -28,10 +28,23 @@ const SUPABASE_KEY =
 const JIBBLE_ID     = Deno.env.get("JIBBLE_CLIENT_ID") ?? "";
 const JIBBLE_SECRET = Deno.env.get("JIBBLE_CLIENT_SECRET") ?? "";
 
-// El grupo "Secador" ya existia en Jibble. Solo esa gente seca carros;
-// no tiene caso traer supervisores, tuneleros ni cajeras.
-const GRUPO_SECADOR = Deno.env.get("JIBBLE_GRUPO_SECADOR") ??
-  "ef74b0bf-ba86-4f90-ac29-05e9037dba7b";
+// Los grupos de Jibble de quien PUEDE secar.
+//
+// Antes se traia solo "Secador", con el comentario de que no tenia caso
+// traer a los demas. Resulto falso: el dueno lo corrigio el 20/jul/2026
+// — cuando hay mucho trabajo, el tunelero y los supervisores se ponen a
+// secar tambien.
+//
+// La CAJERA sigue fuera a proposito: no seca, y meterla solo alargaria
+// la lista que el supervisor recorre con el pulgar.
+//
+// El rol no limita nada; solo agrupa en la pantalla para que los
+// secadores, que son el caso comun, salgan arriba.
+const GRUPOS: Array<{ id: string; rol: string }> = [
+  { id: Deno.env.get("JIBBLE_GRUPO_SECADOR") ?? "ef74b0bf-ba86-4f90-ac29-05e9037dba7b", rol: "secador" },
+  { id: Deno.env.get("JIBBLE_GRUPO_TUNELERO") ?? "4e3e3110-6033-465e-9d5a-abd164604419", rol: "tunelero" },
+  { id: Deno.env.get("JIBBLE_GRUPO_SUPERVISOR") ?? "2eefb624-bfc8-42a8-aeab-db75463842e6", rol: "supervisor" },
+];
 
 const db = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: false },
@@ -78,16 +91,29 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const tok = await token();
     const cab = { Authorization: "Bearer " + tok };
 
-    // --- 1) Quien es secador (sin ex-empleados) ----------------------
-    const filtro = `groupId eq ${GRUPO_SECADOR} and status ne 'Removed'`;
-    const urlGente =
-      "https://workspace.prod.jibble.io/v1/People" +
-      "?$select=id,fullName" +
-      "&$filter=" + encodeURIComponent(filtro);
+    // --- 1) Quien puede secar, por grupo (sin ex-empleados) ----------
+    //
+    // Una consulta por grupo. Si alguien esta en dos grupos, gana el
+    // PRIMERO de la lista: quien es secador y ademas supervisor debe
+    // salir con los secadores, que es donde el supervisor lo busca.
+    const porId = new Map<string, any>();
 
-    const rGente = await fetch(urlGente, { headers: cab });
-    if (!rGente.ok) throw new Error("People devolvio " + rGente.status);
-    const gente = (await rGente.json())?.value ?? [];
+    for (const g of GRUPOS) {
+      const filtro = `groupId eq ${g.id} and status ne 'Removed'`;
+      const urlGente =
+        "https://workspace.prod.jibble.io/v1/People" +
+        "?$select=id,fullName" +
+        "&$filter=" + encodeURIComponent(filtro);
+
+      const rGente = await fetch(urlGente, { headers: cab });
+      if (!rGente.ok) throw new Error(`People (${g.rol}) devolvio ` + rGente.status);
+
+      for (const p of ((await rGente.json())?.value ?? [])) {
+        if (!porId.has(p.id)) porId.set(p.id, { ...p, rol: g.rol });
+      }
+    }
+
+    const gente = [...porId.values()];
 
     // --- 2) Quien checo hoy ------------------------------------------
     const dia = hoyMexicali();
@@ -112,7 +138,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       const dentro = !!d?.firstInTimestamp && !d?.lastOutTimestamp;
 
       if (!dentro) {
-        return { id: p.id, nombre: p.fullName, estado: "fuera", desde: null };
+        return { id: p.id, nombre: p.fullName, rol: p.rol, estado: "fuera", desde: null };
       }
 
       // En descanso = hay un break sin hora de fin.
@@ -121,6 +147,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return {
         id: p.id,
         nombre: p.fullName,
+        rol: p.rol,
         estado: abierto ? "descanso" : "activo",
         desde: abierto ? abierto.start : d.firstInTimestamp,
       };

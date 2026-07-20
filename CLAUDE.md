@@ -270,6 +270,50 @@ acumulando desde el día uno aunque todavía no se use.
 - Siempre debe existir un botón **"No aparece el empleado / agregar manual"** como
   respaldo.
 
+### No solo los secadores secan (corregido 20/jul/2026)
+
+La sincronización traía **únicamente** el grupo `Secador` de Jibble, y el código decía
+*"no tiene caso traer supervisores, tuneleros ni cajeras"*. **Falso.** El dueño lo corrigió:
+cuando hay mucho trabajo, el tunelero y los supervisores se ponen a secar.
+
+Ahora se traen tres grupos, con su rol: `Secador` (13), `Tunelero` (1), `Supervisor` (2).
+La **cajera se queda fuera** a propósito — no seca, y sólo alargaría la lista que el
+supervisor recorre con el pulgar.
+
+- El rol **no limita nada**: cualquiera de ellos puede secar. Sólo sirve para **agrupar en
+  pantalla**. Los secadores salen arriba (el caso común) y el resto en una sección aparte,
+  **"También pueden secar"**, que se esconde sola si no hay nadie.
+- Si alguien está en dos grupos, gana el primero de la lista (secador), porque ahí es donde
+  el supervisor lo busca.
+
+### "Manual" significaba dos cosas opuestas
+
+El botón "No aparece" crea un empleado con `manual = true`, y la sincronización los exceptúa
+(`where not manual`) para que Jibble no los tumbe. Efecto secundario que nadie vio:
+**se quedaban `activo` para siempre** y no había forma de quitarlos desde la app. El
+20/jul/2026 ya había uno (`eri`) que iba a salir en la grilla todos los días del resto del año.
+
+Pero ese mismo mecanismo es el que necesita **Guillermo Lara**, el gerente: no está en Jibble
+(se buscó en las 38 personas y no aparece), no tiene horario, y siempre debe poder asignarse.
+
+Por eso se partieron en dos:
+
+| | Qué es | Qué le pasa |
+|---|---|---|
+| `manual` + `permanente = false` | Parche de un turno | **Caduca** al terminar el día en que se agregó |
+| `manual` + `permanente = true` | De planta, fuera de Jibble | **Nunca** caduca. Hoy: Guillermo Lara |
+
+**Por qué caducan solos y no hay botón de "quitar":** el supervisor agrega a alguien a mano
+justo en el momento en que trae más prisa. Pedirle que se acuerde de limpiarlo después es
+pedirle algo que no va a pasar. Caducar no necesita que nadie se acuerde. Si algún día se
+quiere el botón, la columna `permanente` ya distingue a quién sí se puede quitar.
+
+⚠️ **Caducar NO borra a nadie.** Sólo lo saca de la lista de disponibles. Quién secó qué
+carro es dato de eficiencia y no se toca nunca.
+
+Se comprobó con el bloque `do $$ ... raise` (base real, todo revertido): un manual de ayer
+pasó a `fuera`, uno de hoy siguió `activo`, y Guillermo siguió `activo`.
+
 ## 9. Datos del carro (tipo, color, foto)
 
 ### La nota de caja los prellena (implementado 19/jul/2026)

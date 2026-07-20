@@ -428,6 +428,13 @@
 
     <div class="seccion">Secadores <span id="asig-sec-estado" class="pendiente">— elige de 1 a 4</span></div>
     <div class="rejilla secadores" id="asig-secadores"></div>
+
+    <!-- Tunelero, supervisores y gerente. Van en su propia seccion y
+         DEBAJO porque el caso comun es elegir un secador; estos entran
+         cuando hay tanto trabajo que ellos tambien se ponen a secar.
+         El titulo se esconde solo si no hay nadie. -->
+    <div class="seccion" id="asig-otros-titulo" style="display:none">También pueden secar</div>
+    <div class="rejilla secadores" id="asig-otros"></div>
   </div>
 </div>
 
@@ -826,6 +833,15 @@ var MARCAS_EXTRA = [
 var SECADORES = [];
 var FUERA = 0;
 
+// Como se lee cada rol debajo del nombre. Solo se muestra para los que
+// NO son secadores: poner "secador" en la seccion de secadores seria
+// repetir el titulo trece veces.
+var ROLES = {
+  tunelero:   "tunelero",
+  supervisor: "supervisor",
+  gerente:    "gerente"
+};
+
 function cargarSecadores() {
   return pedir("/secadores")
     .then(function (r) { return r.json(); })
@@ -949,34 +965,56 @@ function pintarAsignacion() {
   document.getElementById("asig-lineas").innerHTML = h;
 
   // --- Secadores ---
-  h = "";
-  if (SECADORES.length === 0) {
-    // Si Jibble falla o nadie checo, no se deja al supervisor sin salida.
-    h += '<div id="sin-secadores">Nadie aparece checado.<br>Usa "No aparece" para agregarlo a mano.</div>';
-  }
-  for (var s = 0; s < SECADORES.length; s++) {
-    var p = SECADORES[s];
+  // Se pintan DOS rejillas con la misma funcion: arriba los secadores
+  // (el caso comun) y abajo el tunelero, los supervisores y el gerente,
+  // que tambien secan cuando hay carga. La division sale de "orden", que
+  // ya viene calculado de la base — la pantalla no sabe de jerarquias.
+  function pintarPersona(p) {
     var puesto = asig.secadores.indexOf(p.id) >= 0;
     // Al llegar a 4 se apagan los demas, en vez de avisar despues del
     // error. Mas vale que el boton no se deje tocar a que regane.
     var lleno = asig.secadores.length >= 4 && !puesto;
     var clases = "persona" + (p.estado === "descanso" ? " descansando" : "");
 
+    // Al gerente no se le pone "agregado a mano": no es un parche de
+    // turno, es de planta. Decirlo confundiria.
+    var nota = p.estado === "descanso" ? "en descanso"
+             : (p.manual && !p.permanente) ? "agregado a mano"
+             : (p.rol && p.rol !== "secador") ? ROLES[p.rol]
+             : "";
+
     var dentro = '<span class="circulo" style="background:' + escapar(p.color || "#6e7681") + '">' +
                    escapar(p.iniciales || "?") + '</span>' +
                  '<span><span class="quien2">' + escapar(p.mostrar) + '</span>' +
-                   (p.estado === "descanso" ? '<span class="nota2">en descanso</span>' : '') +
-                   (p.manual ? '<span class="nota2">agregado a mano</span>' : '') +
+                   (nota ? '<span class="nota2">' + escapar(nota) + '</span>' : '') +
                  '</span>';
 
-    h += '<button class="opcion ' + clases + (puesto ? " elegida" : "") + '" ' +
-         'data-secador="' + escapar(p.id) + '"' + (lleno ? " disabled" : "") + '>' +
-         dentro + '</button>';
+    return '<button class="opcion ' + clases + (puesto ? " elegida" : "") + '" ' +
+           'data-secador="' + escapar(p.id) + '"' + (lleno ? " disabled" : "") + '>' +
+           dentro + '</button>';
   }
+
+  var deSecado = [], deApoyo = [];
+  for (var s = 0; s < SECADORES.length; s++) {
+    (SECADORES[s].orden ? deApoyo : deSecado).push(SECADORES[s]);
+  }
+
+  h = "";
+  if (deSecado.length === 0 && deApoyo.length === 0) {
+    // Si Jibble falla o nadie checo, no se deja al supervisor sin salida.
+    h += '<div id="sin-secadores">Nadie aparece checado.<br>Usa "No aparece" para agregarlo a mano.</div>';
+  }
+  for (var a = 0; a < deSecado.length; a++) h += pintarPersona(deSecado[a]);
   // Respaldo obligatorio del CLAUDE.md: la app nunca se queda bloqueada
   // porque una integracion externa fallo.
   h += botonOpcion("+ No aparece", false, 'data-manual="1"');
   document.getElementById("asig-secadores").innerHTML = h;
+
+  var otros = "";
+  for (var b2 = 0; b2 < deApoyo.length; b2++) otros += pintarPersona(deApoyo[b2]);
+  document.getElementById("asig-otros").innerHTML = otros;
+  // El titulo solo estorba si abajo no hay nadie.
+  document.getElementById("asig-otros-titulo").style.display = deApoyo.length ? "" : "none";
 
   // --- Que falta ---
   function marcar(id, listo, texto) {
