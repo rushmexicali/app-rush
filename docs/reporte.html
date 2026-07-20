@@ -165,6 +165,13 @@ function pintarReporte(r) {
     html += tarjeta(r.cerrados_automaticamente, "Se cerraron solos",
               "Nadie los entregó; se cerraron al cierre. Sus tiempos no cuentan en los promedios");
   }
+  // Igual que el anterior: solo aparece cuando no es cero. Un cero
+  // permanente en pantalla se vuelve invisible, y este numero importa
+  // justo el dia que NO es cero.
+  if (r.descartados_por_tiempo) {
+    html += tarjeta(r.descartados_por_tiempo, "No se contaron",
+              "Entregados más rápido de lo posible (20 min, o 10 en express). Casi seguro error o prueba");
+  }
   html +=   tarjeta(duracion(r.espera_promedio_seg), "Espera promedio por carro",
               "De que paga a que se lo entregan");
   html +=   tarjeta(duracion(r.secado_promedio_seg), "Secado promedio", "General, todos los equipos");

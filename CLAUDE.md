@@ -736,6 +736,48 @@ el error barato. El caro es el servicio invisible, y es el que acababa de pasar.
 - **El día de hoy siempre se calcula al vuelo**, aunque ya exista fila congelada. Un día en
   curso todavía cambia.
 
+### Un carro entregado demasiado rápido no se cuenta (20/jul/2026)
+
+Regla del dueño: hay tiempos que **físicamente no se pueden hacer**, ni con el taller vacío.
+
+| Tipo | Mínimo de pago a entrega |
+|---|---|
+| Con aspirado (completos, encerados) | **20 min** |
+| Express (sin aspirado) | **10 min** |
+
+Textual: *"si hay una venta que se entrega en menos de esos tiempos, muy posiblemente fue un
+error o prueba y no debería ser contabilizada"*. Él mismo creó una venta y la entregó en menos
+de 10 minutos mientras se familiarizaba con la app.
+
+**Se midió antes de fijar los números**, contra los 40 carros del 19/jul:
+
+```
+con aspirado  33 carros   min  2 min   promedio 48 min   max 128 min
+express        7 carros   min 13 min   promedio 19 min   max  24 min
+```
+
+⚠️ **Por eso son DOS umbrales y no uno.** Los express reales duraron entre 13 y 24 min: un
+umbral único de 20 min habría descartado **tres express buenos**. Es el mismo error de comparar
+peras con manzanas, pero ahora en los umbrales.
+
+La regla descartó 4 carros, y los cuatro huelen mal por razones independientes — dos de ellos
+(70 y 71) son los del apuro de las 18:54 que ya se habían detectado por otro camino, el de la
+foto mal pegada, y el 70 es además el que se devolvió un minuto después de entregarse. **Tres
+señales distintas apuntando al mismo momento.**
+
+Efecto en los promedios, que muestra cuánto distorsionaban:
+
+```
+lavados          40  →  36
+espera promedio  42.8 → 46.8 min
+secado promedio  32.0 → 35.5 min
+```
+
+**No se esconden: se cuentan aparte** (`descartados_por_tiempo`, y sale en la página del dueño
+sólo cuando no es cero). Es una heurística, no una certeza — el dueño mismo dijo *"muy
+posiblemente"*. Si un día salen ocho, no es que la regla esté mal: es que algo raro pasó ese
+día. Mismo criterio que `cerrados_automaticamente`.
+
 **Dos trampas del modelo de datos** que cualquier consulta nueva tiene que respetar:
 
 1. **`asignaciones.fin` casi siempre es NULL.** Solo `regresar_etapa` lo llena; la entrega
