@@ -8,26 +8,19 @@
 
 ## Pedidos del dueño — 20/jul/2026
 
-### 1. Borrar el rechazo de prueba de Chuy 🔴 BORRADO DE DATOS
+### 1. ✅ HECHO (20/jul ~12:5x) — Borrado el rechazo de prueba de Chuy
 
 Lo hizo el dueño a propósito para enseñarles a los supervisores cómo funciona.
 
-**Fila exacta, única en la tabla:**
+Se borró **sólo** `rechazos.id = 9` (carro 116, Jesús Gil, "Vidrios", 11:02), con `delete`
+guardado por id + condiciones. Verificado después: `rechazos` quedó en **0 filas** y el
+carro 116 sigue `entregado` con su entrega intacta (11:22). El carro no se tocó.
 
-```
-rechazos.id = 9
-grupo    c5d55924-9e56-4481-924f-e0fd83f22b40
-carro    116
-secador  Jesús Gil  (empleado 9ae3155a-15c0-468a-bd41-9320a9469084)
-motivo   Vidrios
-cuándo   2026-07-20 11:02
-```
-
-Se borra **sólo esa fila**. El carro 116 no se toca: se lavó de verdad y sus tiempos son
-reales. Confirmar el `delete` con el dueño en el momento, mostrando esta fila.
-
-> Con ésta, la tabla `rechazos` queda **vacía**. El primer rechazo real del negocio será el
-> siguiente que entre — bueno para la línea base, porque ninguno de los que hay hoy es real.
+> Se hizo **antes** de las 8:30 a propósito: el reporte se congela a esa hora y guardar el
+> rechazo falso en la fila congelada del 20/jul lo habría dejado permanente.
+>
+> La tabla `rechazos` queda vacía. El primer rechazo real del negocio será el siguiente que
+> entre — línea base limpia.
 
 ---
 
@@ -115,7 +108,29 @@ Pista: la tarjeta se arma alrededor de `docs/index.html:729`.
 
 ---
 
-### 8. Cola virtual: el secado no debe contar el tiempo que el carro estuvo formado
+### 8. ⏸️ EN PAUSA (decisión del dueño, 20/jul) — Cola virtual del secado
+
+**El dueño lo va a analizar más; por lo pronto se deja el secado como está hoy (reloj de
+pared).** No implementar nada de esto hasta que él lo retome.
+
+> **Por qué se pausó, para cuando se retome:** al validar el cálculo como consulta pura
+> sobre los 26 carros de hoy, salió un caso (**carro 109, Pablo Cruz**) con secado efectivo
+> **negativo**. No era error del cálculo: Pablo traía el 108 y el 109 abiertos a la vez y
+> entregó el 109 **antes** que el 108. El supuesto de "es una fila" no siempre se cumple —
+> a veces secan dos en paralelo y los terminan en desorden (hoy: 1 de 26).
+>
+> Alternativa que quedó sobre la mesa para ese día: en vez de "el reloj arranca cuando
+> entregó el anterior", **repartir cada minuto del secador entre los carros que traía
+> abiertos en ese minuto** (1 carro → minuto completo; 2 carros → medio a cada uno). Una
+> sola regla cubre fila y paralelo, nunca sale negativo, y la suma atribuida a un secador es
+> exactamente lo que trabajó. La consulta de validación quedó en el scratchpad de esa sesión
+> (`q11.sql`).
+
+---
+
+#### (Referencia — el pedido original y la recomendación, congelados hasta que se retome)
+
+**El pedido:** el secado no debe contar el tiempo que el carro estuvo formado
 
 **El pedido:** si a un secador se le asigna un segundo carro sin haber terminado el primero,
 el reloj de secado del segundo no debe correr en su contra. El secado real empieza cuando
@@ -229,11 +244,9 @@ aparece solo es de las cosas que más confunden al supervisor de la tercera edad
 
 ## Decisiones ya tomadas por el dueño (20/jul/2026)
 
-- ✅ **Punto 8 — va como se recomendó:** no se mueve la etapa `secando`; el secado efectivo
-  se **deriva**, y el `tiempo_en_fila` se guarda y se muestra en el reporte.
-- ✅ **Punto 8, tarjeta en fila:** el carro formado **sí se pone rojo** a los 35 min (el
-  cliente sí está esperando), pero la tarjeta dice **"EN FILA — detrás de \<carro\>"** para
-  que el supervisor entienda por qué no avanza y pueda moverlo a alguien libre.
+- ⏸️ **Punto 8 — EN PAUSA.** El dueño lo va a analizar más. Por lo pronto el secado se queda
+  como está (reloj de pared). La validación destapó un caso negativo (carro 109, secado en
+  paralelo) que hay que resolver antes de construir. Ver el punto 8 arriba.
 - ✅ **Punto 3 — aprobado:** Corregir debe llegar con los secadores ya premarcados.
 
 ---
