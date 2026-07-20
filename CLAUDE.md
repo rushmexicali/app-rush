@@ -368,16 +368,20 @@ promedio por carro, desglose con/sin aspirado, y cuántas placas se alcanzaron a
   Una persona sola es un equipo de uno. No hay lista de equipos que mantener.
 - **"Espera" es de que paga a que se lo entregan** — el tiempo completo del cliente,
   no el tiempo muerto.
-- **Aspirado es regla de negocio, no dato.** La palabra "aspirado" no existe en Zettle.
-  Vive en `lleva_aspirado(producto, variante)` y en un solo lugar a propósito:
+- **Express y aspirado son la MISMA regla, no dos.** El dueño lo dijo así: los express no
+  llevan aspirado *y* son los que van a la línea 1. Por eso hay **una sola** función,
+  `es_lavado_express(producto, variante)`, y `lleva_aspirado` se define como *"todos los
+  paquetes menos los express"*. Tenerlas separadas es exactamente como se desfasan.
 
-  | Con aspirado | Completo, Completo Cera, Solo Interior, Gratis, Manual |
-  |---|---|
-  | **Sin aspirado** | Express, y **Manual con variante Express / Express Grande** |
+  **Un lavado es express si:** el producto empieza con `Express`, **o** es `Manual` con
+  variante `Express` / `Express Grande`.
 
-  La excepción de `Manual` es la trampa: el mismo producto cae de los dos lados según su
-  variante. Un producto desconocido devuelve NULL y se cuenta como "sin clasificar" — nunca
-  se adivina.
+  La trampa es `Manual`: el mismo producto cae de los dos lados según su variante. Un
+  producto desconocido devuelve NULL y se cuenta como "sin clasificar" — nunca se adivina.
+
+  > Corregido el 19/jul/2026. `es_express` se calculaba solo del nombre del producto, así
+  > que un `Manual`+`Express` entraba sin banderita y **la base le rechazaba la línea 1**
+  > ("La linea 1 es solo para express"). Nunca tronó porque no había entrado ninguno.
 - **El día es de 00:00 a 23:59 hora de Mexicali**, no UTC. `pg_cron` corre en UTC y Mexicali
   cambia de horario, así que el corte se agenda a las **05:00 y 06:00 UTC** y la función solo
   escribe si la hora local es 22. Exactamente una de las dos pega cada día.
