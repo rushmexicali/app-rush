@@ -716,6 +716,13 @@ var TIPOS = {
 
 var carros = [];
 
+// Firma de lo ultimo que se DIBUJO. Sirve para no reconstruir el HTML de
+// la lista cuando nada estructural cambio: rehacerlo cada segundo (solo
+// para mover el reloj) recreaba los botones y reiniciaba la animacion de
+// los guiones, que se veia como un tironcito. Ver pintar() y
+// actualizarRelojes().
+var firmaRender = null;
+
 // --- Codigo de acceso ------------------------------------------------
 // El repositorio es publico, asi que la URL de la API se puede
 // encontrar. El codigo evita que un desconocido vea la cola o mueva
@@ -795,6 +802,22 @@ function describir(c) {
 }
 
 function pintar() {
+  // Si nada de lo que afecta el DIBUJO cambio, no se reconstruye el HTML:
+  // hacerlo cada segundo (solo por el reloj) recreaba los botones y
+  // reiniciaba la animacion de los guiones. Los relojes y el rojo de
+  // demora los mueve actualizarRelojes(), que no toca los botones.
+  // El reloj y "demorado" NO entran en la firma: son por tiempo, no por
+  // datos, y se actualizan aparte.
+  var firma = JSON.stringify(carros.map(function (c) {
+    return [c.id, c.estado, c.linea, c.es_express, c.producto, c.variante,
+            c.aviso, c.a_mano, c.tipo_unidad, c.color, c.marca, c.placa,
+            c.foto, (c.ausentes || []).join(","), (c.secadores || []).join(",")];
+  }));
+  if (firma === firmaRender && document.querySelector("#lista .carro")) {
+    return;
+  }
+  firmaRender = firma;
+
   var ahora = Date.now();
   var html = "";
 
@@ -805,8 +828,11 @@ function pintar() {
     var demorado = c.limite === -1 || (c.limite > 0 && seg > c.limite);
     var servicio = (c.producto || "") + (c.variante && c.variante !== c.producto ? " · " + c.variante : "");
 
+    // data-id: para que actualizarRelojes() encuentre el carro de cada
+    // tarjeta sin reconstruirla.
     html += '<div class="carro' + (demorado ? " demorado" : "") + (c.es_express ? " expreso" : "") +
             marcoDelCarro(c) +
+            '" data-id="' + c.id +
             '" style="--color:' + (COLORES[c.estado] || "#6e7681") + '">';
     html +=   '<div class="unidad">' + describir(c) + '</div>';
     // La placa, en su renglon, entre el tipo de carro y el servicio. Solo
@@ -888,6 +914,32 @@ function pintar() {
   document.getElementById("lista").innerHTML = html;
   document.getElementById("vacio").style.display = carros.length ? "none" : "block";
   document.getElementById("cuantos").textContent = carros.length ? carros.length + " en proceso" : "";
+}
+
+// Cada segundo, SOLO mueve el reloj y el rojo de demora de cada tarjeta,
+// sin reconstruir el HTML. Asi la animacion de los guiones del boton
+// corre fluida en vez de reiniciarse cada segundo. La tarjeta se ubica
+// por su data-id.
+function actualizarRelojes() {
+  var ahora = Date.now();
+  var tarjetas = document.querySelectorAll("#lista .carro");
+  for (var i = 0; i < tarjetas.length; i++) {
+    var el = tarjetas[i];
+    var id = Number(el.getAttribute("data-id"));
+    var c = null;
+    for (var j = 0; j < carros.length; j++) {
+      if (carros[j].id === id) { c = carros[j]; break; }
+    }
+    if (!c) continue;
+
+    var seg = Math.floor((ahora - new Date(c.etapa_inicio).getTime()) / 1000);
+    var demorado = c.limite === -1 || (c.limite > 0 && seg > c.limite);
+    var rel = el.querySelector(".reloj");
+    if (rel) rel.textContent = reloj(seg);
+    // El rojo de demora se maneja con la clase en la tarjeta: togglearla
+    // NO recrea el boton, asi que los guiones siguen corriendo.
+    el.classList.toggle("demorado", demorado);
+  }
 }
 
 function avisarError(hay) {
@@ -2032,7 +2084,11 @@ if ("serviceWorker" in navigator) {
 }
 
 cargarCodigo();
-setInterval(pintar, 1000);
+// El reloj corre cada segundo pero SOLO actualiza numeros, no reconstruye
+// (por eso los guiones no se cortan). El HTML se rehace solo cuando
+// consultar() trae datos distintos, y pintar() ademas se salta el rebuild
+// si la firma no cambio.
+setInterval(actualizarRelojes, 1000);
 setInterval(consultar, 3000);
 consultar();
 </script>
