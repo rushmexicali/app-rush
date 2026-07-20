@@ -342,11 +342,6 @@
     font-size:30px; font-weight:800; font-variant-numeric:tabular-nums;
   }
   .tiempo.total .que, .tiempo.total .cuanto { color:#ffd400; }
-  /* El "(+4 Túnel)" va pegado al numero pero mas chico y apagado: es
-     contexto, no una segunda cifra que haya que comparar. */
-  .tiempo .cuanto .mas {
-    font-size:16px; font-weight:700; color:#8b949e; margin-left:6px;
-  }
   .tiempo .vacio2 { font-size:19px; color:#6e7681; font-style:italic; font-weight:600; }
 
   #detalle .quienes { margin-top:20px; }
@@ -1642,13 +1637,11 @@ function duracion(seg) {
   return Math.floor(m / 60) + " h " + (m % 60) + " min";
 }
 
-function renglonTiempo(que, seg, clase, extra) {
+function renglonTiempo(que, seg, clase) {
   var d = duracion(seg);
   return '<div class="tiempo' + (clase ? " " + clase : "") + '">' +
            '<span class="que">' + escapar(que) + '</span>' +
-           (d ? '<span class="cuanto">' + escapar(d) +
-                  (extra ? '<span class="mas">' + escapar(extra) + '</span>' : "") +
-                '</span>'
+           (d ? '<span class="cuanto">' + escapar(d) + '</span>'
               : '<span class="vacio2">sin registro</span>') +
          '</div>';
 }
@@ -1695,17 +1688,19 @@ function abrirDetalle(id) {
       // 1, 3, 5 y hasta 8 min). Restar 4 a esos les inventaria prelavado
       // que no existio. Y si algun dia cambia la maquina, esto sigue
       // bien solo: el numero vive en segundos_de_tunel().
-      // Un lavado a mano no entra al tunel: ni etiqueta ni "(+N)". Desde
-      // la migracion 050 tampoco se le fabrica la etapa, asi que tunMin
-      // ya sale en cero solo — la condicion es por los carros viejos que
-      // alcanzaron a quedar con tunel fabricado antes del arreglo.
-      var tunMin = (c.a_mano || !c.tunel_seg) ? 0 : Math.round(c.tunel_seg / 60);
-      h += renglonTiempo(
-        c.a_mano ? "Prelavado" : "Prelavado + Túnel",
-        c.prelavado_seg,
-        null,
-        tunMin ? " (+" + tunMin + " Túnel)" : ""
-      );
+      // Un renglon por etapa. En la COLA la etiqueta sigue diciendo
+      // "Prelavado + Túnel" —ahi el supervisor ve un estado, no un
+      // desglose— pero aqui el carro ya termino y hay espacio para
+      // separarlos. Se lee mas limpio que meter el tunel entre
+      // parentesis dentro del prelavado.
+      h += renglonTiempo("Prelavado", c.prelavado_seg);
+
+      // El renglon del tunel no existe si el carro se lava a mano: no
+      // entro. Tampoco se pinta un "0 min", que solo haria preguntarse
+      // que paso ahi.
+      if (!c.a_mano && c.tunel_seg) {
+        h += renglonTiempo("Túnel", c.tunel_seg);
+      }
       h += renglonTiempo("Secado", c.secando_seg);
       h += renglonTiempo("Total con nosotros", c.total_seg, "total");
 
