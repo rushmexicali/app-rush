@@ -133,16 +133,13 @@
   .aviso-servicio.mano      { background:#22d3ee; }  /* lavado a mano */
   .aviso-servicio.detallado { background:#ff8c00; }  /* detallado */
 
-  .carro.especial-encerado  { box-shadow: inset 0 0 0 3px #a371f7; }
-  .carro.especial-mano      { box-shadow: inset 0 0 0 3px #22d3ee; }
-  .carro.especial-detallado { box-shadow: inset 0 0 0 3px #ff8c00; }
-
-  /* Un carro puede ser las dos cosas (Manual/Express: va a la linea 1 Y
-     es a mano). Gana el marco del servicio porque el express ya lo dice
-     su propia etiqueta, y este es el que causa las quejas. */
-  .carro.expreso.especial-encerado  { box-shadow: inset 0 0 0 3px #a371f7; }
-  .carro.expreso.especial-mano      { box-shadow: inset 0 0 0 3px #22d3ee; }
-  .carro.expreso.especial-detallado { box-shadow: inset 0 0 0 3px #ff8c00; }
+  /* El marco. Un carro puede llevar VARIAS banderitas (un Super Brillo
+     lavado a mano lleva morada y cian), pero marco solo hay uno: gana el
+     del servicio, porque el "a mano" ya se ve en su propia etiqueta y el
+     servicio es el que causa las quejas de cliente. */
+  .carro.marco-encerado  { box-shadow: inset 0 0 0 3px #a371f7; }
+  .carro.marco-detallado { box-shadow: inset 0 0 0 3px #ff8c00; }
+  .carro.marco-mano      { box-shadow: inset 0 0 0 3px #22d3ee; }
 
   .linea { font-size:18px; color:#8b949e; font-weight:700; }
 
@@ -695,7 +692,7 @@ function pintar() {
     var servicio = (c.producto || "") + (c.variante && c.variante !== c.producto ? " · " + c.variante : "");
 
     html += '<div class="carro' + (demorado ? " demorado" : "") + (c.es_express ? " expreso" : "") +
-            (c.aviso ? " especial-" + claseDeAviso(c.aviso) : "") +
+            marcoDelCarro(c) +
             '" style="--color:' + (COLORES[c.estado] || "#6e7681") + '">';
     html +=   '<div class="unidad">' + describir(c) + '</div>';
     // La placa, en su renglon, entre el tipo de carro y el servicio. Solo
@@ -725,9 +722,14 @@ function pintar() {
     // Va DESPUES del express y en su propio color: si el carro es las dos
     // cosas, se ven las dos. El texto sale de la base (columna generada),
     // asi que un producto nuevo en "Paquetes Especial" se anuncia solo.
+    // Dos banderitas independientes: QUE trabajo es, y COMO se lava. Un
+    // Super Brillo lavado a mano lleva las dos, y las dos importan.
     if (c.aviso) {
       html += '<span class="aviso-servicio ' + claseDeAviso(c.aviso) + '">&#9888; ' +
               escapar(c.aviso) + '</span>';
+    }
+    if (c.a_mano) {
+      html += '<span class="aviso-servicio mano">&#9888; LAVADO A MANO</span>';
     }
     if (c.linea)      html += '<span class="linea">Línea ' + escapar(c.linea) + '</span>';
     html +=   '</div>';
@@ -900,11 +902,19 @@ var MARCAS_EXTRA = [
 // El texto viene de la base (columna generada carros.aviso); esto es
 // solo presentacion, por eso vive aqui y no en SQL.
 var COLOR_AVISO = {
-  "LAVADO A MANO": "mano",
-  "DETALLADO":     "detallado"
+  "DETALLADO": "detallado"
 };
 function claseDeAviso(aviso) {
   return COLOR_AVISO[aviso] || "encerado";
+}
+
+// De que color va el marco cuando el carro lleva varias banderitas.
+// Gana el servicio sobre el "a mano": el a mano ya se ve en su etiqueta,
+// y el servicio es el que genera las quejas de cliente.
+function marcoDelCarro(c) {
+  if (c.aviso)  return " marco-" + claseDeAviso(c.aviso);
+  if (c.a_mano) return " marco-mano";
+  return "";
 }
 
 // Se llenan desde Jibble, que se sincroniza solo cada minuto.
@@ -967,7 +977,8 @@ function abrirPantalla(c, modo) {
   // esta es la pantalla donde se decide QUIEN lo seca, y es el momento
   // exacto en que conviene que el supervisor sepa que no es un lavado
   // normal. Repetirlo cuesta un renglon; no repetirlo cuesta una queja.
-  if (c.aviso) detalle.push("⚠ " + c.aviso);
+  if (c.aviso)  detalle.push("⚠ " + c.aviso);
+  if (c.a_mano) detalle.push("⚠ LAVADO A MANO");
 
   document.getElementById("asig-quien").innerHTML = describir(c);
   document.getElementById("asig-cual").textContent = detalle.filter(Boolean).join("  ·  ");

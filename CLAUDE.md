@@ -125,9 +125,29 @@ solamente tiene que estar asignando líneas y secadores"*.
     línea 1"*. Esto significa otra cosa — *"el trabajo es distinto"* — y confundirlos sería
     peor que no marcarlo. El morado estaba libre (era del estado `por_asignar`, que ya no
     existe).
-  - **Es independiente del express, y un carro puede ser las dos cosas.** `Manual` +
-    `Express Grande` va a la línea 1 **y** es a mano: salen las dos banderitas. Si el aviso se
-    hubiera metido dentro de `es_express`, uno de los dos datos se perdería.
+  - **Son TRES preguntas independientes**, y un carro puede necesitar las tres banderitas:
+
+    | Pregunta | Función | Banderita |
+    |---|---|---|
+    | ¿A qué línea va? | `es_lavado_express` | ⚑ EXPRESS (amarilla) |
+    | ¿Qué trabajo es? | `aviso_de_servicio` | ⚠ SUPER BRILLO / ENCERADO MANUAL (morada) · DETALLADO (naranja) |
+    | ¿Cómo se lava? | `es_lavado_a_mano` | ⚠ LAVADO A MANO (cian) |
+
+  > ⚠️ **Lo dice la VARIANTE, no el nombre del producto.** Este error se cometió el
+  > 20/jul/2026 y sólo se encontró porque el dueño hizo cuatro ventas reales a propósito:
+  >
+  > ```
+  > Encerado Manual / Normal  → el producto dice "Manual" y NO es a mano
+  > Super Brillo    / Manual  → el producto no dice "Manual" y SÍ lo es
+  > ```
+  >
+  > El nombre engaña **en las dos direcciones**: "Manual" en `Encerado Manual` describe el
+  > encerado (se encera a mano), no el lavado. Es la misma trampa que ya estaba documentada
+  > con `Manual`+`Express`, y se volvió a caer en ella. Quien decide es la variante:
+  > `Manual…` = a mano, `Normal`/`Grande` = túnel.
+  >
+  > La causa de fondo fue meter dos preguntas en una sola función: el aviso de servicio
+  > **tapaba** al de lavado a mano. Separadas, las dos salen.
   - **El texto sale del nombre del producto**, no de una etiqueta inventada: si el dueño da de
     alta `Encerado Cerámico` en `Paquetes Especial`, la tarjeta lo anuncia sola.
   - **Se repite en la pantalla de asignar**, aunque ya salga en la tarjeta: ahí es donde se
