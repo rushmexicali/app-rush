@@ -226,6 +226,22 @@ completa que ya tiene "Asignar", que el supervisor ya conoce.
 Restaurar reusa `regresar_etapa` (`entregado → secando`), que ya existía y ya estaba
 probado. No se escribió lógica nueva para deshacer.
 
+**Se llama "Finalizados"** (20/jul/2026), no "Ver entregados de hoy": ya no es sólo de hoy.
+
+- **Selector de día** junto a "Volver a la cola". Es un `<select>` **nativo** y no un menú
+  propio: la sección 4 prohíbe menús, pero el selector del teléfono es un toque y lo dibuja
+  el sistema con letra grande. Escribir un desplegable a mano sería *más* menú, no menos.
+  `entregados_del_dia` ya aceptaba la fecha desde la migración `028`; el endpoint la tenía
+  fija en `null`.
+- **Tocar los datos de un carro abre su desglose:** prelavado, túnel, secado, total y quiénes
+  lo secaron. Se toca la zona de **datos**, no la tarjeta entera — si fuera toda, un dedo que
+  falla el botón de Restaurar abriría el desglose y parecería que el botón no sirve.
+- El desglose **avisa cuando el tiempo no es real** (cerrado automático, tiempo imposible).
+  Ahí un número se lee como si fuera medido.
+- `detalle_del_carro` devuelve los segundos **ya sumados** por etapa: un carro puede tener
+  varias filas de la misma etapa porque "Corregir" reabre la anterior. El total es de **pago a
+  entrega**, no la suma de etapas — entre etapas hay huecos y el cliente los vive igual.
+
 **Cada tarjeta tiene además "Corregir"** (agregado 20/jul/2026, a pedido del dueño): abre la
 **misma pantalla** que el Corregir de la cola, para arreglar una captura mala *después* de
 entregar. Sale más apagado que Restaurar a propósito — los dos son acciones raras, pero
@@ -735,6 +751,27 @@ el error barato. El caro es el servicio invisible, y es el que acababa de pasar.
   visto porque con un solo motivo el número sale bien.** Arreglado en la migración `036`.
 - **El día de hoy siempre se calcula al vuelo**, aunque ya exista fila congelada. Un día en
   curso todavía cambia.
+- **El reporte acepta un RANGO de días** (20/jul/2026), con dos casillas como en Zettle.
+  `reporte_del_dia` **delega** en `reporte_del_rango(desde, hasta)`: hay **una sola
+  implementación** y el día es el caso particular. Escribir una segunda función habría sido el
+  mismo error que este proyecto cometió cuatro veces ese día.
+  ⚠️ Un rango **no** se arma sumando filas congeladas — ésas son por día y los promedios hay
+  que ponderarlos por carro, no promediar promedios. Se calcula al vuelo.
+
+### Un lavado a mano no pasa por el túnel (20/jul/2026)
+
+`asignar_carro` fabricaba 4 min de túnel para **todos** los carros, incluidos los de lavado a
+mano. No era sólo una etiqueta falsa: **le robaba 4 minutos al prelavado** para dárselos a una
+etapa que nunca ocurrió, así que el prelavado promedio de los lavados a mano salía corto.
+
+Arreglado en la `050`, usando `carros.a_mano` — la misma regla que pinta la banderita cian, no
+una copia. Probado con dos carros entrados a la misma hora: el de mano conserva sus 15 min
+completos de prelavado; el de túnel los reparte en 11 + 4.
+
+> El desglose de Finalizados muestra el túnel **en su propio renglón** con el valor guardado,
+> no con un 4 escrito a mano. Da 4 en todo el flujo nuevo y el valor real en los carros viejos,
+> donde el túnel sí se midió (hay de 1, 3, 5 y 8 min). Si cambia la máquina,
+> `segundos_de_tunel()` lo cambia en un solo lugar.
 
 ### Un carro entregado demasiado rápido no se cuenta (20/jul/2026)
 
