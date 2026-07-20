@@ -257,6 +257,10 @@
   .foto:active { background:#30363d; }
   .foto img { width:100%; height:100%; object-fit:cover; display:block; }
   .foto.subiendo { opacity:.4; }
+  /* La foto se habilita solo cuando el carro ya tiene carril y secador.
+     Antes de eso el boton SE VE apagado (no desaparece): un boton que
+     aparece solo confunde al supervisor de la tercera edad. */
+  .foto[disabled] { opacity:.28; cursor:default; }
 
   #camara { display: none; }
 
@@ -499,6 +503,16 @@
 
   .lineas .opcion { min-height:78px; font-size:26px; }
   .lineas .opcion.solo-express { border-color:#ffd400; color:#ffd400; }
+
+  /* Secador de SOLO LECTURA: en Corregir se muestra quien seca el carro,
+     pero no se cambia ahi (para eso Regresar). Se ve distinto a los
+     botones para que nadie intente picarlo esperando cambiarlo. */
+  .secador-ro {
+    min-height:60px; display:flex; align-items:center;
+    padding:10px 14px; font-size:19px; font-weight:800;
+    background:#161b22; border:2px solid #30363d; border-radius:13px;
+  }
+  .secador-ro.vacio { color:#6e7681; font-weight:600; font-style:italic; }
 
   /* Barra fija abajo: el boton de confirmar siempre al alcance del
      pulgar, sin tener que buscar el final de la pantalla. */
@@ -849,10 +863,18 @@ function pintar() {
     html +=   '<div class="servicio">' + escapar(servicio) + secTarjeta + '</div>';
     // Foto: si ya hay, se ve la miniatura; si no, el icono de camara.
     // Nunca estorba ni bloquea: el carro puede salir sin foto.
+    //
+    // Se habilita SOLO cuando el carro ya tiene carril y secador. Antes de
+    // eso el carro puede no estar identificable todavia, y ahi es cuando se
+    // le pegaba la foto al carro equivocado (paso el 19/jul). Deshabilitado
+    // -> se ve apagado, no desaparece.
+    var asignado = !!(c.linea && c.secadores && c.secadores.length);
     html +=   '<div class="fotos">';
     // Un solo boton: la camara. El de galeria se quito el 20/jul/2026 —
     // no se usaba, y un solo boton es la regla del CLAUDE.md.
-    html +=     '<button class="foto" data-foto="' + c.id + '" title="Tomar foto del carro">' +
+    html +=     '<button class="foto" data-foto="' + c.id + '"' +
+                  (asignado ? ' title="Tomar foto del carro"'
+                            : ' disabled title="Primero asigna carril y secador"') + '>' +
                   (c.foto ? '<img src="' + escapar(c.foto) + '" alt="">' : '&#128247;') +
                 '</button>';
     html +=   '</div>';
@@ -1147,7 +1169,11 @@ function abrirPantalla(c, modo) {
     color: c.color || null,
     marca: c.marca || null,
     linea: c.linea || null,
-    secadores: []
+    secadores: [],
+    // Quienes secan el carro AHORA (nombres, de la cola). En Corregir se
+    // muestran de solo lectura para que el supervisor vea exactamente lo
+    // que esta puesto, en vez de una rejilla en blanco.
+    secadoresActuales: (c.secadores || []).slice()
   };
   verMasMarcas = false;
   verColorManual = false;
@@ -1308,27 +1334,41 @@ function pintarAsignacion() {
            dentro + '</button>';
   }
 
-  var deSecado = [], deApoyo = [];
-  for (var s = 0; s < SECADORES.length; s++) {
-    (SECADORES[s].orden ? deApoyo : deSecado).push(SECADORES[s]);
-  }
+  // En CORREGIR los secadores son de solo lectura: se muestran para que el
+  // supervisor vea quien seca (antes salia la rejilla en blanco y parecia
+  // que nadie estaba puesto). Cambiarlos sigue siendo con Regresar, para no
+  // reiniciar el cronometro de secado.
+  if (asig.modo === "corregir") {
+    var nombres = asig.secadoresActuales || [];
+    h = nombres.length
+      ? nombres.map(function (nm) { return '<div class="secador-ro">' + escapar(nm) + '</div>'; }).join("")
+      : '<div class="secador-ro vacio">Sin secador registrado</div>';
+    document.getElementById("asig-secadores").innerHTML = h;
+    document.getElementById("asig-otros").innerHTML = "";
+    document.getElementById("asig-otros-titulo").style.display = "none";
+  } else {
+    var deSecado = [], deApoyo = [];
+    for (var s = 0; s < SECADORES.length; s++) {
+      (SECADORES[s].orden ? deApoyo : deSecado).push(SECADORES[s]);
+    }
 
-  h = "";
-  if (deSecado.length === 0 && deApoyo.length === 0) {
-    // Si Jibble falla o nadie checo, no se deja al supervisor sin salida.
-    h += '<div id="sin-secadores">Nadie aparece checado.<br>Usa "No aparece" para agregarlo a mano.</div>';
-  }
-  for (var a = 0; a < deSecado.length; a++) h += pintarPersona(deSecado[a]);
-  // Respaldo obligatorio del CLAUDE.md: la app nunca se queda bloqueada
-  // porque una integracion externa fallo.
-  h += botonOpcion("+ No aparece", false, 'data-manual="1"');
-  document.getElementById("asig-secadores").innerHTML = h;
+    h = "";
+    if (deSecado.length === 0 && deApoyo.length === 0) {
+      // Si Jibble falla o nadie checo, no se deja al supervisor sin salida.
+      h += '<div id="sin-secadores">Nadie aparece checado.<br>Usa "No aparece" para agregarlo a mano.</div>';
+    }
+    for (var a = 0; a < deSecado.length; a++) h += pintarPersona(deSecado[a]);
+    // Respaldo obligatorio del CLAUDE.md: la app nunca se queda bloqueada
+    // porque una integracion externa fallo.
+    h += botonOpcion("+ No aparece", false, 'data-manual="1"');
+    document.getElementById("asig-secadores").innerHTML = h;
 
-  var otros = "";
-  for (var b2 = 0; b2 < deApoyo.length; b2++) otros += pintarPersona(deApoyo[b2]);
-  document.getElementById("asig-otros").innerHTML = otros;
-  // El titulo solo estorba si abajo no hay nadie.
-  document.getElementById("asig-otros-titulo").style.display = deApoyo.length ? "" : "none";
+    var otros = "";
+    for (var b2 = 0; b2 < deApoyo.length; b2++) otros += pintarPersona(deApoyo[b2]);
+    document.getElementById("asig-otros").innerHTML = otros;
+    // El titulo solo estorba si abajo no hay nadie.
+    document.getElementById("asig-otros-titulo").style.display = deApoyo.length ? "" : "none";
+  }
 
   // --- Que falta ---
   function marcar(id, listo, texto) {
@@ -1338,18 +1378,24 @@ function pintarAsignacion() {
   }
   marcar("asig-marca-estado", !!asig.marca, asig.marca ? "— " + asig.marca : "— falta");
   marcar("asig-linea-estado", !!asig.linea, asig.linea ? "— línea " + asig.linea : "— falta");
-  // Resumen tipo el tablero de Jibble: cuantos hay de cada cosa. Da el
-  // panorama sin tener que contar botones.
-  var enDescanso = SECADORES.filter(function (x) { return x.estado === "descanso"; }).length;
-  var disponibles = SECADORES.length - enDescanso;
-  // "1 de 4" se leia como "llevas 1 de los 4 que necesitas". Nunca fue
-  // un requisito: con UNO basta, y caben hasta 4.
-  var resumen = asig.secadores.length
-    ? "— " + asig.secadores.length + (asig.secadores.length === 1 ? " elegido" : " elegidos")
-    : "— elige al menos 1  (" + disponibles + " activos" +
-      (enDescanso ? ", " + enDescanso + " en descanso" : "") +
-      (FUERA ? ", " + FUERA + " fuera" : "") + ")";
-  marcar("asig-sec-estado", asig.secadores.length > 0, resumen);
+  // En Corregir los secadores son de solo lectura: la etiqueta lo dice, en
+  // vez de "elige al menos 1" que aqui no aplica.
+  if (asig.modo === "corregir") {
+    marcar("asig-sec-estado", true, "— para cambiarlos, usa Regresar");
+  } else {
+    // Resumen tipo el tablero de Jibble: cuantos hay de cada cosa. Da el
+    // panorama sin tener que contar botones.
+    var enDescanso = SECADORES.filter(function (x) { return x.estado === "descanso"; }).length;
+    var disponibles = SECADORES.length - enDescanso;
+    // "1 de 4" se leia como "llevas 1 de los 4 que necesitas". Nunca fue
+    // un requisito: con UNO basta, y caben hasta 4.
+    var resumen = asig.secadores.length
+      ? "— " + asig.secadores.length + (asig.secadores.length === 1 ? " elegido" : " elegidos")
+      : "— elige al menos 1  (" + disponibles + " activos" +
+        (enDescanso ? ", " + enDescanso + " en descanso" : "") +
+        (FUERA ? ", " + FUERA + " fuera" : "") + ")";
+    marcar("asig-sec-estado", asig.secadores.length > 0, resumen);
+  }
 
   var btn = document.getElementById("confirmar");
 
@@ -2001,6 +2047,9 @@ document.getElementById("lista").addEventListener("click", function (ev) {
   // cambia la etapa del carro y no debe estorbarse con los demas toques.
   var camara = ev.target.closest("button[data-foto]");
   if (camara) {
+    // Un boton disabled no dispara click, pero por si acaso: sin carril y
+    // secador la foto no se abre.
+    if (camara.disabled) return;
     carroDeLaFoto = Number(camara.dataset.foto);
     document.getElementById("camara").click();
     return;

@@ -24,8 +24,30 @@ falsos en el panel, sin tocar la API real:
 Sintaxis validada con `cscript //E:JScript` (el método del proyecto).
 
 **Pendiente al pushear:** mover estos 5 al `CLAUDE.md` con su razón (incluida la sección 4,
-que hoy describe el botón de galería que se quitó). Falta el lote de **3, 5 y 10**, que toca
-lógica y se revisa con el dueño antes.
+que hoy describe el botón de galería que se quitó).
+
+### Lote de lógica — puntos 3 y 10 (CODIFICADO, PROBADO y en camino a live)
+
+- **10 — foto deshabilitada hasta asignar carril y secador.** El botón se ve apagado (no
+  desaparece). Probado: en un carro sin asignar `disabled=true`, en uno secando `false`.
+  De paso angosta la ventana del bug de la foto mal pegada del 19/jul.
+- **3 — Corregir muestra los secadores actuales.** En modo corregir, la sección de
+  secadores es de solo lectura (chips con los nombres de quienes secan) con la nota "para
+  cambiarlos, usa Regresar". La línea sigue editable. El modo asignar quedó intacto
+  (interactivo). Probado los dos modos.
+- **3 (backend) — `datos_de_nota` arreglado.** Migración `051`: la bandera solo se apaga si
+  el tipo/color CAMBIA respecto a lo guardado; reenviar lo mismo (lo que hace Asignar al
+  confirmar) ya no la apaga. Probado sobre la base con bloque `do $$ ... raise` (revertido):
+  `inicial=t, reenvío_mismo=t, tras_cambio=f, tras_agregar=f`. **La 051 ya está aplicada en
+  producción** (es solo la función, retrocompatible con el front viejo).
+
+Falta el **punto 5** (desglose de un carro activo al tocar su nombre), que también toca
+lógica y se revisa con el dueño.
+
+> ⚠️ **Decisión tomada en el 3:** los secadores en Corregir son de SOLO LECTURA. Cambiarlos
+> sigue siendo con Regresar, para no arriesgar el reinicio del cronómetro de secado. Si el
+> dueño quiere poder EDITARLOS desde Corregir, hace falta una ruta nueva que actualice las
+> asignaciones SIN tocar etapas — es un paso aparte.
 
 ---
 
