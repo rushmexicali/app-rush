@@ -108,6 +108,26 @@
     padding:5px 14px; border-radius:999px;
     letter-spacing:.5px;
   }
+  /* Servicio que NO es un lavado normal: encerado, super brillo, lavado
+     a mano. Existe porque los secadores no leen el ticket y lo tratan
+     como lavado, y eso genera quejas de clientes.
+
+     MORADO y no amarillo: el amarillo ya es del express y significa "va
+     a la linea 1". Esto significa otra cosa — "el trabajo es distinto" —
+     y confundirlos seria peor que no marcarlo. El morado estaba libre
+     (era del estado "por asignar", que ya no existe). */
+  .carro.especial { box-shadow: inset 0 0 0 3px #a371f7; }
+  .aviso-servicio {
+    background:#a371f7; color:#000;
+    font-weight:900; font-size:17px;
+    padding:5px 14px; border-radius:999px;
+    letter-spacing:.5px;
+  }
+  /* Un carro puede ser las dos cosas (Manual/Express: va a la linea 1 Y
+     es a mano). Gana el marco morado porque el express ya lo dice su
+     propia etiqueta, y este es el que causa las quejas. */
+  .carro.expreso.especial { box-shadow: inset 0 0 0 3px #a371f7; }
+
   .linea { font-size:18px; color:#8b949e; font-weight:700; }
 
   /* Aviso de secador que se poncho con el carro asignado. Va en la
@@ -658,7 +678,8 @@ function pintar() {
     var demorado = c.limite === -1 || (c.limite > 0 && seg > c.limite);
     var servicio = (c.producto || "") + (c.variante && c.variante !== c.producto ? " · " + c.variante : "");
 
-    html += '<div class="carro' + (demorado ? " demorado" : "") + (c.es_express ? " expreso" : "") + '" style="--color:' + (COLORES[c.estado] || "#6e7681") + '">';
+    html += '<div class="carro' + (demorado ? " demorado" : "") + (c.es_express ? " expreso" : "") +
+            (c.aviso ? " especial" : "") + '" style="--color:' + (COLORES[c.estado] || "#6e7681") + '">';
     html +=   '<div class="unidad">' + describir(c) + '</div>';
     // La placa, en su renglon, entre el tipo de carro y el servicio. Solo
     // aparece si se pudo leer: si no, no se pinta nada (ni hueco, ni un
@@ -683,6 +704,12 @@ function pintar() {
     // asignado seria repetir lo que dice la etiqueta de al lado.
     if (c.es_express) {
       html += '<span class="express">&#9873; EXPRESS' + (c.linea ? "" : " &rarr; LÍNEA 1") + '</span>';
+    }
+    // Va DESPUES del express y en su propio color: si el carro es las dos
+    // cosas, se ven las dos. El texto sale de la base (columna generada),
+    // asi que un producto nuevo en "Paquetes Especial" se anuncia solo.
+    if (c.aviso) {
+      html += '<span class="aviso-servicio">&#9888; ' + escapar(c.aviso) + '</span>';
     }
     if (c.linea)      html += '<span class="linea">Línea ' + escapar(c.linea) + '</span>';
     html +=   '</div>';
@@ -901,6 +928,11 @@ function abrirPantalla(c, modo) {
   var detalle = [c.producto];
   if (c.variante && c.variante !== c.producto) detalle.push(c.variante);
   if (c.es_express) detalle.push("va a la LÍNEA 1");
+  // El aviso se repite aqui a proposito, aunque ya salga en la tarjeta:
+  // esta es la pantalla donde se decide QUIEN lo seca, y es el momento
+  // exacto en que conviene que el supervisor sepa que no es un lavado
+  // normal. Repetirlo cuesta un renglon; no repetirlo cuesta una queja.
+  if (c.aviso) detalle.push("⚠ " + c.aviso);
 
   document.getElementById("asig-quien").innerHTML = describir(c);
   document.getElementById("asig-cual").textContent = detalle.filter(Boolean).join("  ·  ");

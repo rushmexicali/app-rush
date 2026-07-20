@@ -112,6 +112,30 @@ solamente tiene que estar asignando líneas y secadores"*.
 - **Express → línea 1**: si es un lavado express, el carro se marca con una **banderita bien
   visible** en la cola y va directo a la **línea 1**, que se dedica exclusivamente a ellos.
   Ver la sección 12.1 para qué cuenta como express (ojo con `Manual`).
+- **Servicio especial → banderita morada** (20/jul/2026). Los servicios que **no** son un
+  lavado normal se anuncian con su propio nombre: `ENCERADO MANUAL`, `SUPER BRILLO`,
+  `DETALLADO`, `LAVADO A MANO`.
+
+  **Por qué existe, textual del dueño:** *"nos pasa mucho que los gerentes y secadores no leen
+  los tickets y asumen que es un lavado, creando quejas de los clientes al no seguir las
+  instrucciones"*. No es adorno: un encerado de $900 tratado como un lavado de $260 es un
+  cliente molesto y trabajo que hay que rehacer.
+
+  - **Morado (`#a371f7`) y no amarillo.** El amarillo ya es del express y significa *"va a la
+    línea 1"*. Esto significa otra cosa — *"el trabajo es distinto"* — y confundirlos sería
+    peor que no marcarlo. El morado estaba libre (era del estado `por_asignar`, que ya no
+    existe).
+  - **Es independiente del express, y un carro puede ser las dos cosas.** `Manual` +
+    `Express Grande` va a la línea 1 **y** es a mano: salen las dos banderitas. Si el aviso se
+    hubiera metido dentro de `es_express`, uno de los dos datos se perdería.
+  - **El texto sale del nombre del producto**, no de una etiqueta inventada: si el dueño da de
+    alta `Encerado Cerámico` en `Paquetes Especial`, la tarjeta lo anuncia sola.
+  - **Se repite en la pantalla de asignar**, aunque ya salga en la tarjeta: ahí es donde se
+    decide *quién* lo seca. Repetirlo cuesta un renglón; no repetirlo cuesta una queja.
+  - Vive en `carros.aviso`, **columna generada** sobre `aviso_de_servicio()`. Se hizo columna
+    y no cálculo en la Edge Function justamente para no tener dos reglas para la misma
+    pregunta — el error que este proyecto ya cometió tres veces. Además se puede consultar:
+    `select count(*) from carros where aviso = 'LAVADO A MANO'`.
 - **Asignar unidad**: el único toque antes de secar. Abre pantalla completa: tipo, color,
   marca, línea y secador(es), con botones grandes.
 - **Secando**: corre el cronómetro de secado (el dato clave para medir eficiencia).

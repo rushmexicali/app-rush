@@ -284,7 +284,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const { data, error } = await db
       .from("carros")
       .select(`
-        id, estado, linea, es_express, producto, variante,
+        id, estado, linea, es_express, producto, variante, aviso,
         tipo_unidad, color, marca, cliente, nota, creado_en, foto_path, placa,
         foto_url, foto_url_expira,
         etapas ( etapa, inicio, fin )
@@ -386,6 +386,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
         es_express: c.es_express,
         producto: c.producto,
         variante: c.variante,
+        // Banderita de servicio que NO es un lavado normal (encerado,
+        // super brillo, lavado a mano). Viene calculada de la base como
+        // columna generada — NO se recalcula aqui a proposito: dos
+        // reglas para la misma pregunta siempre se desfasan. Ver 044/045.
+        aviso: c.aviso,
         tipo_unidad: c.tipo_unidad,
         color: c.color,
         marca: c.marca,
