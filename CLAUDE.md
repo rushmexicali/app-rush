@@ -142,9 +142,45 @@ máquina.
 
 | Botón | Qué hace |
 |---|---|
-| **Asignar unidad** (grande) | El toque principal. Abre la pantalla de captura + asignación |
+| **Asignar unidad** / **Entregado** (grande) | El toque principal. **Nunca manda solo: siempre abre una pantalla** |
 | **Corregir** | Abre la misma pantalla en modo captura: tipo, color, marca. Sirve en cualquier momento, incluso antes de asignar |
 | **Regresar** | Deshace el paso anterior. Apagado en prelavado, no hay a dónde |
+
+### Confirmar o rechazar la entrega (19/jul/2026)
+
+Tocar **Entregado** ya no entrega: abre una pantalla con **Entregar** (verde) y
+**Rechazar** (rojo). Salió del uso real — el secador avisa que ya quedó, pero el
+supervisor revisa antes de soltar el carro.
+
+Al rechazar se elige **qué faltó** de 8 botones (Tablero, Vidrios, Rines, Interior,
+Marcos de puertas, Cajuela, Carrocería mojada, Otro) y queda registrado **a nombre de
+cada persona que lo estaba secando**. El objetivo no es castigar: es saber a quién
+entrenar y en qué.
+
+- **El carro NO cambia de estado.** Sigue secando, misma línea, mismos secadores, y
+  **el cronómetro no se reinicia**. Rehacer algo mal hecho sí cuesta tiempo del taller;
+  si el reloj se reiniciara, el promedio de ese equipo escondería el retrabajo.
+- **Una fila por secador**, más una columna `grupo` que une las filas de un mismo
+  rechazo. Así las dos cuentas salen bien: por persona `count(*)`, por evento
+  `count(distinct grupo)`. Sin `grupo`, un rechazo de dos personas se contaría como dos.
+- La pantalla **dice quién secó** antes de que el supervisor toque: está a punto de
+  registrarle un rechazo a alguien con nombre.
+- **Costo aceptado:** esto agrega un toque a cada entrega, incluidas las buenas. Se
+  bajó de 4 toques a 2 y esto sube a 3. No hay forma de tener el rechazo sin un punto
+  donde decidir.
+
+### Ver los entregados de hoy
+
+Botón **"Ver entregados de hoy"** al final de la cola (no arriba: los carros que
+necesitan atención van primero). Abre la lista del día, del más reciente al más viejo,
+con un botón **Restaurar** por tarjeta.
+
+**Es un botón y no una pestaña a propósito**, aunque se pidió como pestaña: la regla de
+la sección 4 dice "nada de menús ni pestañas". Se usa el mismo patrón de pantalla
+completa que ya tiene "Asignar", que el supervisor ya conoce.
+
+Restaurar reusa `regresar_etapa` (`entregado → secando`), que ya existía y ya estaba
+probado. No se escribió lógica nueva para deshacer.
 
 ⚠️ **"Corregir" cambió de significado el 19/jul/2026.** Antes era el deshacer; ahora eso es
 "Regresar". En el API la ruta de deshacer se sigue llamando `/corregir` para no romper nada.
@@ -437,6 +473,12 @@ si no, "vino 3 veces" se lee como total y lleva a conclusiones falsas.
 (categoría `Aroma`) creaba un carro fantasma en la cola e inflaba el conteo. Ahora se busca en
 todos los renglones del ticket, no solo en el primero — eso arregló de paso que un ticket con
 el aroma primero se guardara como "Pinito".
+
+> ⚠️ **PENDIENTE, del mismo tipo: los reembolsos también crean carro.** El 19/jul/2026 el
+> carro 72 entró con `monto = -270` (una devolución de un Completo Cera) y el supervisor lo
+> procesó como si fuera un lavado. Infla "vehículos lavados" en uno. El arreglo probablemente
+> sea ignorar los montos negativos en `producto_del_vehiculo`, pero **falta confirmar con el
+> dueño** que un monto negativo siempre es devolución y nunca un lavado real.
 
 ### Cómo trabajar aquí
 

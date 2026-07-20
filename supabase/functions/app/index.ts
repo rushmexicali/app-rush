@@ -269,6 +269,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const sinSecador = new Map<number, string[]>();
     for (const h of huerfanos ?? []) sinSecador.set(h.carro_id, h.ausentes ?? []);
 
+    // Quien esta secando cada carro. Hace falta en la pantalla de
+    // confirmar entrega: el supervisor esta a punto de registrarle un
+    // rechazo a una persona con nombre y tiene que ver a quien.
+    const { data: asignados } = await db
+      .from("asignaciones")
+      .select("carro_id, secador")
+      .is("fin", null);
+    const secadoresDe = new Map<number, string[]>();
+    for (const a of asignados ?? []) {
+      const lista = secadoresDe.get(a.carro_id) ?? [];
+      lista.push(a.secador);
+      secadoresDe.set(a.carro_id, lista);
+    }
+
     // Enlaces firmados para las fotos. Caducan en una hora: el bucket
     // es privado y nadie debe poder guardarse una direccion permanente
     // a una foto donde se ve una placa.
@@ -303,6 +317,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         limite: DEMORA_SEG[c.estado] ?? 0,
         // Nombres de los secadores que ya se poncharon, si los hay.
         ausentes: sinSecador.get(c.id) ?? [],
+        secadores: secadoresDe.get(c.id) ?? [],
         foto: enlaces.get(c.id) ?? null,
       };
     });
@@ -493,6 +508,80 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return json({ ok: false, error: error.message }, 500);
     }
     return json(data);
+  }
+
+  // --- Rechazar una entrega -------------------------------------------
+  // El carro NO cambia de estado: sigue secando con los mismos secadores.
+  // Lo unico que pasa es que queda el registro, ligado a cada persona.
+  if (ruta === "/rechazar") {
+    if (req.method !== "POST") return json({ error: "usa POST" }, 405);
+
+    let cuerpo: any;
+    try { cuerpo = await req.json(); } catch { return json({ ok: false, error: "cuerpo invalido" }, 400); }
+
+    const carro = Number(cuerpo?.carro);
+    if (!carro || !Number.isFinite(carro)) {
+      return json({ ok: false, error: "falta el numero de carro" }, 400);
+    }
+
+    const { data, error } = await db.rpc("rechazar_entrega", {
+      p_carro: carro,
+      p_motivo: String(cuerpo?.motivo ?? ""),
+    });
+
+    if (error) {
+      console.error("Fallo al rechazar el carro", carro, ":", error);
+      return json({ ok: false, error: error.message }, 500);
+    }
+    return json(data);
+  }
+
+  // --- Los motivos de rechazo -----------------------------------------
+  // Viven en la base para que la lista este en un solo lugar. La pantalla
+  // los pide una vez y los guarda.
+  if (ruta === "/motivos") {
+    const { data, error } = await db.rpc("motivos_de_rechazo");
+    if (error) {
+      console.error("Fallo al leer los motivos:", error);
+      return json({ error: error.message }, 500);
+    }
+    return json({ motivos: data ?? [] });
+  }
+
+  // --- Los entregados de hoy ------------------------------------------
+  // Del mas reciente al mas viejo, para poder deshacer una entrega
+  // equivocada. Solo del dia: un error de entrega se detecta en minutos,
+  // y restaurar un carro de ayer ensuciaria el reporte de dos dias.
+  //
+  // El corte del dia lo calcula Postgres (entregados_del_dia), NO aqui:
+  // hacerlo en JavaScript obligaria a escribir el desfase a mano y
+  // Mexicali cambia de horario dos veces al ano.
+  if (ruta === "/entregados") {
+    const { data, error } = await db.rpc("entregados_del_dia", { p_fecha: null });
+
+    if (error) {
+      console.error("Fallo al leer los entregados:", error);
+      return json({ error: error.message }, 500);
+    }
+
+    // La funcion devuelve la fila completa de carros. Se recorta aqui a lo
+    // que la pantalla usa: no hay razon para mandarle al telefono el
+    // purchase_uuid ni el monto de la venta.
+    const carros = (data ?? []).map((c: any) => ({
+      id: c.id,
+      producto: c.producto,
+      variante: c.variante,
+      tipo_unidad: c.tipo_unidad,
+      color: c.color,
+      marca: c.marca,
+      placa: c.placa,
+      linea: c.linea,
+      es_express: c.es_express,
+      creado_en: c.creado_en,
+      entregado_en: c.entregado_en,
+    }));
+
+    return json({ carros });
   }
 
   // --- Corregir los datos del carro -----------------------------------

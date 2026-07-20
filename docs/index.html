@@ -240,6 +240,61 @@
   .rejilla.marcas    { grid-template-columns: repeat(2, 1fr); }
   .rejilla.tipos     { grid-template-columns: repeat(2, 1fr); }
   .rejilla.colores   { grid-template-columns: repeat(3, 1fr); }
+  .rejilla.motivos   { grid-template-columns: repeat(2, 1fr); }
+  .rejilla.entrega2  { grid-template-columns: repeat(2, 1fr); gap:12px; }
+
+  /* ---- Confirmar entrega / lista de entregados ---- */
+  /* Mismo patron de pantalla completa que #asignar: el supervisor ya lo
+     conoce. Debajo de #acceso (50) y encima de #asignar (40). */
+  #entrega, #entregados {
+    display:none;
+    position:fixed; inset:0; z-index:45;
+    background:#0d1117;
+    overflow-y:auto;
+    padding:18px 14px 40px;
+  }
+  #entrega .quien, #entregados .quien { font-size:28px; font-weight:800; line-height:1.15; }
+  #entrega .cual,  #entregados .cual  { font-size:18px; color:#8b949e; margin-top:4px; }
+  #entrega .rejilla.entrega2 { margin-top:26px; }
+
+  /* Entregar en verde, rechazar en rojo: el color dice cual es cual sin
+     tener que leer, como el resto de la app. */
+  .opcion.bueno { background:#3fb950; border-color:#3fb950; color:#08090b; min-height:96px; font-size:24px; }
+  .opcion.malo  { background:transparent; border-color:#ff4d4f; color:#ff7875; min-height:96px; font-size:24px; }
+  .opcion.volver { width:100%; margin-top:26px; min-height:66px; font-size:19px; }
+
+  /* Tarjeta de un entregado: mucho mas sencilla que la de la cola. Aqui
+     no hay cronometro ni etapas, solo reconocerlo y poder restaurarlo. */
+  .entregado {
+    background:#161b22; border:1px solid #30363d; border-radius:14px;
+    padding:12px 14px; margin-bottom:10px;
+    display:flex; align-items:center; gap:12px;
+  }
+  .entregado .datos { flex:1; min-width:0; }
+  .entregado .titulo { font-size:19px; font-weight:800; line-height:1.2; }
+  .entregado .pie { font-size:15px; color:#8b949e; margin-top:3px; }
+  .entregado .placa2 {
+    display:inline-block; font-family: ui-monospace, "Consolas", monospace;
+    font-size:15px; font-weight:700; letter-spacing:1px;
+    background:#f0f6fc; color:#0d1117; border-radius:4px; padding:1px 6px; margin-right:6px;
+  }
+  .restaurar {
+    flex:0 0 auto; min-height:60px; padding:0 16px;
+    font-size:17px; font-weight:700;
+    background:transparent; color:#adbac7;
+    border:2px solid #30363d; border-radius:12px; cursor:pointer;
+  }
+  .restaurar:active { background:#30363d; }
+
+  /* Boton para entrar a los entregados. Al final de la cola, no arriba:
+     no debe competir con los carros que si necesitan atencion. */
+  #ver-entregados {
+    width:100%; margin-top:6px; min-height:64px;
+    font-size:19px; font-weight:700;
+    background:transparent; color:#adbac7;
+    border:2px solid #30363d; border-radius:14px; cursor:pointer;
+  }
+  #ver-entregados:active { background:#161b22; }
   .rejilla.lineas    { grid-template-columns: repeat(3, 1fr); }
   .rejilla.secadores { grid-template-columns: repeat(2, 1fr); }
 
@@ -331,6 +386,11 @@
 <div id="lista"></div>
 <div id="vacio" style="display:none">No hay carros en proceso</div>
 
+<!-- Al FINAL, no arriba: los carros que necesitan atencion van primero.
+     Es un boton y no una pestaña a proposito — el CLAUDE.md pide toques
+     directos, sin elementos de navegacion permanentes. -->
+<button id="ver-entregados">Ver entregados de hoy</button>
+
 <div id="asignar">
   <div class="quien" id="asig-quien"></div>
   <div class="cual" id="asig-cual"></div>
@@ -356,6 +416,39 @@
 <div id="barra" style="display:none">
   <button id="confirmar" disabled>Empezar a secar</button>
   <button id="cancelar">Cancelar</button>
+</div>
+
+<!-- Confirmar la entrega. Se abre al tocar "Entregado": el secador avisa
+     que ya quedo, pero el supervisor revisa antes de soltar el carro. -->
+<div id="entrega">
+  <div class="quien" id="ent-quien"></div>
+  <div class="cual" id="ent-cual"></div>
+  <!-- Se dice QUIEN seco a proposito: el supervisor esta a punto de
+       registrarle un rechazo a una persona con nombre y debe ver a quien
+       antes de tocar. -->
+  <div class="cual" id="ent-secadores"></div>
+
+  <div id="ent-decidir">
+    <div class="rejilla entrega2">
+      <button class="opcion bueno" data-entregar="1">Entregar</button>
+      <button class="opcion malo" data-rechazar="1">Rechazar</button>
+    </div>
+  </div>
+
+  <div id="ent-motivos" style="display:none">
+    <div class="seccion">¿Qué le faltó?</div>
+    <div class="rejilla motivos" id="ent-lista-motivos"></div>
+  </div>
+
+  <button id="ent-cerrar" class="opcion volver">Cancelar</button>
+</div>
+
+<!-- Los entregados de hoy, por si se entrego uno por equivocacion. -->
+<div id="entregados">
+  <div class="quien">Entregados hoy</div>
+  <div class="cual" id="entregados-cuantos"></div>
+  <div id="entregados-lista"></div>
+  <button id="entregados-cerrar" class="opcion volver">Volver a la cola</button>
 </div>
 
 <!-- capture="environment" abre la camara TRASERA directo, no la galeria.
@@ -1061,6 +1154,203 @@ function achicar(archivo) {
   });
 }
 
+// --- Confirmar la entrega --------------------------------------------
+// Tocar "Entregado" ya no entrega: abre esta pantalla. Sale del uso real
+// — el secador avisa que ya quedo, pero el supervisor revisa antes de
+// soltar el carro, y si algo falto queda registrado a nombre de quien lo
+// seco. El objetivo no es castigar: es saber a quien entrenar y en que.
+var entrega = null;      // el carro que se esta por entregar
+var MOTIVOS = [];        // se piden una vez y se guardan
+
+// Respaldo. La lista buena vive en la base (motivos_de_rechazo), pero el
+// supervisor NUNCA debe quedarse en una pantalla de rechazo sin botones:
+// eso es un callejon sin salida en medio del turno.
+var MOTIVOS_RESPALDO = [
+  "Tablero", "Vidrios", "Rines", "Interior",
+  "Marcos de puertas", "Cajuela", "Carroceria mojada", "Otro"
+];
+
+function cargarMotivos() {
+  if (MOTIVOS.length) return Promise.resolve();
+  return pedir("/motivos")
+    .then(function (r) { return r.json(); })
+    .then(function (d) { MOTIVOS = (d && d.motivos && d.motivos.length) ? d.motivos : MOTIVOS_RESPALDO; })
+    // Se cae al respaldo tanto si la red falla como si la respuesta viene
+    // vacia o con error: lo que importa es que haya botones.
+    .catch(function () { MOTIVOS = MOTIVOS_RESPALDO; });
+}
+
+function abrirEntrega(c) {
+  entrega = c;
+  document.getElementById("ent-quien").innerHTML = describir(c);
+
+  var detalle = [c.producto];
+  if (c.variante && c.variante !== c.producto) detalle.push(c.variante);
+  if (c.linea) detalle.push("Línea " + c.linea);
+  document.getElementById("ent-cual").textContent = detalle.filter(Boolean).join("  ·  ");
+
+  // Quien lo seco. Si por lo que sea no se sabe, se dice, en vez de
+  // dejar el renglon vacio y que parezca que nadie lo seco.
+  var quienes = (c.secadores && c.secadores.length)
+    ? "Secó: " + c.secadores.join(" + ")
+    : "Sin secador registrado";
+  document.getElementById("ent-secadores").textContent = quienes;
+
+  document.getElementById("ent-decidir").style.display = "block";
+  document.getElementById("ent-motivos").style.display = "none";
+  document.getElementById("entrega").style.display = "block";
+  window.scrollTo(0, 0);
+  cargarMotivos();
+}
+
+function cerrarEntrega() {
+  entrega = null;
+  document.getElementById("entrega").style.display = "none";
+}
+
+function pintarMotivos() {
+  // Ultima red de seguridad: si por lo que sea la lista llego vacia, se
+  // usa el respaldo. Una pantalla de rechazo sin botones deja al
+  // supervisor atorado.
+  var lista = MOTIVOS.length ? MOTIVOS : MOTIVOS_RESPALDO;
+  var h = "";
+  for (var i = 0; i < lista.length; i++) {
+    h += botonOpcion(lista[i], false, 'data-motivo="' + escapar(lista[i]) + '"');
+  }
+  document.getElementById("ent-lista-motivos").innerHTML = h;
+}
+
+document.getElementById("entrega").addEventListener("click", function (ev) {
+  var b = ev.target.closest("button");
+  if (!b || !entrega || ocupado) return;
+
+  if (b.dataset.entregar) {
+    ocupado = true;
+    if (navigator.vibrate) navigator.vibrate(30);
+    pedir("/avanzar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ carro: entrega.id })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d && d.ok === false) alert(d.error || "No se pudo"); cerrarEntrega(); })
+      .catch(function () { alert("Sin conexión. Intenta otra vez."); })
+      .then(function () { ocupado = false; consultar(); });
+    return;
+  }
+
+  if (b.dataset.rechazar) {
+    // No se rechaza todavia: primero hay que decir que falto. El motivo
+    // es lo que hace util el registro — sin el solo se sabe que alguien
+    // falla, no que ensenarle.
+    pintarMotivos();
+    document.getElementById("ent-decidir").style.display = "none";
+    document.getElementById("ent-motivos").style.display = "block";
+    if (navigator.vibrate) navigator.vibrate(15);
+    return;
+  }
+
+  if (b.dataset.motivo) {
+    ocupado = true;
+    if (navigator.vibrate) navigator.vibrate([30, 60, 30]);
+    pedir("/rechazar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ carro: entrega.id, motivo: b.dataset.motivo })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.ok === false) { alert(d.error || "No se pudo"); return; }
+        cerrarEntrega();
+      })
+      .catch(function () { alert("Sin conexión. Intenta otra vez."); })
+      .then(function () { ocupado = false; consultar(); });
+  }
+});
+
+document.getElementById("ent-cerrar").addEventListener("click", cerrarEntrega);
+
+// --- Los entregados de hoy -------------------------------------------
+// Por si se entrego uno por equivocacion. Restaurar reusa la misma ruta
+// de deshacer que el boton "Regresar" de la cola.
+function abrirEntregados() {
+  document.getElementById("entregados").style.display = "block";
+  document.getElementById("entregados-lista").innerHTML =
+    '<div class="cual">Cargando…</div>';
+  window.scrollTo(0, 0);
+
+  pedir("/entregados")
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var lista = d.carros || [];
+      document.getElementById("entregados-cuantos").textContent =
+        lista.length ? lista.length + " del más reciente al más viejo" : "";
+
+      if (!lista.length) {
+        document.getElementById("entregados-lista").innerHTML =
+          '<div class="cual">Todavía no se ha entregado ningún carro hoy.</div>';
+        return;
+      }
+
+      var h = "";
+      for (var i = 0; i < lista.length; i++) {
+        var c = lista[i];
+        var quien = describir(c);
+        var hora = c.entregado_en
+          ? new Date(c.entregado_en).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
+          : "";
+        var pie = [hora ? "Entregado " + hora : "", c.linea ? "Línea " + c.linea : ""]
+                    .filter(Boolean).join("  ·  ");
+
+        // La placa va en el pie y no en el titulo: aqui el supervisor
+        // BUSCA un carro entre muchos, y la placa es lo unico que no se
+        // repite. "AUTO GRIS HONDA" hay cinco; BSJ-411-A hay uno.
+        var placa = c.placa ? '<span class="placa2">' + escapar(c.placa) + '</span>' : "";
+
+        h += '<div class="entregado">' +
+               '<div class="datos">' +
+                 '<div class="titulo">' + quien + '</div>' +
+                 '<div class="pie">' + placa + escapar(pie) + '</div>' +
+               '</div>' +
+               '<button class="restaurar" data-restaurar="' + c.id + '">Restaurar</button>' +
+             '</div>';
+      }
+      document.getElementById("entregados-lista").innerHTML = h;
+    })
+    .catch(function () {
+      document.getElementById("entregados-lista").innerHTML =
+        '<div class="cual">No se pudo cargar.</div>';
+    });
+}
+
+document.getElementById("ver-entregados").addEventListener("click", abrirEntregados);
+document.getElementById("entregados-cerrar").addEventListener("click", function () {
+  document.getElementById("entregados").style.display = "none";
+});
+
+document.getElementById("entregados-lista").addEventListener("click", function (ev) {
+  var b = ev.target.closest("button[data-restaurar]");
+  if (!b || ocupado) return;
+  ocupado = true;
+  b.disabled = true;
+  if (navigator.vibrate) navigator.vibrate(30);
+
+  // Misma ruta que el boton "Regresar": desde entregado, regresar_etapa
+  // lo devuelve a secando con su linea y sus secadores.
+  pedir("/corregir", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ carro: Number(b.dataset.restaurar) })
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d && d.ok === false) { alert(d.error || "No se pudo restaurar"); return; }
+      abrirEntregados();
+    })
+    .catch(function () { alert("Sin conexión. Intenta otra vez."); })
+    .then(function () { ocupado = false; consultar(); });
+});
+
 // Venga de la camara o de la galeria, la foto sigue exactamente el mismo
 // camino: se achica, se sube, y de ahi sale la placa. Por eso esto es una
 // sola funcion y no dos copias que se puedan desincronizar.
@@ -1145,15 +1435,19 @@ document.getElementById("lista").addEventListener("click", function (ev) {
   var boton = ev.target.closest("button[data-accion]");
   if (!boton || ocupado) return;
 
-  // El boton principal ya no avanza etapa: abre la asignacion, que es el
-  // unico toque que da el supervisor antes de secar. Los tres estados
-  // previos cuentan porque puede haber carros del flujo viejo en camino.
+  // El boton principal nunca manda solo: siempre abre una pantalla.
+  //   antes de secar -> asignar linea y secadores
+  //   secando        -> confirmar si se entrega o se rechaza
   if (boton.dataset.accion === "avanzar") {
     var buscado = buscarCarro(boton.dataset.carro);
     if (buscado && (buscado.estado === "prelavado" ||
                     buscado.estado === "tunel" ||
                     buscado.estado === "por_asignar")) {
       abrirAsignacion(buscado);
+      return;
+    }
+    if (buscado && buscado.estado === "secando") {
+      abrirEntrega(buscado);
       return;
     }
   }

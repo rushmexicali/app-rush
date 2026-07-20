@@ -15,7 +15,8 @@
 // app instalada reciben los archivos nuevos en vez de quedarse con los
 // viejos guardados.
 //   v2 (19/jul/2026) — entra el logo y los iconos de verdad.
-var CACHE = "rush-v2";
+//   v3 (19/jul/2026) — confirmar entrega, rechazos y lista de entregados.
+var CACHE = "rush-v3";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./RUSH-Logo.png", "./icono-192.png", "./icono-512.png"
