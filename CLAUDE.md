@@ -554,6 +554,40 @@ Corte automático a las **8:30 PM hora de Mexicali**, guardado para siempre.
 **Qué trae:** vehículos lavados, autos y tiempo promedio de secado por equipo, espera
 promedio por carro, desglose con/sin aspirado, y cuántas placas se alcanzaron a leer.
 
+### Lo que quedó abierto se cierra solo (20/jul/2026)
+
+El autolavado cierra a las 8 PM. A las **8:30**, justo antes de congelar, `cerrar_pendientes()`
+entrega todo lo que siga abierto para que la cola amanezca limpia.
+
+- **8:30 y no 8:00**, aunque cierren a las 8: a las 8:00 en punto todavía hay carros
+  legítimamente secándose (el 19/jul la última entrega real fue a las 20:14). Cerrarlos ahí
+  les cortaría el cronómetro a la mitad. Media hora de gracia.
+- **Va dentro de `congelar_reporte`, antes de congelar — no en un cron aparte.** Con dos
+  crones, si el de cerrar se retrasa, el reporte se congela con carros sin terminar y ese
+  número queda mal para siempre. Así el orden es correcto por construcción.
+- **No usa `avanzar_etapa`**, que rechaza los carros en prelavado ("primero asígnale línea y
+  secador"). Justo esos son los que se quedan atorados para siempre.
+
+⚠️ **Los tiempos de un cierre automático son ficción, y por eso no se miden.** Un carro que
+nadie cerró no tiene hora real de entrega. Si esos tiempos entraran a los promedios, un solo
+carro olvidado desde las 3 PM metería 5 horas de "secado" y hundiría al equipo que lo secó —
+se verían pésimo por un descuido del supervisor. Es el mismo problema que la migración `008`
+(`es_prueba`): mediciones que **parecen** datos.
+
+Así que: se marcan con `cerrado_automaticamente`, **sus tiempos quedan fuera de los promedios**
+(secado y espera, generales y por equipo), pero **sí cuentan como vehículo lavado** — la venta
+existió y el carro vino.
+
+**Y el reporte dice cuántos fueron.** Eso no es adorno: `vehiculos_sin_terminar` era lo que
+delataba dónde se traba la operación, y al cerrar todo automáticamente ese número sería
+**siempre 0** y la señal se perdería en silencio. `cerrados_automaticamente` la reemplaza. Si
+un día salen ocho, el supervisor no está cerrando carros y hay que ir a ver por qué.
+
+Probado con el bloque `do $$ ... raise`: dos carros de prueba (uno secando desde hacía 5 h,
+otro nunca asignado) pasaron a entregados, las asignaciones se cerraron, `sin_terminar` bajó de
+2 a 0, `cerrados_automaticamente` subió a 2 — y el secado promedio **no se movió ni un segundo**
+pese a los 17,100 s fabricados del primero.
+
 **Decisiones que hay que respetar si esto se toca:**
 
 - **Un "equipo" se arma solo.** Es el conjunto de quienes secaron *ese* carro juntos.

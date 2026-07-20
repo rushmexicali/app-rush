@@ -144,6 +144,12 @@ function pintarReporte(r) {
   html += '<div class="numeros">';
   html +=   tarjeta(r.vehiculos_lavados, "Vehículos lavados",
               r.vehiculos_sin_terminar ? r.vehiculos_sin_terminar + " entraron y no se han entregado" : "");
+  // Solo aparece si hubo alguno. Un cero permanente en pantalla se vuelve
+  // invisible; el numero importa justo el dia que NO es cero.
+  if (r.cerrados_automaticamente) {
+    html += tarjeta(r.cerrados_automaticamente, "Se cerraron solos",
+              "Nadie los entregó; se cerraron al cierre. Sus tiempos no cuentan en los promedios");
+  }
   html +=   tarjeta(duracion(r.espera_promedio_seg), "Espera promedio por carro",
               "De que paga a que se lo entregan");
   html +=   tarjeta(duracion(r.secado_promedio_seg), "Secado promedio", "General, todos los equipos");
