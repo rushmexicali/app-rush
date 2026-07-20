@@ -541,7 +541,15 @@ que **hay mucho código nuevo con muy poco kilometraje**.
 
 ## 12.1 El reporte diario (Fase 5, 19/jul/2026)
 
-Corte automático a las **10 PM hora de Mexicali**, guardado para siempre.
+Corte automático a las **8:30 PM hora de Mexicali**, guardado para siempre.
+*(Era 10 PM; el dueño lo movió el 20/jul/2026.)*
+
+> **Se comprobó antes de moverlo, no después:** el único día con datos reales (19/jul) tuvo
+> la última venta a las 19:36 y la última entrega a las 20:14. Cero actividad después de
+> 20:30. ⚠️ Pero el margen se achicó: un carro entregado después de las 8:30 **no entra** en
+> la fila congelada de ese día — en pantalla sí se ve, porque el día de hoy siempre se
+> recalcula al vuelo, pero el histórico queda corto. Si algún día se alarga el turno, hay que
+> mover esto.
 
 **Qué trae:** vehículos lavados, autos y tiempo promedio de secado por equipo, espera
 promedio por carro, desglose con/sin aspirado, y cuántas placas se alcanzaron a leer.
@@ -567,8 +575,15 @@ promedio por carro, desglose con/sin aspirado, y cuántas placas se alcanzaron a
   > que un `Manual`+`Express` entraba sin banderita y **la base le rechazaba la línea 1**
   > ("La linea 1 es solo para express"). Nunca tronó porque no había entrado ninguno.
 - **El día es de 00:00 a 23:59 hora de Mexicali**, no UTC. `pg_cron` corre en UTC y Mexicali
-  cambia de horario, así que el corte se agenda a las **05:00 y 06:00 UTC** y la función solo
-  escribe si la hora local es 22. Exactamente una de las dos pega cada día.
+  cambia de horario, así que el corte se agenda a **dos** horas UTC y la función solo escribe
+  si la hora local es la correcta. Exactamente una de las dos pega cada día.
+  Hoy: cron `30 3,4 * * *` UTC, la función exige hora local `20`.
+  (Verano `03:30 UTC = 20:30`; invierno `04:30 UTC = 20:30`.)
+- **Un total que no cuadra con su propio desglose casi siempre es un join que multiplica.**
+  El 20/jul/2026 el reporte decía que un secador tenía 4 rechazos y el desglose de motivos
+  sumaba 2. Era un `join lateral` ya agrupado que se unía *antes* del `group by`, así que
+  cada rechazo se multiplicaba por los motivos distintos de esa persona. **Nunca se había
+  visto porque con un solo motivo el número sale bien.** Arreglado en la migración `036`.
 - **El día de hoy siempre se calcula al vuelo**, aunque ya exista fila congelada. Un día en
   curso todavía cambia.
 
