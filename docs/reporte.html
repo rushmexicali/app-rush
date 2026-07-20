@@ -38,6 +38,20 @@
 
   .barra { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:20px; }
 
+  /* La fila del rango. Se separa un poco de la de arriba para que se
+     lea como otra forma de consultar, no como parte del selector. */
+  .barra.rango { margin-top:-10px; font-size:15px; color:#8b949e; }
+  .barra.rango input[type="date"] {
+    background:#161b22; color:#e6edf3; border:1px solid #30363d;
+    border-radius:8px; padding:8px 10px; font-size:15px;
+  }
+  .barra.rango button {
+    background:#21262d; color:#e6edf3; border:1px solid #30363d;
+    border-radius:8px; padding:8px 16px; font-size:15px; font-weight:700;
+    cursor:pointer;
+  }
+  .barra.rango button:active { background:#30363d; }
+
   /* Los seis numeros. Tarjetas grandes: es lo primero que se busca. */
   .numeros { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:10px; margin-bottom:22px; }
   .n {
@@ -97,6 +111,17 @@
 <div class="barra">
   <select id="dia"></select>
   <button id="respaldo">Descargar respaldo</button>
+</div>
+
+<!-- Rango de dias, como en Zettle: casilla inicial y casilla final.
+     Va DEBAJO del selector de un dia y no lo reemplaza: ver "ayer" es
+     lo que se hace todos los dias, y el rango es lo ocasional. -->
+<div class="barra rango">
+  <label for="desde">Del</label>
+  <input type="date" id="desde">
+  <label for="hasta">al</label>
+  <input type="date" id="hasta">
+  <button id="ver-rango">Ver</button>
 </div>
 
 <div id="contenido"></div>
@@ -291,18 +316,34 @@ function cargarPlacas(q) {
     });
 }
 
-function cargarDia(fecha) {
+function cargarDia(fecha) { cargarReporte("/reporte?fecha=" + fecha); }
+
+// Un rango NUNCA sale de las filas congeladas: esas son por dia, y los
+// promedios hay que ponderarlos por carro, no promediar promedios. Se
+// calcula al vuelo, que es lo correcto aunque recorra mas datos.
+function cargarRango(desde, hasta) {
+  cargarReporte("/reporte?desde=" + desde + "&hasta=" + hasta);
+}
+
+function cargarReporte(ruta) {
   document.getElementById("contenido").innerHTML = '<div class="vacio">Cargando…</div>';
-  pedir("/reporte?fecha=" + fecha)
+  pedir(ruta)
     .then(function (r) {
       if (r.status === 401) { pedirCodigo(true); throw new Error("codigo"); }
       return r.json();
     })
     .then(function (r) {
+      if (r && r.error) {
+        document.getElementById("contenido").innerHTML =
+          '<div class="vacio">' + r.error + "</div>";
+        return;
+      }
       document.getElementById("encabezado").textContent =
-        r.congelado_en
-          ? "Corte cerrado el " + new Date(r.congelado_en).toLocaleString("es-MX")
-          : "Día en curso — todavía puede cambiar";
+        (r.dias && r.dias > 1)
+          ? r.dias + " días, del " + r.desde + " al " + r.hasta
+          : (r.congelado_en
+              ? "Corte cerrado el " + new Date(r.congelado_en).toLocaleString("es-MX")
+              : "Día en curso — todavía puede cambiar");
       document.getElementById("contenido").innerHTML = pintarReporte(r) + pintarPlacas();
       cargarPlacas("");
       var b = document.getElementById("buscar");
@@ -332,6 +373,15 @@ function arrancar() {
       });
       sel.addEventListener("change", function () { cargarDia(sel.value); });
       if (sel.value) cargarDia(sel.value);
+
+      // Las casillas del rango arrancan con el dia mas viejo y el mas
+      // nuevo que hay: asi el dueno puede darle "Ver" de inmediato en
+      // vez de tener que adivinar desde cuando hay datos.
+      var fechas = (d.dias || []).map(function (x) { return x.fecha; }).sort();
+      if (fechas.length) {
+        document.getElementById("desde").value = fechas[0];
+        document.getElementById("hasta").value = fechas[fechas.length - 1];
+      }
     })
     .catch(function (e) {
       if (e && e.message === "codigo") return;
@@ -339,6 +389,14 @@ function arrancar() {
         '<div class="vacio">No se pudo conectar.</div>';
     });
 }
+
+document.getElementById("ver-rango").addEventListener("click", function () {
+  var desde = document.getElementById("desde").value;
+  var hasta = document.getElementById("hasta").value;
+  if (!desde || !hasta) { alert("Escoge los dos días."); return; }
+  if (desde > hasta)   { alert("El día inicial es posterior al final."); return; }
+  cargarRango(desde, hasta);
+});
 
 document.getElementById("respaldo").addEventListener("click", function () {
   pedir("/respaldo")

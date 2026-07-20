@@ -657,7 +657,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // hacerlo en JavaScript obligaria a escribir el desfase a mano y
   // Mexicali cambia de horario dos veces al ano.
   if (ruta === "/entregados") {
-    const { data, error } = await db.rpc("entregados_del_dia", { p_fecha: null });
+    // Sin fecha = hoy. La funcion de la base ya aceptaba el parametro
+    // desde la migracion 028; aqui estaba fijo en null.
+    const pedida = url.searchParams.get("fecha") ?? "";
+    const fecha = /^\d{4}-\d{2}-\d{2}$/.test(pedida) ? pedida : null;
+
+    const { data, error } = await db.rpc("entregados_del_dia", { p_fecha: fecha });
 
     if (error) {
       console.error("Fallo al leer los entregados:", error);
@@ -729,9 +734,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // se calcula al vuelo, porque todavia esta cambiando. A las 10 PM el
   // cron lo congela y a partir de ahi ya no se recalcula.
   if (ruta === "/reporte") {
+    // Acepta un dia suelto (?fecha=) o un intervalo (?desde=&hasta=).
+    // Con intervalo NUNCA se usa la fila congelada: los congelados son
+    // POR DIA y los promedios hay que ponderarlos por carro, no
+    // promediar promedios. Se calcula al vuelo, que es lo correcto.
+    const desde = url.searchParams.get("desde") ?? "";
+    const hasta = url.searchParams.get("hasta") ?? "";
+    const esFecha = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+    if (esFecha(desde) && esFecha(hasta)) {
+      if (desde > hasta) {
+        return json({ error: "el dia inicial es posterior al final" }, 400);
+      }
+      const { data, error } = await db.rpc("reporte_del_rango", {
+        p_desde: desde, p_hasta: hasta,
+      });
+      if (error) {
+        console.error("Fallo el reporte por rango:", error);
+        return json({ error: error.message }, 500);
+      }
+      return json(data);
+    }
+
     const fecha = url.searchParams.get("fecha") ?? "";
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
-      return json({ error: "falta fecha (YYYY-MM-DD)" }, 400);
+    if (!esFecha(fecha)) {
+      return json({ error: "falta fecha (YYYY-MM-DD) o desde/hasta" }, 400);
     }
 
     // El dia de HOY siempre se calcula al vuelo, aunque exista una fila
@@ -804,6 +831,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return json({ error: error.message }, 500);
     }
     return json({ generado_en: new Date().toISOString(), reportes: data ?? [] });
+  }
+
+  // --- Desglose de un carro -------------------------------------------
+  // Lo abre el supervisor al tocar una tarjeta en "Finalizados".
+  if (ruta === "/carro") {
+    const id = Number(url.searchParams.get("id") ?? 0);
+    if (!id) return json({ error: "falta id" }, 400);
+
+    const { data, error } = await db.rpc("detalle_del_carro", { p_carro: id });
+    if (error) {
+      console.error("Fallo el detalle del carro:", error);
+      return json({ error: error.message }, 500);
+    }
+    if (!data) return json({ error: "Ese carro no existe" }, 404);
+    return json(data);
   }
 
   // --- Historial por placa --------------------------------------------

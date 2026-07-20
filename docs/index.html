@@ -304,6 +304,49 @@
     border:2px solid #30363d; border-radius:14px; cursor:pointer;
   }
   #entregados-cerrar:active { background:#30363d; }
+
+  /* El boton de volver y el selector de dia, en la misma fila. */
+  .fila-cabecera { display:flex; gap:10px; align-items:center; }
+  .fila-cabecera #entregados-cerrar { flex:1 1 auto; }
+  #entregados-dia {
+    flex:0 0 auto; min-height:52px; max-width:46%;
+    background:#21262d; color:#e6edf3; border:1px solid #30363d;
+    border-radius:12px; padding:0 12px; font-size:17px; font-weight:700;
+  }
+
+  /* Desglose de un carro. Encima de #entregados (45) porque se abre
+     desde ahi; si no, quedaria por debajo y no se veria — el mismo
+     problema que ya se resolvio con la pantalla de corregir. */
+  #detalle {
+    display:none; position:fixed; inset:0; z-index:47;
+    background:#0d1117; overflow-y:auto; padding:0 14px 40px;
+  }
+  #detalle-cabecera { position:sticky; top:0; background:#0d1117; padding:14px 0 10px; }
+  #detalle-cerrar {
+    width:100%; min-height:52px; background:#21262d; color:#e6edf3;
+    border:1px solid #30363d; border-radius:12px; font-size:18px; font-weight:700;
+  }
+  #detalle-cerrar:active { background:#30363d; }
+
+  #detalle h2 { font-size:28px; font-weight:800; margin:6px 0 2px; line-height:1.15; }
+  #detalle .sub { font-size:17px; color:#8b949e; margin-bottom:16px; }
+
+  /* Cada tiempo en su renglon, con el numero grande a la derecha. Se
+     lee de un vistazo sin tener que buscar. */
+  .tiempo {
+    display:flex; justify-content:space-between; align-items:baseline;
+    gap:12px; padding:14px 0; border-bottom:1px solid #21262d;
+  }
+  .tiempo .que  { font-size:19px; color:#adbac7; font-weight:700; }
+  .tiempo .cuanto {
+    font-size:30px; font-weight:800; font-variant-numeric:tabular-nums;
+  }
+  .tiempo.total .que, .tiempo.total .cuanto { color:#ffd400; }
+  .tiempo .vacio2 { font-size:19px; color:#6e7681; font-style:italic; font-weight:600; }
+
+  #detalle .quienes { margin-top:20px; }
+  #detalle .quienes .titulo2 { font-size:19px; color:#adbac7; font-weight:700; margin-bottom:8px; }
+  #detalle .quienes .nombre { font-size:24px; font-weight:800; line-height:1.35; }
   #entrega .quien, #entregados .quien { font-size:28px; font-weight:800; line-height:1.15; }
   #entrega .cual,  #entregados .cual  { font-size:18px; color:#8b949e; margin-top:4px; }
   #entrega .rejilla.entrega2 { margin-top:26px; }
@@ -456,7 +499,7 @@
 <!-- Al FINAL, no arriba: los carros que necesitan atencion van primero.
      Es un boton y no una pestaña a proposito — el CLAUDE.md pide toques
      directos, sin elementos de navegacion permanentes. -->
-<button id="ver-entregados">Ver entregados de hoy</button>
+<button id="ver-entregados">Finalizados</button>
 
 <div id="asignar">
   <div class="quien" id="asig-quien"></div>
@@ -524,11 +567,26 @@
        final (o incluso solo arriba) tendria que recorrer toda la lista de
        regreso. Fijo, es un toque desde donde sea. -->
   <div id="entregados-cabecera">
-    <button id="entregados-cerrar">&#8592;&nbsp; Volver a la cola</button>
-    <div class="quien">Entregados hoy</div>
+    <div class="fila-cabecera">
+      <button id="entregados-cerrar">&#8592;&nbsp; Volver a la cola</button>
+      <!-- Un <select> nativo, no un menu propio: el CLAUDE.md prohibe
+           menus y gestos, pero el selector del telefono es UN toque y
+           lo abre el sistema con letra grande. Escribir un desplegable
+           a mano seria mas menu, no menos. -->
+      <select id="entregados-dia" title="Ver otro día"></select>
+    </div>
+    <div class="quien">Finalizados</div>
     <div class="cual" id="entregados-cuantos"></div>
   </div>
   <div id="entregados-lista"></div>
+</div>
+
+<!-- Desglose de un carro. Se abre al tocar su tarjeta en Finalizados. -->
+<div id="detalle">
+  <div id="detalle-cabecera">
+    <button id="detalle-cerrar">&#8592;&nbsp; Volver</button>
+  </div>
+  <div id="detalle-cuerpo"></div>
 </div>
 
 <!-- capture="environment" abre la camara TRASERA directo, no la galeria.
@@ -565,7 +623,11 @@ var COLORES = {
 };
 
 var TEXTOS = {
-  prelavado:   "Prelavado",
+  // "Prelavado + Túnel" porque desde el flujo de un solo toque este
+  // estado cubre las dos cosas: nadie marca cuando sale del túnel, así
+  // que el carro sigue aquí hasta que se le asigna secador. El nombre
+  // viejo hacía creer que el túnel era otra etapa que alguien marcaba.
+  prelavado:   "Prelavado + Túnel",
   tunel:       "En túnel",
   por_asignar: "Falta asignar",
   secando:     "Secando",
@@ -1450,13 +1512,52 @@ var ENTREGADOS = [];
 // no se veria. Al cerrar se vuelve, recargado para ver el cambio.
 var volverAEntregados = false;
 
+// Que dia se esta viendo. "" = hoy.
+var diaEntregados = "";
+
+// Se llena una sola vez con los dias que tienen datos. Viene de
+// /reportes, que ya existia para la pagina del dueno.
+function cargarDiasDisponibles() {
+  var sel = document.getElementById("entregados-dia");
+  if (sel.options.length) return Promise.resolve();   // ya se cargo
+
+  return pedir("/reportes")
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var hoy = d.hoy;
+      var dias = (d.dias || []).map(function (x) { return x.fecha; });
+      // Hoy siempre primero, aunque todavia no tenga fila congelada.
+      if (dias.indexOf(hoy) === -1) dias.unshift(hoy);
+      dias.sort().reverse();
+
+      var h = "";
+      for (var i = 0; i < dias.length; i++) {
+        var etiqueta = dias[i] === hoy ? "Hoy" : comoSeLee(dias[i]);
+        h += '<option value="' + escapar(dias[i] === hoy ? "" : dias[i]) + '">' +
+             escapar(etiqueta) + "</option>";
+      }
+      sel.innerHTML = h;
+    })
+    .catch(function () { /* sin selector, pero la lista de hoy si sirve */ });
+}
+
+// "2026-07-19" -> "19 jul". Se arma a mano y no con Date para que no se
+// recorra un dia por la zona horaria.
+var MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+function comoSeLee(fecha) {
+  var p = String(fecha).split("-");
+  if (p.length !== 3) return fecha;
+  return Number(p[2]) + " " + (MESES[Number(p[1]) - 1] || p[1]);
+}
+
 function abrirEntregados() {
   document.getElementById("entregados").style.display = "block";
   document.getElementById("entregados-lista").innerHTML =
     '<div class="cual">Cargando…</div>';
   window.scrollTo(0, 0);
+  cargarDiasDisponibles();
 
-  pedir("/entregados")
+  pedir("/entregados" + (diaEntregados ? "?fecha=" + encodeURIComponent(diaEntregados) : ""))
     .then(function (r) { return r.json(); })
     .then(function (d) {
       var lista = d.carros || [];
@@ -1468,7 +1569,10 @@ function abrirEntregados() {
 
       if (!lista.length) {
         document.getElementById("entregados-lista").innerHTML =
-          '<div class="cual">Todavía no se ha entregado ningún carro hoy.</div>';
+          '<div class="cual">' +
+          (diaEntregados ? "Ese día no se entregó ningún carro."
+                         : "Todavía no se ha entregado ningún carro hoy.") +
+          '</div>';
         return;
       }
 
@@ -1487,8 +1591,11 @@ function abrirEntregados() {
         // repite. "AUTO GRIS HONDA" hay cinco; BSJ-411-A hay uno.
         var placa = c.placa ? '<span class="placa2">' + escapar(c.placa) + '</span>' : "";
 
+        // Se toca la zona de DATOS, no la tarjeta entera: si fuera toda,
+        // un dedo que falla el boton de Restaurar abriria el desglose y
+        // el supervisor pensaria que el boton no sirve.
         h += '<div class="entregado">' +
-               '<div class="datos">' +
+               '<div class="datos" data-detalle="' + c.id + '">' +
                  '<div class="titulo">' + quien + '</div>' +
                  '<div class="pie">' + placa + escapar(pie) + '</div>' +
                '</div>' +
@@ -1511,7 +1618,108 @@ document.getElementById("entregados-cerrar").addEventListener("click", function 
   document.getElementById("entregados").style.display = "none";
 });
 
+// --- Desglose de un carro --------------------------------------------
+// Cuanto duro cada etapa y quien lo seco. Todo viene ya sumado de la
+// base (detalle_del_carro): un carro puede tener VARIAS filas de la
+// misma etapa porque "Corregir" reabre la anterior, y sumarlo aqui
+// seria repetir una regla que ya vive en SQL.
+function duracion(seg) {
+  if (seg === null || seg === undefined) return null;
+  var m = Math.round(seg / 60);
+  if (m < 60) return m + " min";
+  return Math.floor(m / 60) + " h " + (m % 60) + " min";
+}
+
+function renglonTiempo(que, seg, clase) {
+  var d = duracion(seg);
+  return '<div class="tiempo' + (clase ? " " + clase : "") + '">' +
+           '<span class="que">' + escapar(que) + '</span>' +
+           (d ? '<span class="cuanto">' + escapar(d) + '</span>'
+              : '<span class="vacio2">sin registro</span>') +
+         '</div>';
+}
+
+function abrirDetalle(id) {
+  document.getElementById("detalle").style.display = "block";
+  document.getElementById("detalle-cuerpo").innerHTML = '<div class="sub">Cargando…</div>';
+  window.scrollTo(0, 0);
+
+  pedir("/carro?id=" + encodeURIComponent(id))
+    .then(function (r) { return r.json(); })
+    .then(function (c) {
+      if (!c || c.error) {
+        document.getElementById("detalle-cuerpo").innerHTML =
+          '<div class="sub">No se pudo cargar.</div>';
+        return;
+      }
+
+      var servicio = [c.producto, (c.variante && c.variante !== c.producto) ? c.variante : ""]
+                       .filter(Boolean).join("  ·  ");
+
+      var h = "";
+      h += "<h2>" + describir(c) + "</h2>";
+      if (c.placa) h += '<div class="placa">' + escapar(c.placa) + "</div>";
+      h += '<div class="sub">' + escapar(servicio) +
+           (c.linea ? "  ·  Línea " + escapar(c.linea) : "") + "</div>";
+
+      // Las mismas banderitas de la cola, para reconocer el carro.
+      if (c.es_express) h += '<span class="express">&#9873; EXPRESS</span> ';
+      if (c.aviso) {
+        h += '<span class="aviso-servicio ' + claseDeAviso(c.aviso) + '">&#9888; ' +
+             escapar(c.aviso) + "</span> ";
+      }
+      if (c.a_mano) h += '<span class="aviso-servicio mano">&#9888; LAVADO A MANO</span>';
+
+      h += renglonTiempo("Prelavado + Túnel", c.prelavado_seg === null ? c.tunel_seg
+                          : (c.prelavado_seg || 0) + (c.tunel_seg || 0));
+      h += renglonTiempo("Secado", c.secando_seg);
+      h += renglonTiempo("Total con nosotros", c.total_seg, "total");
+
+      // Los avisos honestos: un tiempo que no es real hay que decirlo,
+      // porque en esta pantalla se lee como si fuera medido.
+      if (c.cerrado_automaticamente) {
+        h += '<div class="ausente">&#9888; Nadie lo entregó: se cerró solo al final del día.' +
+             "<br>Su tiempo no es real y no cuenta en los promedios.</div>";
+      }
+      if (c.tiempo_imposible) {
+        h += '<div class="ausente">&#9888; Se entregó más rápido de lo posible.' +
+             "<br>Casi seguro fue un error o una prueba; no cuenta en el reporte.</div>";
+      }
+
+      h += '<div class="quienes"><div class="titulo2">Lo secaron</div>';
+      if (c.secadores && c.secadores.length) {
+        for (var i = 0; i < c.secadores.length; i++) {
+          h += '<div class="nombre">' + escapar(c.secadores[i]) + "</div>";
+        }
+      } else {
+        h += '<div class="vacio2">Sin secador registrado</div>';
+      }
+      h += "</div>";
+
+      document.getElementById("detalle-cuerpo").innerHTML = h;
+    })
+    .catch(function () {
+      document.getElementById("detalle-cuerpo").innerHTML =
+        '<div class="sub">Sin conexión.</div>';
+    });
+}
+
+document.getElementById("detalle-cerrar").addEventListener("click", function () {
+  document.getElementById("detalle").style.display = "none";
+});
+
+// Cambiar de dia recarga la lista. El valor "" es hoy.
+document.getElementById("entregados-dia").addEventListener("change", function () {
+  diaEntregados = this.value;
+  abrirEntregados();
+});
+
 document.getElementById("entregados-lista").addEventListener("click", function (ev) {
+  // Tocar los datos del carro abre su desglose. Va PRIMERO para que un
+  // toque dentro de .datos no se confunda con los botones de al lado.
+  var det = ev.target.closest("[data-detalle]");
+  if (det) { abrirDetalle(Number(det.dataset.detalle)); return; }
+
   // Corregir no pasa por "ocupado": no cambia la etapa del carro, igual
   // que la camara en la cola.
   var corr = ev.target.closest("button[data-corregir-ent]");
