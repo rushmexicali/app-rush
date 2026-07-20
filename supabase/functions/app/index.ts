@@ -522,7 +522,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     const hoy = hoyEnMexicali();
-    const dias = data ?? [];
+
+    // Hoy SIEMPRE se reporta como no congelado, aunque exista la fila.
+    // /reporte lo calcula en vivo para el dia en curso, asi que si aqui
+    // dijera "congelado" las dos rutas contarian historias distintas y el
+    // selector diria una cosa y el encabezado otra.
+    const dias = (data ?? []).map((d: any) =>
+      d.fecha === hoy ? { ...d, congelado_en: null } : d
+    );
     if (!dias.some((d: any) => d.fecha === hoy)) {
       dias.unshift({ fecha: hoy, congelado_en: null });
     }
