@@ -342,6 +342,11 @@
     font-size:30px; font-weight:800; font-variant-numeric:tabular-nums;
   }
   .tiempo.total .que, .tiempo.total .cuanto { color:#ffd400; }
+  /* El "(+4 Túnel)" va pegado al numero pero mas chico y apagado: es
+     contexto, no una segunda cifra que haya que comparar. */
+  .tiempo .cuanto .mas {
+    font-size:16px; font-weight:700; color:#8b949e; margin-left:6px;
+  }
   .tiempo .vacio2 { font-size:19px; color:#6e7681; font-style:italic; font-weight:600; }
 
   #detalle .quienes { margin-top:20px; }
@@ -1630,11 +1635,13 @@ function duracion(seg) {
   return Math.floor(m / 60) + " h " + (m % 60) + " min";
 }
 
-function renglonTiempo(que, seg, clase) {
+function renglonTiempo(que, seg, clase, extra) {
   var d = duracion(seg);
   return '<div class="tiempo' + (clase ? " " + clase : "") + '">' +
            '<span class="que">' + escapar(que) + '</span>' +
-           (d ? '<span class="cuanto">' + escapar(d) + '</span>'
+           (d ? '<span class="cuanto">' + escapar(d) +
+                  (extra ? '<span class="mas">' + escapar(extra) + '</span>' : "") +
+                '</span>'
               : '<span class="vacio2">sin registro</span>') +
          '</div>';
 }
@@ -1670,8 +1677,24 @@ function abrirDetalle(id) {
       }
       if (c.a_mano) h += '<span class="aviso-servicio mano">&#9888; LAVADO A MANO</span>';
 
-      h += renglonTiempo("Prelavado + Túnel", c.prelavado_seg === null ? c.tunel_seg
-                          : (c.prelavado_seg || 0) + (c.tunel_seg || 0));
+      // El prelavado va SOLO, y el tunel se anuncia al lado como "(+4
+      // Túnel)". Asi el supervisor ve cuanto estuvo de verdad en
+      // prelavado sin perder de vista que el total lleva el tunel
+      // encima.
+      //
+      // Se usa el tunel REAL guardado, no un 4 fijo. Casi todos duran 4
+      // min porque el flujo de un solo toque los fabrica asi, pero los
+      // carros del flujo viejo traen tiempos medidos de verdad (hay de
+      // 1, 3, 5 y hasta 8 min). Restar 4 a esos les inventaria prelavado
+      // que no existio. Y si algun dia cambia la maquina, esto sigue
+      // bien solo: el numero vive en segundos_de_tunel().
+      var tunMin = c.tunel_seg ? Math.round(c.tunel_seg / 60) : 0;
+      h += renglonTiempo(
+        "Prelavado + Túnel",
+        c.prelavado_seg,
+        null,
+        tunMin ? " (+" + tunMin + " Túnel)" : ""
+      );
       h += renglonTiempo("Secado", c.secando_seg);
       h += renglonTiempo("Total con nosotros", c.total_seg, "total");
 
