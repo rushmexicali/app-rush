@@ -520,6 +520,32 @@ promedio por carro, desglose con/sin aspirado, y cuántas placas se alcanzaron a
 opcional; un carro sin foto no cuenta como visita. La pantalla lo dice explícitamente porque
 si no, "vino 3 veces" se lee como total y lleva a conclusiones falsas.
 
+> ⚠️ **Pero también puede SOBRECONTAR, y eso no estaba previsto (20/jul/2026).** Se creía
+> que el error solo iba hacia abajo. No: si el supervisor le toma la foto al carro
+> equivocado, esa placa suma una visita que nunca existió.
+>
+> Pasó de verdad. Los carros 69 y 71 quedaron los dos con la placa `BVJ-113-A`. Mirando las
+> fotos, las dos eran del mismo Accord negro. La línea de tiempo lo explica: el 69 se entregó
+> a las 18:44, y a las 18:53 — en un apuro donde despachó el 70 y el 71 en dos minutos — el
+> supervisor fotografió otra vez ese Accord, que seguía físicamente en el patio, y la foto se
+> le pegó al 71. El historial decía **2 visitas y $520** de un carro que vino una vez y pagó
+> $260.
+>
+> **Cómo se supo cuál era el bueno, que es lo que hay que repetir:** no por la foto. La
+> **nota de caja** del 71 decía `AU GRIS`, y la escribió la cajera al cobrar, viendo el carro
+> del cliente. Es un testigo independiente del supervisor. Cuando la foto y la nota no
+> coinciden, **gana la nota**: el supervisor tiene 200 carros y prisa, la cajera tiene el
+> carro enfrente. Además, un `Completo` de $260 "entregado" 2 minutos después de entrar es
+> imposible y delata el apuro.
+>
+> Se arregló quitándole al 71 la foto y la placa ajenas (conservó su color GRIS). **El
+> archivo en Storage NO se borró**, solo se despuntó el registro, por si algún día se quiere
+> revisar.
+>
+> Esto no tiene arreglo en código todavía: nada impide fotografiar el carro equivocado. Lo
+> barato sería avisar cuando dos carros del mismo día comparten placa — es una señal casi
+> segura de foto mal pegada.
+
 **Solo los Paquetes crean carro** (arreglado el 19/jul/2026). Una venta de puro `Pinito`
 (categoría `Aroma`) creaba un carro fantasma en la cola e inflaba el conteo. Ahora se busca en
 todos los renglones del ticket, no solo en el primero — eso arregló de paso que un ticket con
