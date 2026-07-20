@@ -780,7 +780,14 @@ function pintar() {
     html +=   '</div>';
 
     html +=   '<div class="estado">';
-    html +=     '<span class="etiqueta">' + escapar(TEXTOS[c.estado] || c.estado) + '</span>';
+    // Un lavado a mano NO entra al tunel, asi que su etiqueta no lo
+    // menciona: dice solo "Prelavado" y la banderita cian se encarga de
+    // avisar lo demas. Prometerle un tunel a un carro que se lava a mano
+    // es de las cosas que hacen que el supervisor deje de creerle a la
+    // pantalla.
+    var textoEstado = TEXTOS[c.estado] || c.estado;
+    if (c.a_mano && c.estado === "prelavado") textoEstado = "Prelavado";
+    html +=     '<span class="etiqueta">' + escapar(textoEstado) + '</span>';
     // Mientras no tenga linea, la etiqueta recuerda a donde va. Ya
     // asignado seria repetir lo que dice la etiqueta de al lado.
     if (c.es_express) {
@@ -1688,9 +1695,13 @@ function abrirDetalle(id) {
       // 1, 3, 5 y hasta 8 min). Restar 4 a esos les inventaria prelavado
       // que no existio. Y si algun dia cambia la maquina, esto sigue
       // bien solo: el numero vive en segundos_de_tunel().
-      var tunMin = c.tunel_seg ? Math.round(c.tunel_seg / 60) : 0;
+      // Un lavado a mano no entra al tunel: ni etiqueta ni "(+N)". Desde
+      // la migracion 050 tampoco se le fabrica la etapa, asi que tunMin
+      // ya sale en cero solo — la condicion es por los carros viejos que
+      // alcanzaron a quedar con tunel fabricado antes del arreglo.
+      var tunMin = (c.a_mano || !c.tunel_seg) ? 0 : Math.round(c.tunel_seg / 60);
       h += renglonTiempo(
-        "Prelavado + Túnel",
+        c.a_mano ? "Prelavado" : "Prelavado + Túnel",
         c.prelavado_seg,
         null,
         tunMin ? " (+" + tunMin + " Túnel)" : ""
