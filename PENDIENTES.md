@@ -185,6 +185,59 @@ desocupa el **último** de sus integrantes.
 
 ---
 
+### 9. Quitar el botón de "escoger de la galería"
+
+No se está usando. Queda **sólo el de cámara**, al 100%.
+
+> El `CLAUDE.md` (sección 4) documenta por qué se agregó el 19/jul: "por si la foto se tomó
+> fuera de la app". El uso real dice que ese caso no ocurre. **Hay que actualizar esa
+> sección al hacerlo**, si no queda un `CLAUDE.md` describiendo un botón que ya no existe.
+>
+> No se puede confirmar por base de datos — no hay columna que distinga cámara de galería,
+> así que se toma la palabra del dueño. Es reversible con git si resulta que sí hacía falta.
+
+Beneficio secundario: quitarlo deja **un solo botón** en vez de dos, que es exactamente la
+regla de la sección 4. El diseño de dos botones existía para un caso que no pasó.
+
+---
+
+### 10. La foto se habilita SÓLO después de asignar carril y secador
+
+Antes de eso, deshabilitada.
+
+**Se midió antes de aceptarlo, y el cambio va con la corriente:** de las 27 fotos de los
+últimos 2 días con hora de asignación conocida,
+
+```
+25 se tomaron DESPUÉS de asignar   (promedio: 1.0 min después)
+ 2 se tomaron antes
+```
+
+O sea que esto **no les cambia la costumbre, la formaliza**. Riesgo bajo.
+
+> **Además ataca un bug real.** El 19/jul una foto se le pegó al carro equivocado (los carros
+> 69 y 71 quedaron con la misma placa, `BVJ-113-A`) porque en un apuro se fotografió un
+> Accord que seguía en el patio. Un carro recién pagado y sin asignar **todavía puede no
+> estar físicamente identificable**; uno ya asignado sí está enfrente del supervisor.
+> Esto angosta la ventana en la que ese error puede ocurrir. No la cierra — sigue sin haber
+> nada que impida fotografiar el carro equivocado.
+
+⚠️ El botón tiene que **verse deshabilitado**, no desaparecer y reaparecer. Un botón que
+aparece solo es de las cosas que más confunden al supervisor de la tercera edad.
+
+---
+
+## Decisiones ya tomadas por el dueño (20/jul/2026)
+
+- ✅ **Punto 8 — va como se recomendó:** no se mueve la etapa `secando`; el secado efectivo
+  se **deriva**, y el `tiempo_en_fila` se guarda y se muestra en el reporte.
+- ✅ **Punto 8, tarjeta en fila:** el carro formado **sí se pone rojo** a los 35 min (el
+  cliente sí está esperando), pero la tarjeta dice **"EN FILA — detrás de \<carro\>"** para
+  que el supervisor entienda por qué no avanza y pueda moverlo a alguien libre.
+- ✅ **Punto 3 — aprobado:** Corregir debe llegar con los secadores ya premarcados.
+
+---
+
 ## Detectado al revisar el día (20/jul/2026, mediodía)
 
 - [ ] 🔴 **`datos_de_nota` mide lo contrario de lo que dice.** La bandera se apaga al
