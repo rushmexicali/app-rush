@@ -251,9 +251,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .select(`
         id, estado, linea, es_express, producto, variante,
         tipo_unidad, color, marca, cliente, nota, creado_en, foto_path, placa,
+        foto_url, foto_url_expira,
         etapas ( etapa, inicio, fin )
       `)
       .neq("estado", "entregado")
+      // Las devoluciones cancelan el carro: sale de la cola sin borrarse.
+      .is("cancelado_en", null)
       .order("creado_en", { ascending: true });
 
     if (error) {
@@ -272,10 +275,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // Quien esta secando cada carro. Hace falta en la pantalla de
     // confirmar entrega: el supervisor esta a punto de registrarle un
     // rechazo a una persona con nombre y tiene que ver a quien.
-    const { data: asignados } = await db
-      .from("asignaciones")
-      .select("carro_id, secador")
-      .is("fin", null);
+    //
+    // Se limita a los carros de ESTA cola. Antes se pedian todas las
+    // asignaciones abiertas, y como la entrega no las cerraba, la lista
+    // solo crecia: con 200 carros al dia habrian sido miles de filas
+    // viajando al telefono cada 3 segundos. Ya se arreglo la raiz
+    // (avanzar_etapa las cierra), pero el filtro se queda: hace la
+    // consulta barata sin importar lo que pase con los años.
+    const idsEnCola = (data ?? []).map((c: any) => c.id);
+    const { data: asignados } = idsEnCola.length
+      ? await db
+          .from("asignaciones")
+          .select("carro_id, secador")
+          .is("fin", null)
+          .in("carro_id", idsEnCola)
+      : { data: [] as any[] };
     const secadoresDe = new Map<number, string[]>();
     for (const a of asignados ?? []) {
       const lista = secadoresDe.get(a.carro_id) ?? [];
@@ -283,18 +297,47 @@ Deno.serve(async (req: Request): Promise<Response> => {
       secadoresDe.set(a.carro_id, lista);
     }
 
-    // Enlaces firmados para las fotos. Caducan en una hora: el bucket
-    // es privado y nadie debe poder guardarse una direccion permanente
-    // a una foto donde se ve una placa.
-    const conFoto = (data ?? []).filter((c: any) => c.foto_path);
+    // Enlaces firmados de las fotos.
+    //
+    // Se REUSA el que ya se guardo, y solo se firma de nuevo cuando
+    // vencio. Antes se firmaba en cada consulta, y como el token cambia
+    // cada vez, la direccion cambiaba cada 3 segundos: para el navegador
+    // eso es una imagen distinta, asi que volvia a bajar la foto completa
+    // (93 KB) cada 3 segundos, por cada carro con foto. En el wifi del
+    // taller eso son gigabytes por jornada.
     const enlaces = new Map<number, string>();
-    if (conFoto.length) {
+    const ahora = Date.now();
+    const porFirmar: any[] = [];
+
+    for (const c of data ?? []) {
+      if (!c.foto_path) continue;
+      const vence = c.foto_url_expira ? new Date(c.foto_url_expira).getTime() : 0;
+      if (c.foto_url && vence > ahora) enlaces.set(c.id, c.foto_url);
+      else porFirmar.push(c);
+    }
+
+    if (porFirmar.length) {
+      const HORAS = 24;
       const { data: firmados } = await db.storage
         .from("fotos")
-        .createSignedUrls(conFoto.map((c: any) => c.foto_path), 3600);
-      (firmados ?? []).forEach((f: any, i: number) => {
-        if (f?.signedUrl) enlaces.set(conFoto[i].id, f.signedUrl);
-      });
+        .createSignedUrls(porFirmar.map((c: any) => c.foto_path), HORAS * 3600);
+
+      // Se guarda con un margen de una hora, para que nunca se entregue
+      // un enlace que va a vencer mientras el supervisor lo esta viendo.
+      const expira = new Date(ahora + (HORAS - 1) * 3600 * 1000).toISOString();
+
+      for (let i = 0; i < porFirmar.length; i++) {
+        const url = (firmados ?? [])[i]?.signedUrl;
+        if (!url) continue;
+        enlaces.set(porFirmar[i].id, url);
+        const { error: errUrl } = await db
+          .from("carros")
+          .update({ foto_url: url, foto_url_expira: expira })
+          .eq("id", porFirmar[i].id);
+        // Si no se pudo guardar, la foto igual se ve: solo significa que
+        // la proxima consulta la vuelve a firmar.
+        if (errUrl) console.error("No se pudo guardar el enlace de la foto:", errUrl);
+      }
     }
 
     const carros = (data ?? []).map((c: any) => {
@@ -367,7 +410,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     const { error: errGuardar } = await db
       .from("carros")
-      .update({ foto_path: camino, foto_en: new Date().toISOString() })
+      .update({
+        foto_path: camino,
+        foto_en: new Date().toISOString(),
+        // Se borra el enlace de la foto ANTERIOR. Si no, /cola lo reusaria
+        // y el supervisor seguiria viendo la foto vieja hasta que venciera.
+        foto_url: null,
+        foto_url_expira: null,
+      })
       .eq("id", carro);
 
     if (errGuardar) {
