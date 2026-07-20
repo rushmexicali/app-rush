@@ -296,13 +296,16 @@
     font-size:15px; font-weight:700; letter-spacing:1px;
     background:#f0f6fc; color:#0d1117; border-radius:4px; padding:1px 6px; margin-right:6px;
   }
+  /* Amarillo: es el MISMO #e3b341 que ya usa el tunel en la cola, no un
+     amarillo nuevo. La app no debe acumular tonos distintos del mismo
+     color o dejan de significar algo. */
   .restaurar {
     flex:0 0 auto; min-height:60px; padding:0 16px;
     font-size:17px; font-weight:700;
-    background:transparent; color:#adbac7;
-    border:2px solid #30363d; border-radius:12px; cursor:pointer;
+    background:transparent; color:#e3b341;
+    border:2px solid #e3b341; border-radius:12px; cursor:pointer;
   }
-  .restaurar:active { background:#30363d; }
+  .restaurar:active { background:rgba(227,179,65,.18); }
 
   /* Corregir va al lado de Restaurar, apilados. Mas apagado a proposito:
      los dos son acciones raras, pero restaurar es la que el supervisor
