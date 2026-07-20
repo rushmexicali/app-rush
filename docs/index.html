@@ -71,6 +71,16 @@
     font-size: 17px; color:#adbac7; margin-top:3px; line-height:1.25;
   }
 
+  /* Los secadores asignados, en la tarjeta y del MISMO tamaño que el
+     renglon del servicio (17px): el dueño los quiere visibles sin abrir
+     el carro. Va dentro del bloque del servicio a proposito, para no
+     reacomodar la rejilla ni empujar el estado, la foto y los botones a
+     otra fila. Mas claro que el servicio para que los nombres salten. */
+  .secadores-tarjeta {
+    font-size: 17px; font-weight: 700; color:#e6edf3;
+    margin-top: 4px; line-height: 1.3;
+  }
+
   .reloj {
     grid-column: 2; grid-row: 1 / span 3;
     align-self: center;
@@ -181,6 +191,25 @@
   .avanzar:active { filter: brightness(.8); }
   .avanzar[disabled] { opacity:.45; }
 
+  /* Glow SOLO en el boton de Asignar. El supervisor le picaba al icono
+     redondo "Prelavado + Túnel" porque es del mismo azul que el boton;
+     el halo pulsante deja claro cual es el que se toca. En "Entregado"
+     (secando) NO se pone: ahi el boton es verde y no hay con que
+     confundirlo. Se le da a un solo elemento a proposito — si brillaran
+     varios, el glow dejaria de decir "este es". */
+  @keyframes glow-asignar {
+    0%, 100% { box-shadow: 0 0 6px 1px rgba(47,129,247,.55); }
+    50%      { box-shadow: 0 0 22px 6px rgba(47,129,247,.95); }
+  }
+  .avanzar.glow { animation: glow-asignar 1.6s ease-in-out infinite; }
+  /* Si el carro esta demorado el boton es rojo y un halo azul chocaria:
+     el glow se vuelve rojo para que se vea intencional, no roto. */
+  @keyframes glow-asignar-rojo {
+    0%, 100% { box-shadow: 0 0 6px 1px rgba(255,77,79,.6); }
+    50%      { box-shadow: 0 0 22px 6px rgba(255,77,79,1); }
+  }
+  .demorado .avanzar.glow { animation-name: glow-asignar-rojo; }
+
   /* Corregir siempre visible, pero claramente secundario para que nadie
      lo confunda con el boton de avanzar. */
   .corregir {
@@ -201,29 +230,22 @@
     margin-top: 12px;
     display: flex; gap: 8px; align-items: center;
   }
-  .foto, .galeria {
-    /* Mas grandes que el icono para que el area de toque sea generosa:
-       el supervisor los va a picar con el pulgar, a veces con guantes
+  .foto {
+    /* Mas grande que el icono para que el area de toque sea generosa:
+       el supervisor lo va a picar con el pulgar, a veces con guantes
        mojados. */
-    height: 58px;
+    height: 58px; width: 70px; font-size: 24px;
     background: transparent;
     border: 2px solid #30363d; border-radius: 12px;
     color: #8b949e;
     cursor: pointer; padding: 0;
     overflow: hidden;
   }
-  .foto { width: 70px; font-size: 24px; }
   .foto:active { background:#30363d; }
   .foto img { width:100%; height:100%; object-fit:cover; display:block; }
   .foto.subiendo { opacity:.4; }
 
-  /* La galeria es el caso RARO: solo cuando la foto se tomo fuera de la
-     app. Va mas angosta y mas apagada que la camara para que el pulgar
-     caiga en la camara por default. */
-  .galeria { width: 48px; font-size: 21px; opacity: .65; }
-  .galeria:active { background:#30363d; }
-
-  #camara, #galeria { display: none; }
+  #camara { display: none; }
 
   /* Pantalla de acceso. Se teclea una sola vez por telefono. */
   #acceso {
@@ -268,6 +290,19 @@
   .seccion { font-size:20px; font-weight:800; margin:20px 0 10px; color:#adbac7; }
   .seccion .pendiente { color:#e3b341; font-weight:700; }
   .seccion .listo { color:#3fb950; }
+
+  /* Campo para escribir un color que no esta en los comunes. Se ve
+     SIEMPRE en mayusculas: el text-transform lo pinta, pero el valor real
+     lo sube el 'input' en vivo (solo con CSS se mandarian minusculas y el
+     formato no quedaria uniforme con lo que llega de la nota de caja). */
+  .color-otro-input {
+    width:100%; min-height:64px; margin-top:9px;
+    font-size:22px; font-weight:800; text-align:center;
+    letter-spacing:1px; text-transform:uppercase;
+    background:#161b22; color:#fff;
+    border:2px solid #2f81f7; border-radius:13px; padding:10px;
+  }
+  .color-otro-input::placeholder { color:#6e7681; font-weight:700; letter-spacing:.5px; }
 
   .rejilla { display:grid; gap:9px; }
   .rejilla.marcas    { grid-template-columns: repeat(2, 1fr); }
@@ -510,6 +545,14 @@
 
   <div class="seccion">Color</div>
   <div class="rejilla colores" id="asig-colores"></div>
+  <!-- El campo vive FUERA de la rejilla (que se redibuja) para que no se
+       borre mientras el supervisor teclea. Se muestra/oculta, no se
+       recrea. -->
+  <div id="asig-color-otro" style="display:none">
+    <input id="asig-color-input" class="color-otro-input" type="text"
+           inputmode="text" autocomplete="off" autocapitalize="characters"
+           placeholder="ESCRIBE EL COLOR">
+  </div>
 
   <div class="seccion">Marca <span id="asig-marca-estado" class="pendiente">— falta</span></div>
   <div class="rejilla marcas" id="asig-marcas"></div>
@@ -590,13 +633,9 @@
 </div>
 
 <!-- capture="environment" abre la camara TRASERA directo, no la galeria.
-     Lo pide el CLAUDE.md: el supervisor no debe navegar por archivos. -->
+     Lo pide el CLAUDE.md: el supervisor no debe navegar por archivos.
+     El boton de galeria se quito el 20/jul/2026: no se usaba. -->
 <input id="camara" type="file" accept="image/*" capture="environment">
-
-<!-- El mismo input pero SIN capture: aqui el celular si muestra la
-     galeria. Va aparte a proposito, para que el boton de la camara siga
-     abriendo la camara de un solo toque, sin preguntar nada. -->
-<input id="galeria" type="file" accept="image/*">
 
 <div id="acceso">
   <img id="logo-acceso" src="RUSH-Logo.png" alt="RUSH" onerror="this.style.display='none'">
@@ -762,13 +801,18 @@ function pintar() {
     // "sin placa" que no le sirve de nada al supervisor).
     if (c.placa) html += '<div class="placa">' + escapar(c.placa) + '</div>';
     html +=   '<div class="reloj">' + reloj(seg) + '</div>';
-    html +=   '<div class="servicio">' + escapar(servicio) + '</div>';
+    // Los secadores van DENTRO del bloque del servicio, del mismo tamaño,
+    // para que el dueño los vea sin abrir el carro. Solo si ya hay: antes
+    // de asignar la lista viene vacia y no se pinta nada.
+    var secTarjeta = (c.secadores && c.secadores.length)
+      ? '<div class="secadores-tarjeta">' + escapar(c.secadores.join(", ")) + '</div>'
+      : "";
+    html +=   '<div class="servicio">' + escapar(servicio) + secTarjeta + '</div>';
     // Foto: si ya hay, se ve la miniatura; si no, el icono de camara.
     // Nunca estorba ni bloquea: el carro puede salir sin foto.
     html +=   '<div class="fotos">';
-    // Galeria primero (izquierda) y camara despues: el pulgar cae en la
-    // camara, que es lo que se usa casi siempre.
-    html +=     '<button class="galeria" data-galeria="' + c.id + '" title="Escoger una foto ya tomada">&#128194;</button>';
+    // Un solo boton: la camara. El de galeria se quito el 20/jul/2026 —
+    // no se usaba, y un solo boton es la regla del CLAUDE.md.
     html +=     '<button class="foto" data-foto="' + c.id + '" title="Tomar foto del carro">' +
                   (c.foto ? '<img src="' + escapar(c.foto) + '" alt="">' : '&#128247;') +
                 '</button>';
@@ -811,7 +855,10 @@ function pintar() {
     }
 
     html +=   '<div class="acciones">';
-    html +=     '<button class="avanzar" data-accion="avanzar" data-carro="' + c.id + '">' +
+    // El glow va solo cuando el boton dice "Asignar unidad" (todo lo que
+    // no es secando). En "Entregado" no: ahi es verde y no se confunde.
+    html +=     '<button class="avanzar' + (c.estado !== "secando" ? " glow" : "") +
+                  '" data-accion="avanzar" data-carro="' + c.id + '">' +
                   escapar(ACCIONES[c.estado] || "Siguiente") + '</button>';
     // Corregir abre la pantalla de captura (tipo, color, marca). Sirve
     // siempre, incluso antes de asignar: es donde el supervisor arregla
@@ -1020,6 +1067,9 @@ function cargarSecadores() {
 // unico que cambia es cuanto pide.
 var asig = null;
 var verMasMarcas = false;
+// Se abre el campo de "otro color" cuando el supervisor lo pide, o solo,
+// si el color que ya trae el carro no es de los comunes.
+var verColorManual = false;
 
 function abrirPantalla(c, modo) {
   asig = {
@@ -1034,6 +1084,7 @@ function abrirPantalla(c, modo) {
     secadores: []
   };
   verMasMarcas = false;
+  verColorManual = false;
 
   // Los express solo pueden ir a la 1, asi que se elige sola: un toque
   // menos, y se elimina la posibilidad de equivocarse.
@@ -1058,8 +1109,14 @@ function abrirPantalla(c, modo) {
   document.getElementById("asig-solo-asignar").style.display =
     (modo === "asignar" || c.estado === "secando") ? "block" : "none";
 
-  document.getElementById("asignar").style.display = "block";
+  var pantalla = document.getElementById("asignar");
+  pantalla.style.display = "block";
   document.getElementById("barra").style.display = "flex";
+  // Hasta ARRIBA. #asignar es un contenedor fijo con su propio scroll:
+  // conserva donde quedo la vez pasada (tipico: abajo, en secadores), y
+  // el supervisor no ve que arriba hay cosas por llenar. window.scrollTo
+  // mueve el body, no este contenedor — hay que reiniciarlo a mano.
+  pantalla.scrollTop = 0;
   window.scrollTo(0, 0);
   pintarAsignacion();
 
@@ -1110,7 +1167,26 @@ function pintarAsignacion() {
     h += botonOpcion(COLORES_COMUNES[k], asig.color === COLORES_COMUNES[k],
                      'data-color="' + escapar(COLORES_COMUNES[k]) + '"');
   }
+  // Boton para un color que no esta en los comunes. Si el color que ya
+  // trae el carro no es de la lista (ej. GUINDA de la nota), el boton lo
+  // muestra y queda activo — el supervisor ve lo que hay.
+  var colorEsOtro = asig.color && COLORES_COMUNES.indexOf(asig.color) < 0;
+  h += botonOpcion(colorEsOtro ? asig.color : "Otro…", colorEsOtro, 'data-color-otro="1"');
   document.getElementById("asig-colores").innerHTML = h;
+
+  // El campo se muestra si el supervisor lo pidio o si el color ya es de
+  // "otro". No se reescribe su valor mientras esta enfocado, para no
+  // pelear con lo que se esta tecleando.
+  var caja = document.getElementById("asig-color-otro");
+  var campoColor = document.getElementById("asig-color-input");
+  if (verColorManual || colorEsOtro) {
+    caja.style.display = "block";
+    if (document.activeElement !== campoColor) {
+      campoColor.value = colorEsOtro ? asig.color : "";
+    }
+  } else {
+    caja.style.display = "none";
+  }
 
   // --- Marcas ---
   var lista = MARCAS_RAPIDAS.slice();
@@ -1248,6 +1324,23 @@ document.addEventListener("DOMContentLoaded", function () {
     }
     else if (b.dataset.color) {
       asig.color = (asig.color === b.dataset.color) ? null : b.dataset.color;
+      // Al elegir un color de la lista se cierra el campo de "otro": si
+      // habia algo escrito ahi, el comun lo reemplaza.
+      verColorManual = false;
+    }
+    else if (b.dataset.colorOtro) {
+      verColorManual = !verColorManual;
+      // Al cerrarlo se limpia el color que se habia escrito a mano; deja
+      // el carro sin color en vez de conservar uno que ya no se ve.
+      if (!verColorManual && asig.color && COLORES_COMUNES.indexOf(asig.color) < 0) {
+        asig.color = null;
+      }
+      pintarAsignacion();
+      if (verColorManual) {
+        var campo = document.getElementById("asig-color-input");
+        if (campo) campo.focus();
+      }
+      return;
     }
     else if (b.dataset.marca) { asig.marca = b.dataset.marca; }
     else if (b.dataset.linea) { asig.linea = Number(b.dataset.linea); }
@@ -1297,6 +1390,16 @@ document.addEventListener("DOMContentLoaded", function () {
 
     if (navigator.vibrate) navigator.vibrate(15);
     pintarAsignacion();
+  });
+
+  // Color escrito a mano: se sube a MAYUSCULAS en cada tecla. El CSS solo
+  // lo pinta en mayusculas; sin esto, lo que se guarda irian minusculas y
+  // el formato no quedaria uniforme con lo que llega de la nota de caja.
+  document.getElementById("asig-color-input").addEventListener("input", function () {
+    var pos = this.selectionStart;
+    this.value = this.value.toUpperCase();
+    try { this.setSelectionRange(pos, pos); } catch (e) {}
+    if (asig) asig.color = this.value.trim() || null;
   });
 
   document.getElementById("cancelar").addEventListener("click", cerrarAsignacion);
@@ -1784,9 +1887,8 @@ document.getElementById("entregados-lista").addEventListener("click", function (
     .then(function () { ocupado = false; consultar(); });
 });
 
-// Venga de la camara o de la galeria, la foto sigue exactamente el mismo
-// camino: se achica, se sube, y de ahi sale la placa. Por eso esto es una
-// sola funcion y no dos copias que se puedan desincronizar.
+// La foto se achica, se sube, y de ahi sale la placa. Es una sola funcion
+// para que el camino no se pueda desincronizar.
 function subirFoto(archivo, id) {
   if (!archivo || !id) return;
 
@@ -1816,12 +1918,10 @@ function subirFoto(archivo, id) {
 }
 
 document.addEventListener("DOMContentLoaded", function () {
-  ["camara", "galeria"].forEach(function (cual) {
-    document.getElementById(cual).addEventListener("change", function (ev) {
-      var archivo = ev.target.files && ev.target.files[0];
-      ev.target.value = "";                  // permite repetir la misma foto
-      subirFoto(archivo, carroDeLaFoto);
-    });
+  document.getElementById("camara").addEventListener("change", function (ev) {
+    var archivo = ev.target.files && ev.target.files[0];
+    ev.target.value = "";                  // permite repetir la misma foto
+    subirFoto(archivo, carroDeLaFoto);
   });
 });
 
@@ -1837,15 +1937,6 @@ document.getElementById("lista").addEventListener("click", function (ev) {
   if (camara) {
     carroDeLaFoto = Number(camara.dataset.foto);
     document.getElementById("camara").click();
-    return;
-  }
-
-  // La galeria es para cuando la foto se tomo fuera de la app. Mismo
-  // camino, solo cambia de donde sale el archivo.
-  var galeria = ev.target.closest("button[data-galeria]");
-  if (galeria) {
-    carroDeLaFoto = Number(galeria.dataset.galeria);
-    document.getElementById("galeria").click();
     return;
   }
 

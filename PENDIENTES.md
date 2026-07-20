@@ -6,6 +6,27 @@
 
 ---
 
+## Estado del código (20/jul/2026, tarde)
+
+**Lote de bajo riesgo CODIFICADO y probado en el navegador — SIN PUSHEAR.** Los puntos
+**2, 4, 6, 7 y 9** ya están en `docs/index.html`, commiteados localmente. El supervisor
+NO los ve todavía (falta `git push`, que se hace al cierre). Verificado inyectando datos
+falsos en el panel, sin tocar la API real:
+
+- **2** — al reabrir Asignar, el contenedor pasó de 628px de scroll a 0 (abre arriba).
+- **4** — "vino tinto" tecleado en minúsculas salió "VINO TINTO" en el campo y en `asig.color`.
+- **6** — glow en los 2 botones de Asignar, ninguno en el verde de "Entregado".
+- **7** — "Jesús Gil, Pablo Cruz" en la tarjeta, mismo tamaño que el renglón del servicio.
+- **9** — cero botones de galería; solo queda la cámara.
+
+Sintaxis validada con `cscript //E:JScript` (el método del proyecto).
+
+**Pendiente al pushear:** mover estos 5 al `CLAUDE.md` con su razón (incluida la sección 4,
+que hoy describe el botón de galería que se quitó). Falta el lote de **3, 5 y 10**, que toca
+lógica y se revisa con el dueño antes.
+
+---
+
 ## Pedidos del dueño — 20/jul/2026
 
 ### 1. ✅ HECHO (20/jul ~12:5x) — Borrado el rechazo de prueba de Chuy
