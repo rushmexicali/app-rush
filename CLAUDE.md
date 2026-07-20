@@ -314,8 +314,8 @@ antes de tipo/color/marca: es el único identificador que no se repite.
    asignar línea/secador con lista fija de empleados. Probar con el supervisor real.
 3. **Jibble.** Automatizar la lista de empleados activos.
 4. **Datos del carro + foto.**
-5. **Analítica de eficiencia.** Tiempos promedio por línea, por secador, contra un objetivo;
-   normalizado por tipo de carro.
+5. **Analítica de eficiencia.** Reporte diario con corte a las 10 PM, histórico perpetuo, e
+   historial de visitas por placa. Ver sección 12.1.
 
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
@@ -333,12 +333,20 @@ el primer día.
 | 2 · Interfaz del supervisor | ✅ Publicada. Cola, etapas, corregir, asignar |
 | 3 · Jibble | ✅ Sincroniza cada minuto. 13 secadores reales |
 | 4 · Foto del carro | ✅ Opcional, cámara directa, bucket privado |
-| 5 · Analítica | ⬜ Pendiente — necesita días de uso real |
+| 5 · Analítica | ✅ Construida (19/jul/2026) — **pero con un solo día de datos** |
+
+> ⚠️ **La Fase 5 está construida, no validada.** Se armó el mismo día que arrancó la
+> operación, así que los primeros números salen de un día y encima sucio (13 carros
+> `es_prueba`). La maquinaria está verificada; los números todavía no significan nada del
+> negocio. Revisar de nuevo cuando haya una semana limpia.
 
 ### Dónde vive cada cosa
 
 - **App del supervisor:** `https://rushmexicali.github.io/app-rush/` (GitHub Pages, carpeta
   `docs/`). Requiere código de acceso — está en el `.env` como `CODIGO_ACCESO`.
+- **Reporte del dueño:** `https://rushmexicali.github.io/app-rush/reporte.html` — mismo
+  código, **página aparte a propósito**. El reporte es para el dueño y la app para el
+  supervisor; meterlos juntos le agregaría al supervisor un botón que no le sirve.
 - **Repo:** `github.com/rushmexicali/app-rush` (público — por eso existe el código de acceso).
 - **Supabase:** proyecto `rwoyfvddhlabmmuvkpjx`, región West US.
 - **Edge Functions:** `zettle-webhook` (recibe ventas), `app` (API de la pantalla),
@@ -346,6 +354,51 @@ el primer día.
 - **CLI de Supabase:** en `herramientas/` (ignorado por Git). Se despliega con
   `supabase functions deploy <nombre> --no-verify-jwt`.
 - **SQL:** se corre por la API de administración, no pegando en el panel. Ver los scripts.
+
+## 12.1 El reporte diario (Fase 5, 19/jul/2026)
+
+Corte automático a las **10 PM hora de Mexicali**, guardado para siempre.
+
+**Qué trae:** vehículos lavados, autos y tiempo promedio de secado por equipo, espera
+promedio por carro, desglose con/sin aspirado, y cuántas placas se alcanzaron a leer.
+
+**Decisiones que hay que respetar si esto se toca:**
+
+- **Un "equipo" se arma solo.** Es el conjunto de quienes secaron *ese* carro juntos.
+  Una persona sola es un equipo de uno. No hay lista de equipos que mantener.
+- **"Espera" es de que paga a que se lo entregan** — el tiempo completo del cliente,
+  no el tiempo muerto.
+- **Aspirado es regla de negocio, no dato.** La palabra "aspirado" no existe en Zettle.
+  Vive en `lleva_aspirado(producto, variante)` y en un solo lugar a propósito:
+
+  | Con aspirado | Completo, Completo Cera, Solo Interior, Gratis, Manual |
+  |---|---|
+  | **Sin aspirado** | Express, y **Manual con variante Express / Express Grande** |
+
+  La excepción de `Manual` es la trampa: el mismo producto cae de los dos lados según su
+  variante. Un producto desconocido devuelve NULL y se cuenta como "sin clasificar" — nunca
+  se adivina.
+- **El día es de 00:00 a 23:59 hora de Mexicali**, no UTC. `pg_cron` corre en UTC y Mexicali
+  cambia de horario, así que el corte se agenda a las **05:00 y 06:00 UTC** y la función solo
+  escribe si la hora local es 22. Exactamente una de las dos pega cada día.
+- **El día de hoy siempre se calcula al vuelo**, aunque ya exista fila congelada. Un día en
+  curso todavía cambia.
+
+**Dos trampas del modelo de datos** que cualquier consulta nueva tiene que respetar:
+
+1. **`asignaciones.fin` casi siempre es NULL.** Solo `regresar_etapa` lo llena; la entrega
+   normal nunca cierra la asignación. El tiempo de secado sale de la **etapa** del carro.
+2. **Un carro puede tener varias filas de la misma etapa.** "Corregir" borra la etapa abierta
+   y reabre la anterior. Hay que usar `sum(segundos)`, no suponer una fila.
+
+**El historial por placa es un PISO, no un total.** La placa sale de la foto y la foto es
+opcional; un carro sin foto no cuenta como visita. La pantalla lo dice explícitamente porque
+si no, "vino 3 veces" se lee como total y lleva a conclusiones falsas.
+
+**Solo los Paquetes crean carro** (arreglado el 19/jul/2026). Una venta de puro `Pinito`
+(categoría `Aroma`) creaba un carro fantasma en la cola e inflaba el conteo. Ahora se busca en
+todos los renglones del ticket, no solo en el primero — eso arregló de paso que un ticket con
+el aroma primero se guardara como "Pinito".
 
 ### Cómo trabajar aquí
 

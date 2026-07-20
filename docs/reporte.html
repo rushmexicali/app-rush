@@ -1,0 +1,309 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RUSH — Reporte</title>
+
+<!--
+  Pagina APARTE de la app del supervisor, a proposito.
+
+  El reporte es para el DUENO; la app es el telefono del SUPERVISOR.
+  Meterlo en la misma pantalla le agregaria al supervisor un boton que no
+  le sirve, y va contra la regla del CLAUDE.md de que cada boton hace algo
+  que el necesita. Aqui la audiencia es otra: alguien sentado, leyendo
+  numeros, no alguien parado mojandose con un carro esperando.
+
+  Mismo codigo de acceso, otra URL. El telefono del supervisor nunca la ve.
+-->
+
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin:0; padding:16px 14px 40px;
+    background:#0d1117; color:#e6edf3;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+  h1 { font-size:24px; margin:0 0 4px; }
+  .sub { color:#8b949e; font-size:14px; margin-bottom:18px; }
+
+  select, button, input {
+    font-family: inherit; font-size:16px;
+    background:#161b22; color:#e6edf3;
+    border:1px solid #30363d; border-radius:8px;
+    padding:9px 12px;
+  }
+  button { cursor:pointer; }
+  button:active { background:#30363d; }
+
+  .barra { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:20px; }
+
+  /* Los seis numeros. Tarjetas grandes: es lo primero que se busca. */
+  .numeros { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:10px; margin-bottom:22px; }
+  .n {
+    background:#161b22; border:1px solid #30363d; border-radius:12px;
+    padding:14px 16px;
+  }
+  .n .valor { font-size:32px; font-weight:800; line-height:1.1; }
+  .n .rotulo { color:#8b949e; font-size:13px; margin-top:4px; line-height:1.3; }
+  .n .nota { color:#6e7681; font-size:12px; margin-top:6px; font-style:italic; }
+
+  h2 { font-size:17px; margin:26px 0 10px; color:#adbac7; font-weight:700; }
+
+  table { width:100%; border-collapse:collapse; font-size:15px; }
+  th, td { text-align:left; padding:9px 8px; border-bottom:1px solid #21262d; }
+  th { color:#8b949e; font-size:13px; font-weight:600; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  tr:last-child td { border-bottom:none; }
+
+  .vacio { color:#6e7681; font-style:italic; padding:14px 0; }
+
+  /* Los avisos honestos sobre que tan confiable es cada numero. No son
+     decorativos: sin ellos el dueno lee un piso como si fuera un total. */
+  .aviso {
+    background:#1c2128; border-left:4px solid #d29922; border-radius:6px;
+    padding:11px 13px; margin:14px 0; font-size:14px; color:#c9d1d9; line-height:1.45;
+  }
+  .aviso b { color:#e6edf3; }
+
+  #acceso {
+    position:fixed; inset:0; background:#0d1117;
+    display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    padding:24px;
+  }
+  #acceso input { font-size:26px; text-align:center; letter-spacing:4px; width:100%; max-width:320px; }
+  #malcodigo { color:#ff7875; display:none; }
+</style>
+
+<h1>Reporte diario</h1>
+<div class="sub" id="encabezado">—</div>
+
+<div class="barra">
+  <select id="dia"></select>
+  <button id="respaldo">Descargar respaldo</button>
+</div>
+
+<div id="contenido"></div>
+
+<div id="acceso">
+  <h2 style="color:#e6edf3">Código de acceso</h2>
+  <input id="campo" inputmode="text" autocapitalize="characters" autocomplete="off">
+  <div id="malcodigo">Código incorrecto</div>
+  <button id="entrar" style="font-size:20px; padding:12px 30px">Entrar</button>
+</div>
+
+<script>
+var API = "https://rwoyfvddhlabmmuvkpjx.supabase.co/functions/v1/app";
+
+// Mismo codigo y mismo almacen que la app del supervisor: si el dueno ya
+// entro en este navegador, no lo vuelve a teclear.
+var CODIGO = "";
+
+function cargarCodigo() {
+  var enLiga = new URLSearchParams(location.search).get("c");
+  if (enLiga) {
+    CODIGO = enLiga.trim().toUpperCase();
+    try { localStorage.setItem("rush_codigo", CODIGO); } catch (e) {}
+    history.replaceState({}, "", location.pathname);
+    return;
+  }
+  try { CODIGO = localStorage.getItem("rush_codigo") || ""; } catch (e) { CODIGO = ""; }
+}
+
+function pedir(ruta) {
+  return fetch(API + ruta, { headers: { "x-codigo": CODIGO }, cache: "no-store" });
+}
+
+function pedirCodigo(fallo) {
+  document.getElementById("acceso").style.display = "flex";
+  document.getElementById("malcodigo").style.display = fallo ? "block" : "none";
+  document.getElementById("campo").focus();
+}
+
+function escapar(t) {
+  return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) {
+    return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
+  });
+}
+
+// Los segundos crudos no le dicen nada a nadie. "34 min" si.
+function duracion(seg) {
+  if (seg == null) return "—";
+  var m = Math.round(seg / 60);
+  if (m < 60) return m + " min";
+  var h = Math.floor(m / 60);
+  return h + " h " + (m % 60) + " min";
+}
+
+function pintarReporte(r) {
+  var placas = r.placas || {};
+  var asp = r.aspirado || {};
+  var html = "";
+
+  html += '<div class="numeros">';
+  html +=   tarjeta(r.vehiculos_lavados, "Vehículos lavados",
+              r.vehiculos_sin_terminar ? r.vehiculos_sin_terminar + " entraron y no se han entregado" : "");
+  html +=   tarjeta(duracion(r.espera_promedio_seg), "Espera promedio por carro",
+              "De que paga a que se lo entregan");
+  html +=   tarjeta(duracion(r.secado_promedio_seg), "Secado promedio", "General, todos los equipos");
+  html +=   tarjeta(asp.con, "Con aspirado", "");
+  html +=   tarjeta(asp.sin, "Sin aspirado", "");
+  if (asp.sin_clasificar) {
+    html += tarjeta(asp.sin_clasificar, "Sin clasificar",
+              "Paquetes que no reconozco — avísame para agregarlos");
+  }
+  html += '</div>';
+
+  // --- Equipos ---
+  html += "<h2>Por equipo</h2>";
+  var eq = r.equipos || [];
+  if (!eq.length) {
+    html += '<div class="vacio">Ningún carro tuvo secador asignado este día.</div>';
+  } else {
+    html += '<table><tr><th>Equipo</th><th class="num">Carros</th><th class="num">Secado promedio</th></tr>';
+    for (var i = 0; i < eq.length; i++) {
+      html += "<tr><td>" + escapar(eq[i].equipo) + "</td>" +
+              '<td class="num">' + eq[i].carros + "</td>" +
+              '<td class="num">' + duracion(eq[i].secado_promedio_seg) + "</td></tr>";
+    }
+    html += "</table>";
+    html += '<div class="aviso">El promedio de secado sale de los carros que <b>ya terminaron</b>. ' +
+            'Un equipo con carros todavía secando aparece con menos tiempo del que va a tener.</div>';
+  }
+
+  // --- Placas ---
+  html += "<h2>Placas leídas</h2>";
+  var conPlaca = placas.con_placa || 0;
+  var totalCarros = placas.carros || 0;
+  html += '<div class="numeros">';
+  html +=   tarjeta(conPlaca + " de " + totalCarros, "Carros con placa leída",
+              (placas.con_foto || 0) + " tuvieron foto");
+  html += '</div>';
+
+  if (conPlaca < totalCarros) {
+    html += '<div class="aviso">La placa sale de la foto, y la foto es <b>opcional</b>. ' +
+            'De ' + totalCarros + ' carros se leyó la placa de ' + conPlaca + '. ' +
+            'Por eso el historial de visitas es un <b>piso, no un total</b>: si dice que una placa vino 3 veces, ' +
+            'vino 3 veces <b>o más</b>.</div>';
+  }
+
+  return html;
+}
+
+function tarjeta(valor, rotulo, nota) {
+  return '<div class="n"><div class="valor">' + escapar(valor == null ? "—" : valor) + "</div>" +
+         '<div class="rotulo">' + escapar(rotulo) + "</div>" +
+         (nota ? '<div class="nota">' + escapar(nota) + "</div>" : "") + "</div>";
+}
+
+function pintarPlacas(lista) {
+  var html = "<h2>Historial por placa</h2>";
+  html += '<div class="barra"><input id="buscar" placeholder="Buscar placa…" style="flex:1; min-width:160px"></div>';
+  html += '<div id="tablaplacas"></div>';
+  return html;
+}
+
+function tablaPlacas(placas) {
+  if (!placas.length) return '<div class="vacio">Todavía no hay placas leídas.</div>';
+  var html = '<table><tr><th>Placa</th><th class="num">Visitas</th><th>Carro</th><th>Última vez</th></tr>';
+  for (var i = 0; i < placas.length; i++) {
+    var p = placas[i];
+    var carro = [p.tipo_unidad, p.color, p.marca].filter(Boolean).join(" ");
+    html += "<tr><td><b>" + escapar(p.placa_como_se_lee || p.placa) + "</b></td>" +
+            '<td class="num">' + p.visitas + "</td>" +
+            "<td>" + escapar(carro || "—") + "</td>" +
+            "<td>" + escapar(new Date(p.ultima_visita).toLocaleDateString("es-MX")) + "</td></tr>";
+  }
+  return html + "</table>";
+}
+
+function cargarPlacas(q) {
+  pedir("/placas" + (q ? "?q=" + encodeURIComponent(q) : ""))
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      document.getElementById("tablaplacas").innerHTML = tablaPlacas(d.placas || []);
+    })
+    .catch(function () {
+      document.getElementById("tablaplacas").innerHTML = '<div class="vacio">No se pudo cargar.</div>';
+    });
+}
+
+function cargarDia(fecha) {
+  document.getElementById("contenido").innerHTML = '<div class="vacio">Cargando…</div>';
+  pedir("/reporte?fecha=" + fecha)
+    .then(function (r) {
+      if (r.status === 401) { pedirCodigo(true); throw new Error("codigo"); }
+      return r.json();
+    })
+    .then(function (r) {
+      document.getElementById("encabezado").textContent =
+        r.congelado_en
+          ? "Corte cerrado el " + new Date(r.congelado_en).toLocaleString("es-MX")
+          : "Día en curso — todavía puede cambiar";
+      document.getElementById("contenido").innerHTML = pintarReporte(r) + pintarPlacas();
+      cargarPlacas("");
+      var b = document.getElementById("buscar");
+      if (b) b.addEventListener("input", function () { cargarPlacas(b.value.trim()); });
+    })
+    .catch(function (e) {
+      if (e && e.message === "codigo") return;
+      document.getElementById("contenido").innerHTML =
+        '<div class="vacio">No se pudo cargar el reporte.</div>';
+    });
+}
+
+function arrancar() {
+  pedir("/reportes")
+    .then(function (r) {
+      if (r.status === 401) { pedirCodigo(true); throw new Error("codigo"); }
+      return r.json();
+    })
+    .then(function (d) {
+      var sel = document.getElementById("dia");
+      sel.innerHTML = "";
+      (d.dias || []).forEach(function (x) {
+        var o = document.createElement("option");
+        o.value = x.fecha;
+        o.textContent = x.fecha + (x.congelado_en ? "" : "  (en curso)");
+        sel.appendChild(o);
+      });
+      sel.addEventListener("change", function () { cargarDia(sel.value); });
+      if (sel.value) cargarDia(sel.value);
+    })
+    .catch(function (e) {
+      if (e && e.message === "codigo") return;
+      document.getElementById("contenido").innerHTML =
+        '<div class="vacio">No se pudo conectar.</div>';
+    });
+}
+
+document.getElementById("respaldo").addEventListener("click", function () {
+  pedir("/respaldo")
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      // Se baja como archivo para que viva fuera de Supabase. Ese es el
+      // punto: si un dia se pierde la cuenta, los numeros siguen aqui.
+      var blob = new Blob([JSON.stringify(d, null, 2)], { type: "application/json" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "rush-respaldo-" + new Date().toISOString().slice(0, 10) + ".json";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    })
+    .catch(function () { alert("No se pudo bajar el respaldo."); });
+});
+
+document.getElementById("entrar").addEventListener("click", function () {
+  var v = document.getElementById("campo").value.trim().toUpperCase();
+  if (!v) return;
+  CODIGO = v;
+  try { localStorage.setItem("rush_codigo", CODIGO); } catch (e) {}
+  document.getElementById("acceso").style.display = "none";
+  arrancar();
+});
+document.getElementById("campo").addEventListener("keydown", function (ev) {
+  if (ev.key === "Enter") document.getElementById("entrar").click();
+});
+
+cargarCodigo();
+if (!CODIGO) pedirCodigo(false); else arrancar();
+</script>

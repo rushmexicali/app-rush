@@ -82,6 +82,16 @@ const DEMORA_SEG: Record<string, number> = {
   secando: 2100,
 };
 
+// Que dia es HOY en Mexicali, no en UTC. Despues de las 4-5 PM local ya
+// cambio el dia en UTC, y sin esto el reporte del dia se partiria a media
+// tarde.
+function hoyEnMexicali(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Tijuana",
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+}
+
 function json(cuerpo: unknown, status = 200): Response {
   return new Response(JSON.stringify(cuerpo), {
     status,
@@ -460,6 +470,102 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return json({ ok: false, error: error.message }, 500);
     }
     return json(data);
+  }
+
+  // --- Reporte diario -------------------------------------------------
+  // Los dias pasados salen del congelado (reportes_diarios); el dia de hoy
+  // se calcula al vuelo, porque todavia esta cambiando. A las 10 PM el
+  // cron lo congela y a partir de ahi ya no se recalcula.
+  if (ruta === "/reporte") {
+    const fecha = url.searchParams.get("fecha") ?? "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      return json({ error: "falta fecha (YYYY-MM-DD)" }, 400);
+    }
+
+    // El dia de HOY siempre se calcula al vuelo, aunque exista una fila
+    // congelada. Un dia en curso todavia esta cambiando: leerlo de un
+    // congelado de hace horas mostraria numeros viejos con cara de
+    // definitivos. El cron lo vuelve a congelar a las 10 PM.
+    const esHoy = fecha === hoyEnMexicali();
+
+    if (!esHoy) {
+      const { data: congelado } = await db
+        .from("reportes_diarios")
+        .select("datos, congelado_en")
+        .eq("fecha", fecha)
+        .maybeSingle();
+
+      if (congelado?.datos) {
+        return json({ ...congelado.datos, congelado_en: congelado.congelado_en });
+      }
+    }
+
+    const { data, error } = await db.rpc("reporte_del_dia", { p_fecha: fecha });
+    if (error) {
+      console.error("Fallo al calcular el reporte de", fecha, ":", error);
+      return json({ error: error.message }, 500);
+    }
+    return json({ ...data, congelado_en: null });
+  }
+
+  // --- Que dias hay ---------------------------------------------------
+  // Los congelados, mas el dia de hoy (que todavia no lo esta).
+  if (ruta === "/reportes") {
+    const { data, error } = await db
+      .from("reportes_diarios")
+      .select("fecha, congelado_en")
+      .order("fecha", { ascending: false });
+
+    if (error) {
+      console.error("Fallo al listar reportes:", error);
+      return json({ error: error.message }, 500);
+    }
+
+    const hoy = hoyEnMexicali();
+    const dias = data ?? [];
+    if (!dias.some((d: any) => d.fecha === hoy)) {
+      dias.unshift({ fecha: hoy, congelado_en: null });
+    }
+    return json({ dias, hoy });
+  }
+
+  // --- Respaldo completo ----------------------------------------------
+  // Todos los reportes congelados de un jalon, para bajarlos a un archivo.
+  // Es el respaldo mensual manual: si algun dia se pierde el proyecto de
+  // Supabase, los numeros historicos siguen existiendo en la computadora
+  // del dueno.
+  if (ruta === "/respaldo") {
+    const { data, error } = await db
+      .from("reportes_diarios")
+      .select("fecha, datos, congelado_en")
+      .order("fecha", { ascending: true });
+
+    if (error) {
+      console.error("Fallo al armar el respaldo:", error);
+      return json({ error: error.message }, 500);
+    }
+    return json({ generado_en: new Date().toISOString(), reportes: data ?? [] });
+  }
+
+  // --- Historial por placa --------------------------------------------
+  // Sin ?q= devuelve las que mas han venido. Con ?q= busca.
+  if (ruta === "/placas") {
+    const q = (url.searchParams.get("q") ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+    let consulta = db
+      .from("historial_placas")
+      .select("placa, placa_como_se_lee, visitas, primera_visita, ultima_visita, tipo_unidad, color, marca, cliente, gastado")
+      .order("visitas", { ascending: false })
+      .limit(50);
+
+    if (q) consulta = consulta.ilike("placa", `%${q}%`);
+
+    const { data, error } = await consulta;
+    if (error) {
+      console.error("Fallo al buscar placas:", error);
+      return json({ error: error.message }, 500);
+    }
+    return json({ placas: data ?? [] });
   }
 
   return json({ error: "ruta desconocida" }, 404);
