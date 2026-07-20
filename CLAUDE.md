@@ -390,10 +390,16 @@ antes de tipo/color/marca: es el único identificador que no se repite.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
-## 12. Estado actual — al 19/jul/2026
+## 12. Estado actual — al 19/jul/2026 (fin del día)
 
-**Fases 1 a 4 construidas y corriendo en producción.** El sistema captura ventas reales desde
-el primer día.
+**Las 5 fases están en producción y los supervisores ya trabajan con la app.** Ese día
+entraron ~55 carros reales. Todo lo de abajo se construyó y se publicó en un solo día, así
+que **hay mucho código nuevo con muy poco kilometraje**.
+
+> ⚠️ **Lo más importante para quien siga:** este proyecto se construyó *encima* de una
+> operación en marcha. Varios de los bugs más serios del día los introdujo el propio trabajo
+> del día y se encontraron **midiendo, no leyendo el código**. Antes de agregar nada, vale más
+> revisar cómo se está comportando lo que ya está que construir lo siguiente.
 
 ### Lo que ya funciona
 
@@ -488,16 +494,56 @@ el aroma primero se guardara como "Pinito".
 - **Publicar la app:** commit + `git push` con `GITHUB_TOKEN`. Pages republica en ~1 min.
 - **Verificar:** siempre con `curl.exe` contra la API real, nunca asumiendo.
 
-### Lo siguiente
+### Lo siguiente (en este orden)
 
-1. **Probar con el supervisor real** (el Paso 7 que se saltó a propósito): darle el teléfono
-   sin explicarle nada y anotar dónde se traba.
-2. ~~**Lectura automática de placas**~~ **RESUELTO (19/jul/2026)** — ya está en producción.
-   Detalle en la sección 9. El dueño ve el tema legal por separado.
-3. **Fase 5 — analítica.** No arrancar hasta tener varios días de operación limpia; hoy solo
-   hay un puñado de carros medibles (ver `es_prueba` y la vista `etapas_medibles`).
+1. **VIGILAR, no construir.** Los supervisores empezaron a usarla el 19/jul/2026 por la
+   tarde. Lo primero de la siguiente sesión es ver cómo se portó, con consultas reales:
+   - ¿Cuántas fotos se están tomando? ¿De cuántas se leyó la placa?
+     `select count(*) filter (where foto_path is not null), count(*) filter (where placa is not null) from carros where creado_en::date = current_date`
+   - ¿Hay rechazos? ¿De quién y por qué? (tabla `rechazos`)
+   - ¿El corte de las 10 PM se congeló solo? (`select * from reportes_diarios`)
+   - ¿Cuántos carros quedaron sin entregar al cierre? Eso delata dónde se traba.
+2. **Preguntarle al dueño cómo le fue al supervisor.** El Paso 7 (darle el teléfono sin
+   explicar nada y anotar dónde se traba) por fin está ocurriendo de verdad.
+3. **Cuando haya una semana limpia, revisar la analítica.** Hoy los números salen de un día
+   sucio y no significan nada del negocio. Ver `es_prueba`, `cancelado_en` y `etapas_medibles`.
+
+### Lo que se construyó el 19/jul/2026 (para orientarse rápido)
+
+Migraciones 018 a 032, todas de ese día. En orden de qué tan importante es entenderlas:
+
+| Migración | Qué resuelve |
+|---|---|
+| `024` | **Un solo toque antes de secar.** Reescribe la máquina de etapas. La más delicada |
+| `029` | Devoluciones: no crean carro y cancelan el original (`cancelado_en`) |
+| `030` | **Rendimiento** para 150-200 carros: cierra asignaciones al entregar, índices |
+| `032` | La URL firmada de la foto deja de cambiar en cada consulta |
+| `026` | Rechazos de entrega, una fila por secador + `grupo` para contar eventos |
+| `021`, `027`, `031` | El reporte diario (la 031 es la versión viva) |
+| `020` | Solo los Paquetes crean carro (el carro fantasma del Pinito) |
+| `018` | La nota de caja también puede venir en el nombre del descuento |
+
+**Cómo se probó lo delicado, y cómo conviene seguir haciéndolo:** con un bloque `do $$ ... $$`
+que arma el escenario completo y termina con `raise exception` para que **todo se revierta**.
+Así se prueba sobre la base real sin ensuciar la cola del supervisor. Ver el historial de
+git; el patrón vale más que cualquiera de las pruebas sueltas.
 
 ## 13. Decisiones pendientes (llenar con el tiempo)
+
+**Abiertas al 19/jul/2026, en orden de urgencia:**
+
+- **¿Un carro entregado y luego devuelto cuenta como lavado?** Hoy SÍ cuenta (el carro se
+  lavó y ocupó gente; devolver el dinero no deshace el trabajo). Solo se cancela si la
+  devolución llega mientras el carro sigue en la cola. **Decisión mía, no confirmada.**
+- **¿Cuántos rechazos son "muchos"?** El reporte los cuenta pero no hay meta. Se decide
+  viendo datos reales, no inventando un número.
+- **El histórico de placas es un piso, no un total** — la foto es opcional. Si se quiere que
+  sea confiable, habría que hacer la foto obligatoria, y eso choca con la regla de que nunca
+  bloquee al supervisor en día pesado.
+- **El respaldo mensual es manual.** El botón "Descargar respaldo" baja un `.json`. Nadie lo
+  ha hecho todavía; si pasan meses sin bajarlo, el punto de tenerlo se pierde.
+
+---
 
 - ¿Cuántas líneas de secado hay realmente? (el mockup asume 3)
 - ¿Cuántos secadores/personas por línea? ¿Un carro puede tener más de un secador asignado?
