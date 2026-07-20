@@ -10,8 +10,16 @@
 //      supervisor no tendria como saber que esta viendo el pasado.
 // =====================================================================
 
-var CACHE = "rush-v1";
-var BASICOS = ["./", "./index.html", "./manifest.json", "./icono-192.png", "./icono-512.png"];
+// Se sube la version cuando cambian los BASICOS: al activarse, el worker
+// borra los caches con otro nombre, y asi los telefonos que ya tienen la
+// app instalada reciben los archivos nuevos en vez de quedarse con los
+// viejos guardados.
+//   v2 (19/jul/2026) — entra el logo y los iconos de verdad.
+var CACHE = "rush-v2";
+var BASICOS = [
+  "./", "./index.html", "./manifest.json",
+  "./RUSH-Logo.png", "./icono-192.png", "./icono-512.png"
+];
 
 self.addEventListener("install", function (ev) {
   ev.waitUntil(

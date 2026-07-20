@@ -19,10 +19,14 @@
     font-size: 18px;
   }
   header {
-    display:flex; justify-content:space-between; align-items:baseline;
+    display:flex; justify-content:space-between; align-items:center;
     padding: 6px 4px 14px;
   }
-  h1 { font-size: 26px; letter-spacing:1px; }
+  /* El logo es la palabra completa. Se fija la ALTURA y el ancho sale
+     solo, para que no se deforme si algun dia cambia el archivo. */
+  #logo { height: 30px; width: auto; display: block; }
+  /* Respaldo si la imagen no carga: se ve la palabra, no un hueco. */
+  h1 { font-size: 26px; letter-spacing:1px; margin:0; }
   #cuantos { font-size: 20px; color:#8b949e; font-weight:700; }
 
   .carro {
@@ -196,6 +200,7 @@
     padding:28px 22px;
     flex-direction:column; justify-content:center; gap:18px;
   }
+  #logo-acceso { height:44px; width:auto; align-self:flex-start; margin-bottom:6px; }
   #acceso h2 { font-size:28px; }
   #acceso p { color:#8b949e; font-size:18px; line-height:1.4; }
   #campo {
@@ -314,7 +319,11 @@
 <body>
 
 <header>
-  <h1>RUSH</h1>
+  <!-- Si la imagen no carga (wifi caido en la primera visita, antes de que
+       el service worker la guarde), onerror deja el texto en su lugar. Un
+       hueco en el encabezado se ve como app rota. -->
+  <img id="logo" src="RUSH-Logo.png" alt="RUSH"
+       onerror="this.outerHTML='&lt;h1&gt;RUSH&lt;/h1&gt;'">
   <div id="cuantos"></div>
 </header>
 
@@ -359,6 +368,7 @@
 <input id="galeria" type="file" accept="image/*">
 
 <div id="acceso">
+  <img id="logo-acceso" src="RUSH-Logo.png" alt="RUSH" onerror="this.style.display='none'">
   <h2>Código de acceso</h2>
   <p>Escribe el código que te dieron. Solo se pide esta vez: el teléfono lo recuerda.</p>
   <input id="campo" type="text" autocomplete="off" autocapitalize="characters" placeholder="RUSH-----">
