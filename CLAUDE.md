@@ -830,9 +830,27 @@ git; el patrón vale más que cualquiera de las pruebas sueltas.
 
 **Abiertas al 19/jul/2026, en orden de urgencia:**
 
-- **¿Un carro entregado y luego devuelto cuenta como lavado?** Hoy SÍ cuenta (el carro se
-  lavó y ocupó gente; devolver el dinero no deshace el trabajo). Solo se cancela si la
-  devolución llega mientras el carro sigue en la cola. **Decisión mía, no confirmada.**
+- ~~**¿Un carro entregado y luego devuelto cuenta como lavado?**~~ **RESUELTO y CONFIRMADO
+  por el dueño (20/jul/2026): SÍ cuenta.** Solo se cancela si la devolución llega mientras el
+  carro sigue en la cola.
+
+  La razón del dueño es mejor que la que yo había supuesto: *"en los casos en los que hubo
+  reembolso pero sí se entregó el carro, es comúnmente porque algo salió mal, y para no quedar
+  mal con el cliente le regresamos su dinero, pero el capital humano sí se utilizó"*.
+
+  O sea que una devolución **después** de entregar no es una venta que no ocurrió: es una
+  **falla de servicio que se pagó con dinero para no perder al cliente**. El trabajo existió,
+  la gente se ocupó, y el reporte debe seguir contándolo.
+
+  > 💡 **Lo que esto destapa, y todavía no está construido:** por la propia descripción del
+  > dueño, una devolución sobre un carro ya entregado es una **señal de calidad** — del mismo
+  > tipo que un rechazo, pero peor: el rechazo se atrapa antes de que el cliente se vaya, y
+  > esto se atrapa cuando ya se fue molesto. Hoy es **invisible**: no cancela el carro, no
+  > aparece en el reporte y nadie se entera.
+  >
+  > El dato ya existe y no hace falta cambiar el modelo: son las filas de `ventas` con
+  > `refundsPurchaseUuid` que apuntan a un carro `entregado` y sin cancelar. Faltaría contarlo
+  > en el reporte diario, junto a los rechazos.
 - **¿Cuántos rechazos son "muchos"?** El reporte los cuenta pero no hay meta. Se decide
   viendo datos reales, no inventando un número.
 - **El histórico de placas es un piso, no un total** — la foto es opcional. Si se quiere que
