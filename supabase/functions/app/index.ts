@@ -65,17 +65,18 @@ function autorizado(req: Request, url: URL): boolean {
 //   >0  = segundos despues de los cuales se pone rojo
 // ---------------------------------------------------------------------
 const DEMORA_SEG: Record<string, number> = {
-  // Prelavado: 15 minutos.
-  prelavado: 900,
+  // Prelavado: 19 minutos.
+  //
+  // Eran 15, pero desde el 19/jul/2026 este estado ya no es solo el
+  // prelavado: cubre todo lo que pasa antes de secar (prelavado + tunel +
+  // el rato hasta que el supervisor asigna), porque ahora es un solo
+  // toque. 15 de prelavado + 4 del tunel = 19.
+  prelavado: 1140,
 
-  // Tunel: NUNCA. Es automatico y siempre tarda casi lo mismo, asi que
-  // un color que cambia ahi no informaria nada. Y un rojo que aparece
-  // sin que haya problema enseña al supervisor a ignorar el rojo.
+  // Estos dos ya no se generan: quedan por los carros que venian en
+  // camino cuando cambio el flujo. Se pueden borrar cuando la cola este
+  // limpia de ellos.
   tunel: 0,
-
-  // Falta asignar: rojo SIEMPRE. No es una demora que se acumula, es una
-  // accion que debe ocurrir en cuanto el carro sale del tunel. Mientras
-  // este asi, alguien tiene algo que hacer ya.
   por_asignar: -1,
 
   // Secando: 35 minutos.
@@ -442,6 +443,28 @@ Deno.serve(async (req: Request): Promise<Response> => {
       console.error("Fallo al asignar el carro", cuerpo?.carro, ":", error);
       return json({ ok: false, error: error.message }, 500);
     }
+
+    // El tipo y el color se capturan en la MISMA pantalla, pero no son
+    // asunto de asignar_carro (que valida lineas y secadores). Se guardan
+    // aparte, y solo si la asignacion funciono.
+    const tipo  = String(cuerpo?.tipo_unidad ?? "").trim();
+    const color = String(cuerpo?.color ?? "").trim();
+    if ((data as any)?.ok !== false && (tipo || color)) {
+      const { error: errDatos } = await db.rpc("editar_carro", {
+        p_carro: Number(cuerpo?.carro),
+        p_tipo_unidad: tipo || null,
+        p_color: color || null,
+        p_marca: null,
+        p_linea: null,
+      });
+      // No se le devuelve error al telefono: el carro YA quedo asignado,
+      // que es lo que importa. El dato se puede volver a poner con
+      // Corregir.
+      if (errDatos) {
+        console.error("Asignado, pero no se pudo guardar tipo/color:", errDatos);
+      }
+    }
+
     return json(data);
   }
 
@@ -467,6 +490,41 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     if (error) {
       console.error("Fallo", funcion, "carro", carro, ":", error);
+      return json({ ok: false, error: error.message }, 500);
+    }
+    return json(data);
+  }
+
+  // --- Corregir los datos del carro -----------------------------------
+  // El camino que la migracion 003 prometio y nunca se construyo: si la
+  // nota de la cajera falta o viene mal, el supervisor la arregla.
+  // Cualquier campo que no venga se deja como estaba.
+  if (ruta === "/editar") {
+    if (req.method !== "POST") return json({ error: "usa POST" }, 405);
+
+    let cuerpo: any;
+    try { cuerpo = await req.json(); } catch { return json({ ok: false, error: "cuerpo invalido" }, 400); }
+
+    const carro = Number(cuerpo?.carro);
+    if (!carro || !Number.isFinite(carro)) {
+      return json({ ok: false, error: "falta el numero de carro" }, 400);
+    }
+
+    const limpio = (v: unknown) => {
+      const t = String(v ?? "").trim();
+      return t === "" ? null : t;
+    };
+
+    const { data, error } = await db.rpc("editar_carro", {
+      p_carro: carro,
+      p_tipo_unidad: limpio(cuerpo?.tipo_unidad),
+      p_color: limpio(cuerpo?.color),
+      p_marca: limpio(cuerpo?.marca),
+      p_linea: cuerpo?.linea == null ? null : Number(cuerpo.linea),
+    });
+
+    if (error) {
+      console.error("Fallo al editar el carro", carro, ":", error);
       return json({ ok: false, error: error.message }, 500);
     }
     return json(data);

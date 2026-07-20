@@ -72,17 +72,16 @@ tecnología.** Toda decisión de diseño se juzga contra esto:
 
   | Etapa | Rojo |
   |---|---|
-  | Prelavado | a los 15 min |
-  | Túnel | **nunca** — es automático y siempre tarda lo mismo |
-  | Falta asignar | **siempre**, desde el primer segundo |
+  | Antes de secar (prelavado + túnel + espera) | a los **19 min** |
   | Secando | a los 35 min |
 
-  El túnel no cambia de color porque un rojo que aparece sin que haya problema enseña al
-  supervisor a ignorar el rojo. "Falta asignar" es rojo siempre porque no es una demora que
-  se acumula: es una acción que debe ocurrir en cuanto el carro sale del túnel.
+  Los 19 minutos son los 15 de prelavado más los 4 del túnel. **Cambió el 19/jul/2026**
+  junto con el flujo de un solo toque: ahora un solo estado cubre todo lo que pasa antes de
+  secar, así que el umbral tuvo que absorber también el túnel.
 
-  > Efecto secundario: el morado que tenía "falta asignar" ya no aparece nunca, porque el
-  > rojo lo tapa. Queda libre por si se necesita para otro estado.
+  > "Túnel" y "falta asignar" ya no existen como estados que el supervisor vea. Sus umbrales
+  > siguen en el código solo por los carros que venían en camino cuando cambió el flujo, y se
+  > pueden borrar cuando la cola esté limpia de ellos.
 - **Sonido + vibración** cuando entra un carro nuevo (el supervisor no siempre ve la
   pantalla).
 - Botón **"Corregir"** siempre visible por carro, por si tocan la etapa equivocada. Nunca
@@ -99,21 +98,56 @@ tecnología.** Toda decisión de diseño se juzga contra esto:
 ## 5. Flujo operativo real
 
 ```
-Pago (Zettle, automático) → Prelavado → Túnel → Asignar línea + secador → Secando → Entregado
+Pago (Zettle, automático) → [Asignar unidad] → Secando → [Entregado]
+                                  ↑                          ↑
+                            un solo toque              el otro toque
 ```
+
+**Son DOS toques por carro, no cuatro.** Cambió el 19/jul/2026, a pedido del dueño: *"el
+supervisor no tiene tiempo de ver cuándo termina el prelavado y cuándo sale del túnel; él
+solamente tiene que estar asignando líneas y secadores"*.
 
 - **Pago**: no hay botón. Llega solo por el webhook de Zettle y crea el carro en la cola,
   con la hora de inicio.
-- **Express → línea 1**: si la venta trae el producto `Express`, el carro se marca con una
-  **banderita / identificador gráfico bien visible** en la cola. Los express van directo a
-  la **línea 1**, que se dedica exclusivamente a ellos. El supervisor no tiene que leer el
-  producto ni acordarse: lo ve de un vistazo.
-- **Prelavado / Túnel**: el supervisor toca el botón de etapa (modelo "lap" de cronómetro)
-  para marcar cuándo el carro pasa a la siguiente etapa. Se guarda el tiempo de cada una.
-- **Asignar**: al salir del túnel se abre pantalla completa: elige línea (1, 2, 3…) y
-  secador(es) con botones grandes y foto/inicial de cada persona.
+- **Express → línea 1**: si es un lavado express, el carro se marca con una **banderita bien
+  visible** en la cola y va directo a la **línea 1**, que se dedica exclusivamente a ellos.
+  Ver la sección 12.1 para qué cuenta como express (ojo con `Manual`).
+- **Asignar unidad**: el único toque antes de secar. Abre pantalla completa: tipo, color,
+  marca, línea y secador(es), con botones grandes.
 - **Secando**: corre el cronómetro de secado (el dato clave para medir eficiencia).
 - **Entregado**: se cierra el carro.
+
+### Cómo se sigue sabiendo cuánto duró el prelavado
+
+Nadie marca el prelavado ni el túnel, pero los tiempos **no se pierden**: se reconstruyen al
+asignar, porque el túnel dura lo mismo siempre (es una máquina).
+
+```
+corte = max(inicio_prelavado, ahora - 4 min)
+
+prelavado:  inicio → corte    (cerrada)
+tunel:      corte  → ahora    (cerrada, fabricada)
+secando:    ahora  → abierta
+```
+
+Los **4 minutos están medidos**, no supuestos: 29 mediciones reales del flujo viejo dan un
+promedio de 242 s = 4.03 min. Viven en `segundos_de_tunel()` por si algún día cambia la
+máquina.
+
+> **Lo que se pierde, dicho de frente:** "por asignar" duraba 59 s en promedio, y ese minuto
+> ahora se le suma al prelavado calculado. O sea el prelavado sale **~1 min más largo que el
+> real**. Es el precio de quitarle dos toques por carro al supervisor.
+
+### Los tres botones de la tarjeta
+
+| Botón | Qué hace |
+|---|---|
+| **Asignar unidad** (grande) | El toque principal. Abre la pantalla de captura + asignación |
+| **Corregir** | Abre la misma pantalla en modo captura: tipo, color, marca. Sirve en cualquier momento, incluso antes de asignar |
+| **Regresar** | Deshace el paso anterior. Apagado en prelavado, no hay a dónde |
+
+⚠️ **"Corregir" cambió de significado el 19/jul/2026.** Antes era el deshacer; ahora eso es
+"Regresar". En el API la ruta de deshacer se sigue llamando `/corregir` para no romper nada.
 
 ## 6. Arquitectura técnica (plan de trabajo, ajustable)
 

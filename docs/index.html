@@ -122,13 +122,16 @@
 
   /* Los botones son lo mas importante de la pantalla: gigantes, uno por
      accion, y el texto dice QUE HACE, no algo generico. */
+  /* Dos renglones: el principal solo, gigante, y abajo los dos
+     secundarios repartidos a la mitad. Los tres en una sola fila dejaban
+     el principal en ~130px, muy angosto para "Asignar unidad". */
   .acciones {
     grid-column: 1 / -1; grid-row: 6;
     margin-top: 14px;
-    display: flex; gap: 10px;
+    display: flex; gap: 10px; flex-wrap: wrap;
   }
   .avanzar {
-    flex: 1;
+    flex: 1 0 100%;
     min-height: 76px;
     font-size: 23px; font-weight: 800;
     color:#08090b; background: var(--color);
@@ -144,8 +147,8 @@
   /* Corregir siempre visible, pero claramente secundario para que nadie
      lo confunda con el boton de avanzar. */
   .corregir {
-    width: 96px; min-height: 76px;
-    font-size: 17px; font-weight: 700;
+    flex: 1; min-height: 64px;
+    font-size: 18px; font-weight: 700;
     color:#adbac7; background: transparent;
     border: 2px solid #30363d; border-radius: 14px;
     cursor: pointer;
@@ -230,6 +233,8 @@
 
   .rejilla { display:grid; gap:9px; }
   .rejilla.marcas    { grid-template-columns: repeat(2, 1fr); }
+  .rejilla.tipos     { grid-template-columns: repeat(2, 1fr); }
+  .rejilla.colores   { grid-template-columns: repeat(3, 1fr); }
   .rejilla.lineas    { grid-template-columns: repeat(3, 1fr); }
   .rejilla.secadores { grid-template-columns: repeat(2, 1fr); }
 
@@ -321,14 +326,22 @@
   <div class="quien" id="asig-quien"></div>
   <div class="cual" id="asig-cual"></div>
 
+  <div class="seccion">Tipo</div>
+  <div class="rejilla tipos" id="asig-tipos"></div>
+
+  <div class="seccion">Color</div>
+  <div class="rejilla colores" id="asig-colores"></div>
+
   <div class="seccion">Marca <span id="asig-marca-estado" class="pendiente">— falta</span></div>
   <div class="rejilla marcas" id="asig-marcas"></div>
 
-  <div class="seccion">Línea <span id="asig-linea-estado" class="pendiente">— falta</span></div>
-  <div class="rejilla lineas" id="asig-lineas"></div>
+  <div id="asig-solo-asignar">
+    <div class="seccion">Línea <span id="asig-linea-estado" class="pendiente">— falta</span></div>
+    <div class="rejilla lineas" id="asig-lineas"></div>
 
-  <div class="seccion">Secadores <span id="asig-sec-estado" class="pendiente">— elige de 1 a 4</span></div>
-  <div class="rejilla secadores" id="asig-secadores"></div>
+    <div class="seccion">Secadores <span id="asig-sec-estado" class="pendiente">— elige de 1 a 4</span></div>
+    <div class="rejilla secadores" id="asig-secadores"></div>
+  </div>
 </div>
 
 <div id="barra" style="display:none">
@@ -379,12 +392,23 @@ var TEXTOS = {
 // El boton dice QUE ACCION HACE, no el estado ni algo generico como
 // "siguiente". Regla del CLAUDE.md: el supervisor lee el boton y sabe
 // exactamente que va a pasar al tocarlo.
+// Desde el 19/jul/2026 el supervisor NO marca prelavado ni túnel: no le
+// da tiempo, está asignando. Un solo toque antes de secar. Las etapas se
+// reconstruyen solas en la base (el túnel dura 4 min, está medido).
+//
+// tunel y por_asignar siguen aquí solo por los carros que venían en
+// camino cuando cambió el flujo.
 var ACCIONES = {
-  prelavado:   "Terminó prelavado",
-  tunel:       "Salió del túnel",
-  por_asignar: "Asignar línea",
+  prelavado:   "Asignar unidad",
+  tunel:       "Asignar unidad",
+  por_asignar: "Asignar unidad",
   secando:     "Entregado"
 };
+
+// Los colores más vistos en la operación real. Un solo botón por color:
+// BLANCA y BLANCO son el mismo color y contarlos aparte ensucia el
+// reporte y el historial por placa.
+var COLORES_COMUNES = ["BLANCO", "GRIS", "NEGRO", "ROJO", "AZUL", "VERDE"];
 
 var TIPOS = {
   pickup:    "PICKUP",
@@ -523,8 +547,13 @@ function pintar() {
     html +=   '<div class="acciones">';
     html +=     '<button class="avanzar" data-accion="avanzar" data-carro="' + c.id + '">' +
                   escapar(ACCIONES[c.estado] || "Siguiente") + '</button>';
+    // Corregir abre la pantalla de captura (tipo, color, marca). Sirve
+    // siempre, incluso antes de asignar: es donde el supervisor arregla
+    // lo que la cajera no puso.
+    html +=     '<button class="corregir" data-editar="' + c.id + '">Corregir</button>';
+    // Regresar deshace el paso anterior. En prelavado no hay a donde.
     html +=     '<button class="corregir" data-accion="corregir" data-carro="' + c.id +
-                  '"' + (c.estado === "prelavado" ? " disabled" : "") + '>Corregir</button>';
+                  '"' + (c.estado === "prelavado" ? " disabled" : "") + '>Regresar</button>';
     html +=   '</div>';
     html += '</div>';
   }
@@ -680,11 +709,30 @@ function cargarSecadores() {
     .catch(function () { /* se conserva la lista anterior */ });
 }
 
-var asig = null;          // { carro, express, marca, linea, secadores[] }
+// Una sola pantalla con DOS modos. asig.modo dice cual:
+//
+//   "asignar"  -> lo abre el boton grande. Pide linea y secadores.
+//   "corregir" -> lo abre el boton Corregir. Solo captura datos; nada
+//                 es obligatorio, el supervisor entra a poner una cosa
+//                 y se sale.
+//
+// Es la misma pantalla y no dos porque el supervisor ya la conoce: lo
+// unico que cambia es cuanto pide.
+var asig = null;
 var verMasMarcas = false;
 
-function abrirAsignacion(c) {
-  asig = { carro: c.id, express: !!c.es_express, marca: null, linea: null, secadores: [] };
+function abrirPantalla(c, modo) {
+  asig = {
+    carro: c.id,
+    modo: modo,
+    estado: c.estado,
+    express: !!c.es_express,
+    tipo: c.tipo_unidad || null,
+    color: c.color || null,
+    marca: c.marca || null,
+    linea: c.linea || null,
+    secadores: []
+  };
   verMasMarcas = false;
 
   // Los express solo pueden ir a la 1, asi que se elige sola: un toque
@@ -693,13 +741,17 @@ function abrirAsignacion(c) {
 
   var detalle = [c.producto];
   if (c.variante && c.variante !== c.producto) detalle.push(c.variante);
-  // En los express se dice a donde va, que es lo unico que cambia para
-  // el gerente. Repetir "EXPRESS" cuando el producto ya se llama asi no
-  // aporta nada.
   if (c.es_express) detalle.push("va a la LÍNEA 1");
 
   document.getElementById("asig-quien").innerHTML = describir(c);
   document.getElementById("asig-cual").textContent = detalle.filter(Boolean).join("  ·  ");
+
+  // Linea y secadores solo cuando se esta asignando. Al corregir un carro
+  // que ya seca, la linea si se puede cambiar (los secadores no: para eso
+  // esta Regresar y volver a asignar).
+  document.getElementById("asig-solo-asignar").style.display =
+    (modo === "asignar" || c.estado === "secando") ? "block" : "none";
+
   document.getElementById("asignar").style.display = "block";
   document.getElementById("barra").style.display = "flex";
   window.scrollTo(0, 0);
@@ -707,8 +759,10 @@ function abrirAsignacion(c) {
 
   // Se refresca al abrir: entre que se cargo la pantalla y llego este
   // carro, alguien pudo haber checado, salido o entrado a descanso.
-  cargarSecadores().then(pintarAsignacion);
+  if (modo === "asignar") cargarSecadores().then(pintarAsignacion);
 }
+
+function abrirAsignacion(c) { abrirPantalla(c, "asignar"); }
 
 function cerrarAsignacion() {
   asig = null;
@@ -725,10 +779,28 @@ function botonOpcion(texto, elegida, atributos, clases) {
 function pintarAsignacion() {
   if (!asig) return;
 
+  // --- Tipo de unidad ---
+  // Se toca dos veces para quitarlo: el supervisor puede haberle picado
+  // por error y debe poder dejarlo vacio en vez de tener que inventar uno.
+  var h = "";
+  var tipos = ["automovil", "camioneta", "pickup", "pasajeros"];
+  for (var t = 0; t < tipos.length; t++) {
+    h += botonOpcion(TIPOS[tipos[t]], asig.tipo === tipos[t], 'data-tipo="' + tipos[t] + '"');
+  }
+  document.getElementById("asig-tipos").innerHTML = h;
+
+  // --- Color ---
+  h = "";
+  for (var k = 0; k < COLORES_COMUNES.length; k++) {
+    h += botonOpcion(COLORES_COMUNES[k], asig.color === COLORES_COMUNES[k],
+                     'data-color="' + escapar(COLORES_COMUNES[k]) + '"');
+  }
+  document.getElementById("asig-colores").innerHTML = h;
+
   // --- Marcas ---
   var lista = MARCAS_RAPIDAS.slice();
   if (verMasMarcas) lista = lista.concat(MARCAS_EXTRA);
-  var h = "";
+  h = "";
   for (var i = 0; i < lista.length; i++) {
     h += botonOpcion(lista[i], asig.marca === lista[i], 'data-marca="' + escapar(lista[i]) + '"');
   }
@@ -800,6 +872,17 @@ function pintarAsignacion() {
       (FUERA ? ", " + FUERA + " fuera" : "") + ")";
   marcar("asig-sec-estado", asig.secadores.length > 0, resumen);
 
+  var btn = document.getElementById("confirmar");
+
+  // Al corregir NADA es obligatorio: el supervisor entra a poner una cosa
+  // y se sale. Exigirle la marca para poder guardar el color seria
+  // pedirle un dato que quiza no tiene.
+  if (asig.modo === "corregir") {
+    btn.disabled = false;
+    btn.textContent = "Guardar";
+    return;
+  }
+
   // Un boton gris sin explicacion se ve igual que un boton roto. Si no
   // se puede confirmar, el boton DICE que falta en vez de quedarse mudo.
   var faltan = [];
@@ -807,7 +890,6 @@ function pintarAsignacion() {
   if (!asig.linea) faltan.push("la línea");
   if (asig.secadores.length === 0) faltan.push("un secador");
 
-  var btn = document.getElementById("confirmar");
   btn.disabled = faltan.length > 0;
   btn.textContent = faltan.length === 0
     ? "Empezar a secar"
@@ -821,6 +903,15 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!b || !asig) return;
 
     if (b.dataset.mas) { verMasMarcas = true; }
+    // Tipo y color se apagan al volver a tocarlos: si el supervisor le
+    // pico por error debe poder dejarlo vacio, no quedarse obligado a
+    // inventar un dato.
+    else if (b.dataset.tipo) {
+      asig.tipo = (asig.tipo === b.dataset.tipo) ? null : b.dataset.tipo;
+    }
+    else if (b.dataset.color) {
+      asig.color = (asig.color === b.dataset.color) ? null : b.dataset.color;
+    }
     else if (b.dataset.marca) { asig.marca = b.dataset.marca; }
     else if (b.dataset.linea) { asig.linea = Number(b.dataset.linea); }
     else if (b.dataset.manual) {
@@ -879,22 +970,44 @@ document.addEventListener("DOMContentLoaded", function () {
     this.disabled = true;
     if (navigator.vibrate) navigator.vibrate(30);
 
-    pedir("/asignar", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+    // La misma pantalla llama a dos rutas distintas segun el modo. Se
+    // ramifica aqui y no se duplica la barra: #confirmar y #cancelar
+    // tienen sus escuchas amarradas una sola vez.
+    var ruta, cuerpo;
+    if (asig.modo === "corregir") {
+      ruta = "/editar";
+      cuerpo = {
+        carro: asig.carro,
+        tipo_unidad: asig.tipo,
+        color: asig.color,
+        marca: asig.marca,
+        // La linea solo se manda si el carro ya esta secando; antes de eso
+        // la base la rechaza porque todavia no hay secadores asignados.
+        linea: asig.estado === "secando" ? asig.linea : null
+      };
+    } else {
+      ruta = "/asignar";
       // Se mandan las dos cosas: el id para medir eficiencia por persona,
       // y el nombre tal como se ve hoy, para que el historial siga
       // diciendo quien seco aunque esa persona salga de Jibble.
-      body: JSON.stringify({
+      cuerpo = {
         carro: asig.carro,
         linea: asig.linea,
         marca: asig.marca,
+        tipo_unidad: asig.tipo,
+        color: asig.color,
         empleados: asig.secadores,
         secadores: asig.secadores.map(function (id) {
           var p = SECADORES.filter(function (x) { return x.id === id; })[0];
           return p ? p.mostrar : id;
         })
-      })
+      };
+    }
+
+    pedir(ruta, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cuerpo)
     })
       .then(function (r) { return r.json(); })
       .then(function (d) {
@@ -1003,17 +1116,33 @@ document.getElementById("lista").addEventListener("click", function (ev) {
     return;
   }
 
+  function buscarCarro(id) {
+    for (var j = 0; j < carros.length; j++) {
+      if (carros[j].id === Number(id)) return carros[j];
+    }
+    return null;
+  }
+
+  // Corregir abre la pantalla de captura. No pasa por "ocupado": no
+  // cambia la etapa del carro, solo abre una pantalla.
+  var editar = ev.target.closest("button[data-editar]");
+  if (editar) {
+    var paraEditar = buscarCarro(editar.dataset.editar);
+    if (paraEditar) abrirPantalla(paraEditar, "corregir");
+    return;
+  }
+
   var boton = ev.target.closest("button[data-accion]");
   if (!boton || ocupado) return;
 
-  // Salir del tunel no avanza solo: abre la pantalla de asignacion,
-  // porque hace falta decidir linea, marca y secadores.
+  // El boton principal ya no avanza etapa: abre la asignacion, que es el
+  // unico toque que da el supervisor antes de secar. Los tres estados
+  // previos cuentan porque puede haber carros del flujo viejo en camino.
   if (boton.dataset.accion === "avanzar") {
-    var buscado = null;
-    for (var i = 0; i < carros.length; i++) {
-      if (carros[i].id === Number(boton.dataset.carro)) buscado = carros[i];
-    }
-    if (buscado && buscado.estado === "por_asignar") {
+    var buscado = buscarCarro(boton.dataset.carro);
+    if (buscado && (buscado.estado === "prelavado" ||
+                    buscado.estado === "tunel" ||
+                    buscado.estado === "por_asignar")) {
       abrirAsignacion(buscado);
       return;
     }
