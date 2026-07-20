@@ -334,6 +334,51 @@ Cuando el supervisor sube la foto, la Edge Function `app` se la manda a **Claude
 y guarda la placa en `carros.placa`. La placa aparece en la tarjeta con su propio recuadro,
 antes de tipo/color/marca: es el único identificador que no se repite.
 
+#### En Mexicali circulan TRES tipos de placa (corregido 19/jul/2026)
+
+El prompt decía *"son placas mexicanas, en su mayoría de Baja California"*, y eso tiraba
+lecturas buenas. Ahora nombra los tres tipos y dice que ninguno se rechaza por su formato:
+
+1. **Oficial mexicana** (BC u otro estado).
+2. **De Estados Unidos** — Mexicali es frontera. El nombre del estado, el lema
+   (`Grand Canyon State`, `dmv.ca.gov`) y las calcomanías de mes/año **no** son parte de
+   la placa.
+3. **De asociación civil**, para autos de procedencia extranjera no nacionalizados:
+   ONAPPAFA, ANAPROMEX, AMLOPAFA, CONDEFA, CODEFA, APROFAM, APROFA, UCD. Llevan el nombre
+   de la organización y un número de afiliación. **No tienen formato oficial y eso está
+   bien.**
+
+> ⚠️ **A propósito NO se le enseñaron los formatos de cada organización.** Se buscó y no
+> hay una nomenclatura publicada confiable — lo único concreto es una nota suelta de que
+> ANAPROMEX usa 2 letras y 5 números. Darle formatos sería darle una **plantilla que
+> rellenar**, que es exactamente lo que rompe la regla de "nunca inventa". Se le enseña que
+> **existen**, no cómo son.
+
+**Cómo se encontró, que es la parte que vale:** un Mustang rojo subió foto y no guardó
+placa. Midiendo contra la API real resultó que el modelo **sí leía** el número (`72973`)
+pero devolvía `legible=false`, y el código descarta todo lo que no venga marcado legible.
+La lectura estaba bien; el filtro la tiraba. Leyendo el código no se veía.
+
+El **marco del portaplacas** tampoco es parte de la placa: en esa foto decía
+`FORD / Go Further` encima del número, y además **tapaba el nombre de la organización** —
+no se pudo leer ni ampliando la imagen 14 veces. Por eso `placa_organizacion` (migración
+`033`) se espera que quede NULL seguido, y **la placa nunca depende de ella**.
+
+Va en columna aparte y no pegado dentro de `placa` porque `"ONAPPAFA 72973"` y `"72973"`
+son el mismo carro; juntos, el historial lo contaría como dos vehículos y
+`normalizar_placa()` no puede arreglarlo (no sabe que el nombre es prefijo).
+
+**Cómo se verificó (el patrón a repetir):** se bajaron las 10 fotos reales del día y se
+corrió el prompt viejo y el nuevo contra las mismas imágenes. Las 9 que ya se leían salieron
+idénticas, guiones incluidos, y el Mustang pasó de vacío a `72973`. Como el prompt se
+**aflojó**, se repitió la prueba anti-invención: tapando el `297` de en medio y dejando
+visible `7…3`, devolvió vacío 3 de 3 veces teniendo el formato y la mitad de los dígitos
+para adivinar.
+
+> **Pendiente de verificar:** el camino de las placas de Estados Unidos está escrito pero
+> **no probado contra una placa gringa real** — no hay ninguna todavía en la base. La
+> primera que entre es la prueba.
+
 - **No hubo que subir la resolución.** El `CLAUDE.md` decía que a 1280px la placa quedaría
   con ~130px y habría que subir a 2000px. Se midió con una foto real: la placa medía ~170px
   y se lee perfecto. Incluso a la **cuarta parte** de resolución (placa de ~42px) seguía

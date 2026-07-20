@@ -128,7 +128,10 @@ const INSTRUCCION_PLACA = `Eres un lector de placas vehiculares. La foto es de u
 
 En Mexicali circulan TRES tipos de placa, y las tres son normales aqui:
 1. Placa oficial mexicana (Baja California u otro estado).
-2. Placa oficial de Estados Unidos (California, Arizona...). Hay muchos autos fronterizos.
+2. Placa oficial de ESTADOS UNIDOS. Mexicali es frontera y entran muchas, sobre todo
+   de California y Arizona. En estas, el nombre del estado y el lema NO son parte de
+   la placa ("California", "Arizona", "Grand Canyon State", "dmv.ca.gov"), ni las
+   calcomanias de mes y ano de las esquinas. Devuelve solo el identificador.
 3. Placa de ASOCIACION CIVIL, para autos de procedencia extranjera todavia no
    nacionalizados. Llevan impreso el nombre de la organizacion — ONAPPAFA, ANAPROMEX,
    AMLOPAFA, CONDEFA, CODEFA, APROFAM, APROFA, UCD u otra — y un numero de afiliacion,
@@ -152,10 +155,13 @@ Reglas estrictas:
 - NUNCA adivines un caracter. NUNCA completes ni corrijas el formato para que "se vea bien".
 - Un dato inventado es peor que uno vacio.`;
 
-async function leerPlaca(imagenBase64: string): Promise<string | null> {
+type Lectura = { placa: string | null; organizacion: string | null };
+const SIN_LECTURA: Lectura = { placa: null, organizacion: null };
+
+async function leerPlaca(imagenBase64: string): Promise<Lectura> {
   if (!ANTHROPIC_API_KEY) {
     console.error("ANTHROPIC_API_KEY no configurada. No se leen placas.");
-    return null;
+    return SIN_LECTURA;
   }
 
   // Si Anthropic se tarda, se corta. Vale mas devolverle la pantalla al
@@ -213,7 +219,7 @@ async function leerPlaca(imagenBase64: string): Promise<string | null> {
 
     if (!r.ok) {
       console.error("Anthropic respondio", r.status, ":", (await r.text()).slice(0, 300));
-      return null;
+      return SIN_LECTURA;
     }
 
     const datos = await r.json();
@@ -222,20 +228,26 @@ async function leerPlaca(imagenBase64: string): Promise<string | null> {
     // nuestro; simplemente no hay placa.
     if (datos?.stop_reason === "refusal") {
       console.error("Anthropic se nego a leer la foto.");
-      return null;
+      return SIN_LECTURA;
     }
 
     const texto = datos?.content?.find((b: any) => b?.type === "text")?.text ?? "";
     const leido = JSON.parse(texto);
 
     // La regla de oro: solo se acepta si el modelo dijo que SI se lee.
-    if (leido?.legible !== true) return null;
+    if (leido?.legible !== true) return SIN_LECTURA;
 
     const placa = String(leido?.placa ?? "").trim().toUpperCase();
-    return placa === "" ? null : placa;
+    if (placa === "") return SIN_LECTURA;
+
+    // La organizacion solo se guarda si vino con placa. Sola no sirve de
+    // nada y ademas seria raro: significaria que se leyo el letrero chico
+    // de arriba pero no los numeros grandes.
+    const org = String(leido?.organizacion ?? "").trim().toUpperCase();
+    return { placa, organizacion: org === "" ? null : org };
   } catch (e) {
     console.error("Fallo al leer la placa:", e);
-    return null;
+    return SIN_LECTURA;
   } finally {
     clearTimeout(reloj);
   }
@@ -452,10 +464,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // un problema aqui nunca se lleve entre las patas la foto. Si no se
     // pudo leer se guarda placa_en de todas formas: eso distingue "se
     // intento y no se pudo" de "nunca se intento".
-    const placa = await leerPlaca(puro);
+    const { placa, organizacion } = await leerPlaca(puro);
     const { error: errPlaca } = await db
       .from("carros")
-      .update({ placa, placa_en: new Date().toISOString() })
+      .update({
+        placa,
+        placa_organizacion: organizacion,
+        placa_en: new Date().toISOString(),
+      })
       .eq("id", carro);
 
     if (errPlaca) {
