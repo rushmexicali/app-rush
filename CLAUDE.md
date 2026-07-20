@@ -616,16 +616,53 @@ pese a los 17,100 s fabricados del primero.
   promedio que toda la separación existe para mantener limpio. Lo no reconocido sale en
   **"Sin clasificar"**, visible.
 
-> ⚠️ **El nombre del superbrillo NO está verificado.** El dueño lo nombró, pero al
-> 20/jul/2026 no aparece en ninguna venta y **el catálogo de Zettle no se puede leer**: la
-> API key tiene sólo `READ:PURCHASE`, a propósito. Se busca por patrón `%brillo%` sin acentos
-> (atrapa "Superbrillo", "Super Brillo", "Encerado Superbrillo"). **Si en Zettle se llama de
-> otra forma, va a caer en "Sin clasificar"** — que es la falla correcta: visible, no
-> silenciosa. Confirmar el nombre exacto cuando se venda el primero.
+### El catálogo real (recibido 20/jul/2026 — antes se adivinaba)
+
+Hasta ese día todo lo que se sabía del catálogo salía de **un** día de ventas. El dueño mandó
+el export de Zettle y cambió varias suposiciones.
+
+| Categoría | Productos | ¿Crea carro? | Sección del reporte |
+|---|---|---|---|
+| `Paquetes` | Completo, Completo Cera, Express, Manual, Pasajeros, Solo Interior, TriCera Servidor Público | Sí | según express |
+| `Paquetes Especial` | **Encerado Manual** ($600-900), **Super Brillo** ($800-1300), Detallado | Sí | **encerado** |
+| `Descuento` | Instagram, Passie Completo, Completo Arrendatarios | Sí | con aspirado |
+| `Promo` | Gratis (6to Lavado, OXXO, Admin, Cortesía…) | Sí | con aspirado |
+| `Aroma`, `Extras`, `Insumos` | Pinito, Tapetes, Trapos… | **No** — mostrador | — |
+
+🔴 **Bug grave que esto destapó: seis servicios NUNCA creaban carro.** La migración `020`
+limitó la creación a `Paquetes` y `Promo` para matar el carro fantasma del Pinito — correcto
+entonces, pero dejó fuera `Descuento` y `Paquetes Especial`, que ese día no se habían vendido.
+Un **Super Brillo de $1,300**, el servicio más caro, se cobraba y **nunca aparecía en el
+teléfono del supervisor**. Arreglado en la `041`, que ahora lista las categorías que **no**
+crean carro en vez de las que sí: una categoría nueva cae del lado de "sí crea carro", que es
+el error barato. El caro es el servicio invisible, y es el que acababa de pasar.
+
+- **La categoría de Zettle es la que agrupa**, no el nombre del producto. El dueño ya separó
+  lo que tarda más en `Paquetes Especial`; usar su taxonomía significa que un producto nuevo
+  ahí cae solo en la sección correcta sin tocar código.
+- **`Manual` NO es el encerado.** Se había supuesto que sí. `Manual` (Paquetes, $400-500) es
+  lavado a mano; el encerado es `Encerado Manual` (Especial, $600-900). Y sigue viva la trampa:
+  `Manual` + variante `Express` es un **express**.
+- **`Instagram` y `Passie` son Completo Cera** con descuento de publicidad — el dueño los tiene
+  aparte para medir si la publicidad sirve. Para medir secado son completos. La columna
+  `carros.categoria` conserva `Descuento`, así que medir la efectividad sigue siendo una
+  consulta.
+- **`Pasajeros`** (combis) tiene variantes `Tunel Express` / `Manual Express` — ésas son
+  express. `es_lavado_express` ya las reconoce.
+- **Precio 0 = monto libre en caja** (`Detallado`, `Faros`).
+
+> El relleno hacia atrás de `carros.categoria` fue posible porque desde el día uno se guarda
+> el aviso completo de Zettle en `ventas.payload`, aunque entonces no se usara. Esa decisión
+> es la que permitió reconstruir sin volver a pedirle nada a Zettle.
+
+> ⚠️ **Nota histórica:** el nombre del superbrillo no estaba verificado antes de recibir el
+> export; se adivinaba por patrón `%brillo%`. Resultó ser `Super Brillo` (dos palabras) y el
+> patrón sí lo atrapaba, pero fue suerte. Ahora manda la categoría, y el patrón por nombre
+> quedó sólo como respaldo para carros viejos sin `categoria` guardada.
 >
-> El encerado **Manual** sí está confirmado: hay una venta real de `Manual`/`Completo Grande`
-> por $500. Ojo con la trampa de siempre — `Manual` + variante `Express` es un **express**,
-> no un encerado.
+> Y de paso: **el catálogo de Zettle no se puede leer por API** — la llave tiene sólo
+> `READ:PURCHASE`, a propósito. Por eso el catálogo llegó como export de Excel. Si vuelve a
+> hacer falta, se pide así; no se adivina.
 - **"Espera" es de que paga a que se lo entregan** — el tiempo completo del cliente,
   no el tiempo muerto.
 - **Express y aspirado son la MISMA regla, no dos.** El dueño lo dijo así: los express no
