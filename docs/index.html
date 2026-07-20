@@ -1258,9 +1258,10 @@ function abrirPantalla(c, modo) {
   document.getElementById("asig-quien").innerHTML = describir(c);
   document.getElementById("asig-cual").textContent = detalle.filter(Boolean).join("  ·  ");
 
-  // Linea y secadores solo cuando se esta asignando. Al corregir un carro
-  // que ya seca, la linea si se puede cambiar (los secadores no: para eso
-  // esta Regresar y volver a asignar).
+  // Linea y secadores solo cuando se esta asignando o corrigiendo un carro
+  // que YA seca. Al corregir, los secadores vienen preseleccionados y se
+  // editan (editar_carro los reconcilia sin tocar el reloj); la linea
+  // tambien se puede cambiar ahi.
   document.getElementById("asig-solo-asignar").style.display =
     (modo === "asignar" || c.estado === "secando") ? "block" : "none";
 

@@ -89,10 +89,24 @@ tecnología.** Toda decisión de diseño se juzga contra esto:
 - Fuente grande, alto contraste.
 - Siempre un **respaldo manual** por si una integración externa (Zettle/Jibble) falla — la
   app nunca se debe quedar bloqueada.
-- La foto abre **directo la cámara**, sin preguntar nada. Al lado hay un segundo botón más
-  chico y más apagado para escoger de la **galería**, por si la foto se tomó fuera de la app.
-  *(Agregado el 19/jul/2026 a pedido del dueño.)* Son dos botones y no un menú a propósito:
-  el caso común sigue siendo un solo toque, y el pulgar cae en la cámara por default.
+- La foto abre **directo la cámara**, sin preguntar nada.
+  - **El botón de galería se quitó el 20/jul/2026:** no se usaba. El caso "la foto se tomó
+    fuera de la app" que lo justificaba (agregado el 19/jul) no ocurrió en la operación real.
+    Queda un solo botón, que además es la regla de un-toque de esta sección.
+  - **La cámara se habilita solo cuando el carro ya tiene carril y secador** (20/jul/2026).
+    Antes de eso se ve **apagada** (no desaparece: un botón que aparece solo confunde al
+    supervisor de la tercera edad). Un carro recién pagado y sin asignar puede no estar
+    identificable todavía, y ahí es cuando una foto se pegó al carro equivocado el 19/jul;
+    esto angosta esa ventana. Se mide con `carros.linea` y `carros.secadores`.
+  - **Al lado va el botón de info (la ⓘ), donde estaba la galería** (20/jul/2026). Abre el
+    desglose de tiempos del carro (ver sección 5). Es un botón y **no** un toque a la tarjeta
+    a propósito, a pedido del dueño: evita abrir el desglose por accidente.
+- **El botón "atrás" del teléfono cierra la pantalla de encima, no sale de la app**
+  (20/jul/2026). En una app de pantalla completa el back salía de la app. Ahora cada pantalla
+  que se abre (Asignar, Entrega, Finalizados, Detalle) empuja un estado al historial y el back
+  —o los botones de Volver/Cancelar— cierra la de encima y regresa a la anterior. Regla para
+  no desincronizar: **todo** cierre pasa por `cerrarPantalla()` → `history.back()` → `popstate`,
+  el único que ejecuta el cierre real (abrir empuja uno, cerrar consume uno).
 - Toda la UI en **español**.
 
 ## 5. Flujo operativo real
@@ -186,9 +200,28 @@ máquina.
 
 | Botón | Qué hace |
 |---|---|
-| **Asignar unidad** / **Entregado** (grande) | El toque principal. **Nunca manda solo: siempre abre una pantalla** |
-| **Corregir** | Abre la misma pantalla en modo captura: tipo, color, marca. Sirve en cualquier momento, incluso antes de asignar |
+| **Asignar unidad** / **Entregado** (grande) | El toque principal. **Nunca manda solo: siempre abre una pantalla.** Lleva **guiones rojos girando** por la orilla (ver abajo) |
+| **Corregir** | Abre la misma pantalla en modo captura: tipo, color, marca — **y si el carro ya seca, también los secadores** (ver abajo). Sirve en cualquier momento, incluso antes de asignar |
 | **Regresar** | Deshace el paso anterior. Apagado en prelavado, no hay a dónde |
+
+**El botón de Asignar lleva guiones rojos girando por la orilla** (`- - - -`, marching ants),
+solo ése (20/jul/2026). El supervisor le picaba al ícono redondo de "Prelavado + Túnel" por ser
+del mismo azul; el movimiento marca cuál es el botón que sí se toca. En "Entregado" (verde) no
+va. Primero fue un *glow* pulsante; el dueño lo cambió a guiones. Son cuatro tiras animando
+`background-position` (no se rota nada: rotar un botón tan ancho proyectaba los rayos por toda
+la pantalla).
+
+**Corregir sí cambia los secadores** (20/jul/2026, corrige la regla vieja de "para eso está
+Regresar"). Al abrir Corregir de un carro secando, los secadores actuales salen
+**preseleccionados** y se editan libremente, igual que el tipo y el color. Uno que ya checó
+salida sale en gris con "ya no aparece", para verlo y poder quitarlo. Al guardar,
+`editar_carro` (migración `052`) reconcilia las asignaciones **sin tocar las etapas**, así que
+el cronómetro de secado **no se reinicia** — esa es la diferencia con Regresar, que sí lo
+reinicia. Regla: un carro secando no puede quedarse sin ningún secador (borraría todas sus
+asignaciones), y el botón Guardar lo impide.
+
+**Los secadores asignados salen en la tarjeta** (20/jul/2026), debajo del servicio y del mismo
+tamaño, para que el dueño los vea sin abrir el carro. Vienen de la cola (`/cola` ya los daba).
 
 ### Confirmar o rechazar la entrega (19/jul/2026)
 
@@ -241,6 +274,19 @@ probado. No se escribió lógica nueva para deshacer.
 - `detalle_del_carro` devuelve los segundos **ya sumados** por etapa: un carro puede tener
   varias filas de la misma etapa porque "Corregir" reabre la anterior. El total es de **pago a
   entrega**, no la suma de etapas — entre etapas hay huecos y el cliente los vive igual.
+
+**El mismo desglose, pero EN VIVO, para un carro que aún se trabaja** (punto 5 del dueño,
+20/jul/2026): el botón de info (la ⓘ) de la tarjeta abre esta misma pantalla, con el
+**cronómetro de secado corriendo** (mm:ss, en verde, "· en curso"), el total contando desde
+que pagó, y los secadores ("Secando ahora"). Prelavado y túnel salen estáticos (ya cerrados).
+
+- Mientras el carro no se entrega, `secando_seg` y `total_seg` salen **nulos**: la etapa de
+  secado está abierta y la columna generada `segundos` es nula sin `fin`. La migración `053`
+  agregó `abierta_etapa` + `abierta_inicio` a `detalle_del_carro` para que la app cuente en
+  vivo desde el inicio de la etapa abierta. `/carro` no cambió (pasa el resultado tal cual).
+- El desglose de Finalizados (carro entregado) queda **igual**: estático, en minutos, "Lo
+  secaron". La ruta se ramifica con un flag `enVivo` que solo manda el botón de info. El
+  cronómetro se apaga al cerrar la pantalla.
 
 **Cada tarjeta tiene además "Corregir"** (agregado 20/jul/2026, a pedido del dueño): abre la
 **misma pantalla** que el Corregir de la cola, para arreglar una captura mala *después* de
@@ -446,10 +492,21 @@ Reglas de interpretación:
 - La columna `carros.datos_de_nota` dice si el dato vino de la nota o lo capturó el
   supervisor. Sirve para medir qué tan seguido se está llenando la nota en caja.
 
-> ⚠️ **Esto depende de un hábito, no del código.** Al 19/jul/2026, de 25 ventas del día solo
-> 2 traían nota, y las puso el dueño a propósito. El código está listo; falta que las cajeras
-> lo hagan en cada venta. Mientras no pase, el supervisor captura a mano — que es justo el
-> respaldo que el diseño ya contempla.
+  > 🔴 **Medía al revés hasta el 20/jul/2026, y se corrigió (migración `051`).** La bandera se
+  > apagaba en cuanto `editar_carro` recibía un tipo o color no nulo, **sin fijarse si el valor
+  > cambiaba**. La pantalla de asignar viene prellenada con lo que puso la nota; el supervisor
+  > confirma sin tocar y `/asignar` reenvía esos mismos valores → la bandera se apagaba. El
+  > 20/jul la columna decía **1** cuando en realidad **25 de 25** ventas traían nota, y sobre
+  > ese 1 se reportó (falsamente) que las cajeras no llenaban la nota. Arreglo: solo se apaga
+  > si el valor es **distinto** al guardado (`is distinct from`). Aplica a Asignar y a Corregir.
+  > **Se encontró midiendo, no leyendo el código**, y el dueño lo cachó porque él sabía que sí
+  > había notas. Lección: si una métrica contradice lo que el dueño ve en el taller, el
+  > sospechoso es la métrica — reconstruirla desde el dato crudo (aquí, releer `carros.nota`).
+
+> ⚠️ **Actualización 20/jul/2026: el hábito ya arrancó.** El 19/jul solo 2 de 25 ventas traían
+> nota (las puso el dueño). El 20/jul fueron **25 de 25** — las cajeras ya la están llenando y
+> la app la interpreta bien (24 de 25; la única falla fue `A GUINDA` por `AU GUINDA`, código
+> `A` que no existe). El respaldo de captura manual sigue ahí por si acaso.
 
 ### La placa se lee sola de la foto (implementado 19/jul/2026)
 
@@ -528,6 +585,10 @@ para adivinar.
   sale sin datos, no pasa nada.
 - Captura **sin teclado** hasta donde se pueda:
   - Marca: grilla de botones con las marcas comunes de la zona + "Otra".
+  - Color: grilla con los comunes (BLANCO, GRIS, NEGRO, ROJO, AZUL, VERDE) + botón **"Otro…"**
+    para escribir uno raro (20/jul/2026). El campo se ve **siempre en MAYÚSCULAS** aunque el
+    teclado esté en minúsculas: se sube en el `input`, no solo con CSS (con CSS solo se pinta y
+    se guardaría en minúsculas, rompiendo el formato uniforme con la nota de caja).
   - Modelo: al elegir marca, se muestran solo sus modelos típicos como botones + "Otro".
   - Año: selector con botones +/- (no teclado numérico).
   - Foto: botón que abre la cámara directo, comprime la imagen en el teléfono antes de subir
@@ -922,6 +983,33 @@ Migraciones 018 a 032, todas de ese día. En orden de qué tan importante es ent
 que arma el escenario completo y termina con `raise exception` para que **todo se revierta**.
 Así se prueba sobre la base real sin ensuciar la cola del supervisor. Ver el historial de
 git; el patrón vale más que cualquiera de las pruebas sueltas.
+
+### Lo que se construyó el 20/jul/2026 (tarde) — 10 pedidos del dueño + extras
+
+Todo se hizo con la operación en marcha, cambio por cambio, probando en el navegador (con datos
+falsos, sin tocar la API) y con `curl`/`do-raise` contra la base antes de pushear. Lo visual se
+verificó midiendo el DOM, no solo mirando la pantalla.
+
+| Cambio | Dónde |
+|---|---|
+| Foto solo tras asignar; se ve apagada, no desaparece | `docs/index.html` |
+| Botón de info (ⓘ) → desglose EN VIVO (secado corriendo) | `053` + `docs/index.html` |
+| Corregir preselecciona y **edita** secadores sin reiniciar el reloj | `052` + `/cola` (secador_ids) + `/editar` |
+| `datos_de_nota` solo se apaga si el valor cambia | `051` |
+| Guiones rojos girando en el botón de Asignar (antes glow) | `docs/index.html` |
+| Secadores en la tarjeta; color manual en mayúsculas | `docs/index.html` |
+| Asignar abre hasta arriba; se quitó el botón de galería | `docs/index.html` |
+| El back del teléfono cierra la pantalla, no sale de la app | `docs/index.html` |
+| El reloj de la cola ya no reconstruye la lista (guiones fluidos) | `docs/index.html` |
+
+- **Migraciones `051`–`053`**, todas aplicadas en producción. La `052` absorbe la `051`.
+- **`editar_carro` cambió de firma** (agregó `p_secadores`, `p_empleados`): la `052` hace
+  `drop function` de la vieja primero, si no quedaban dos y la llamada por nombre era ambigua.
+- **Punto 8 (cola virtual del secado) quedó EN PAUSA** por decisión del dueño: la validación
+  destapó un caso de secado en paralelo (carro 109 del 20/jul) que sale negativo con la regla
+  de "fila". Él lo va a analizar. Ver `PENDIENTES.md` y la consulta `q11` de esa sesión.
+- **El rechazo de prueba de Chuy (`rechazos.id=9`) se borró** antes de las 8:30 para que no
+  quedara en la fila congelada del reporte. La tabla `rechazos` quedó vacía.
 
 ## 13. Decisiones pendientes (llenar con el tiempo)
 
