@@ -262,6 +262,21 @@
      aparece solo confunde al supervisor de la tercera edad. */
   .foto[disabled] { opacity:.28; cursor:default; }
 
+  /* Boton de info: abre el desglose de tiempos del carro. Va donde antes
+     estaba la galeria (a la izquierda de la camara), mas chico y apagado
+     para que el pulgar caiga en la camara por default. Es un boton aparte
+     y no un toque a la tarjeta a proposito: evita que el desglose se abra
+     por accidente al querer picar otra cosa. */
+  .info {
+    width: 48px; height: 58px;
+    background: transparent;
+    border: 2px solid #30363d; border-radius: 12px;
+    color: #8b949e; cursor: pointer; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .info:active { background:#30363d; }
+  .info svg { width: 27px; height: 27px; display: block; }
+
   #camara { display: none; }
 
   /* Pantalla de acceso. Se teclea una sola vez por telefono. */
@@ -394,6 +409,9 @@
     font-size:30px; font-weight:800; font-variant-numeric:tabular-nums;
   }
   .tiempo.total .que, .tiempo.total .cuanto { color:#ffd400; }
+  /* Etapa que esta corriendo ahora mismo: en verde (el color de secando),
+     para que se lea de un vistazo que ese numero esta vivo. */
+  .tiempo.corriendo .que, .tiempo.corriendo .cuanto { color:#3fb950; }
   .tiempo .vacio2 { font-size:19px; color:#6e7681; font-style:italic; font-weight:600; }
 
   #detalle .quienes { margin-top:20px; }
@@ -869,8 +887,17 @@ function pintar() {
     // -> se ve apagado, no desaparece.
     var asignado = !!(c.linea && c.secadores && c.secadores.length);
     html +=   '<div class="fotos">';
-    // Un solo boton: la camara. El de galeria se quito el 20/jul/2026 —
-    // no se usaba, y un solo boton es la regla del CLAUDE.md.
+    // Boton de info (la i en un circulo), donde antes estaba la galeria.
+    // Abre el desglose de tiempos del carro. Es un boton y no un toque a la
+    // tarjeta a proposito, para no abrirlo por accidente.
+    html +=     '<button class="info" data-info="' + c.id + '" title="Ver tiempos del carro">' +
+                  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+                  'stroke-linecap="round" stroke-linejoin="round">' +
+                  '<circle cx="12" cy="12" r="9"></circle>' +
+                  '<line x1="12" y1="11" x2="12" y2="16"></line>' +
+                  '<circle cx="12" cy="7.6" r="1.05" fill="currentColor" stroke="none"></circle>' +
+                  '</svg></button>';
+    // La camara. El de galeria se quito el 20/jul/2026 — no se usaba.
     html +=     '<button class="foto" data-foto="' + c.id + '"' +
                   (asignado ? ' title="Tomar foto del carro"'
                             : ' disabled title="Primero asigna carril y secador"') + '>' +
@@ -1879,8 +1906,12 @@ function duracion(seg) {
   return Math.floor(m / 60) + " h " + (m % 60) + " min";
 }
 
-function renglonTiempo(que, seg, clase) {
-  var d = duracion(seg);
+// enVivo: en el desglose de un carro que todavia se trabaja, los tiempos
+// se muestran como cronometro (mm:ss) para que se vea correr; ya entregado
+// se muestran en minutos, mas facil de leer de un vistazo.
+function renglonTiempo(que, seg, clase, enVivo) {
+  var d = (seg === null || seg === undefined) ? null
+        : (enVivo ? reloj(seg) : duracion(seg));
   return '<div class="tiempo' + (clase ? " " + clase : "") + '">' +
            '<span class="que">' + escapar(que) + '</span>' +
            (d ? '<span class="cuanto">' + escapar(d) + '</span>'
@@ -1888,9 +1919,103 @@ function renglonTiempo(que, seg, clase) {
          '</div>';
 }
 
-function abrirDetalle(id) {
+// El cuerpo del desglose. Sirve para un carro entregado (estatico) y para
+// uno que aun se trabaja (enVivo): ahi la etapa abierta se cuenta desde su
+// inicio hasta ahora, y el total desde que pago.
+function cuerpoDetalle(c, enVivo) {
+  // Segundos de una etapa: los cerrados que da la base MAS, si es la etapa
+  // abierta, lo que lleva corriendo. Asi el secado (o el prelavado de un
+  // carro sin asignar) cuenta en vivo.
+  function corre(etapa) {
+    return enVivo && c.entregado_en == null && c.abierta_etapa === etapa && c.abierta_inicio;
+  }
+  function seg(etapa, cerrado) {
+    var s = (cerrado == null ? 0 : cerrado);
+    if (corre(etapa)) s += Math.floor((Date.now() - new Date(c.abierta_inicio).getTime()) / 1000);
+    return s;
+  }
+
+  var servicio = [c.producto, (c.variante && c.variante !== c.producto) ? c.variante : ""]
+                   .filter(Boolean).join("  ·  ");
+
+  var h = "";
+  h += "<h2>" + describir(c) + "</h2>";
+  if (c.placa) h += '<div class="placa">' + escapar(c.placa) + "</div>";
+  h += '<div class="sub">' + escapar(servicio) +
+       (c.linea ? "  ·  Línea " + escapar(c.linea) : "") + "</div>";
+
+  // Las mismas banderitas de la cola, para reconocer el carro.
+  if (c.es_express) h += '<span class="express">&#9873; EXPRESS</span> ';
+  if (c.aviso) {
+    h += '<span class="aviso-servicio ' + claseDeAviso(c.aviso) + '">&#9888; ' +
+         escapar(c.aviso) + "</span> ";
+  }
+  if (c.a_mano) h += '<span class="aviso-servicio mano">&#9888; LAVADO A MANO</span>';
+
+  // Prelavado. Corre en vivo si el carro todavia no se asigna (raro que se
+  // abra el detalle ahi, pero queda honesto).
+  h += renglonTiempo("Prelavado" + (corre("prelavado") ? " · en curso" : ""),
+                     enVivo ? seg("prelavado", c.prelavado_seg) : c.prelavado_seg,
+                     corre("prelavado") ? "corriendo" : "", enVivo);
+
+  // El tunel siempre esta cerrado (dura lo que dura la maquina). No se
+  // muestra en un lavado a mano: no entro.
+  if (!c.a_mano && c.tunel_seg) {
+    h += renglonTiempo("Túnel", c.tunel_seg, "", enVivo);
+  }
+
+  // Secado. Es el que corre mientras el carro se trabaja. Solo se muestra
+  // si ya empezo (o ya termino): en prelavado no existe todavia.
+  if (c.secando_seg != null || corre("secando") || c.entregado_en != null) {
+    h += renglonTiempo("Secado" + (corre("secando") ? " · en curso" : ""),
+                       enVivo ? seg("secando", c.secando_seg) : c.secando_seg,
+                       corre("secando") ? "corriendo" : "", enVivo);
+  }
+
+  // Total de pago a entrega. En vivo cuenta desde que pago hasta ahora.
+  var total = c.entregado_en != null ? c.total_seg
+            : (enVivo ? Math.floor((Date.now() - new Date(c.creado_en).getTime()) / 1000) : null);
+  h += renglonTiempo("Total con nosotros", total, "total", enVivo);
+
+  // Los avisos honestos: un tiempo que no es real hay que decirlo, porque
+  // en esta pantalla se lee como si fuera medido.
+  if (c.cerrado_automaticamente) {
+    h += '<div class="ausente">&#9888; Nadie lo entregó: se cerró solo al final del día.' +
+         "<br>Su tiempo no es real y no cuenta en los promedios.</div>";
+  }
+  if (c.tiempo_imposible) {
+    h += '<div class="ausente">&#9888; Se entregó más rápido de lo posible.' +
+         "<br>Casi seguro fue un error o una prueba; no cuenta en el reporte.</div>";
+  }
+
+  // Ya entregado dice "Lo secaron"; todavia trabajandose, "Secando ahora".
+  var titulo = c.entregado_en != null ? "Lo secaron" : "Secando ahora";
+  h += '<div class="quienes"><div class="titulo2">' + titulo + "</div>";
+  if (c.secadores && c.secadores.length) {
+    for (var i = 0; i < c.secadores.length; i++) {
+      h += '<div class="nombre">' + escapar(c.secadores[i]) + "</div>";
+    }
+  } else {
+    h += '<div class="vacio2">' +
+         (c.entregado_en == null ? "Aún sin asignar" : "Sin secador registrado") + "</div>";
+  }
+  h += "</div>";
+  return h;
+}
+
+// El carro que se esta viendo y el timer del cronometro en vivo.
+var detalleCarro = null;
+var detalleTimer = null;
+
+// enVivo lo manda el boton de info de la cola; desde Finalizados no se
+// manda (undefined), y el carro ya entregado se ve estatico.
+function abrirDetalle(id, enVivo) {
+  clearInterval(detalleTimer); detalleTimer = null;
+  detalleCarro = null;
+
   document.getElementById("detalle").style.display = "block";
   document.getElementById("detalle-cuerpo").innerHTML = '<div class="sub">Cargando…</div>';
+  document.getElementById("detalle").scrollTop = 0;
   window.scrollTo(0, 0);
 
   pedir("/carro?id=" + encodeURIComponent(id))
@@ -1901,73 +2026,12 @@ function abrirDetalle(id) {
           '<div class="sub">No se pudo cargar.</div>';
         return;
       }
-
-      var servicio = [c.producto, (c.variante && c.variante !== c.producto) ? c.variante : ""]
-                       .filter(Boolean).join("  ·  ");
-
-      var h = "";
-      h += "<h2>" + describir(c) + "</h2>";
-      if (c.placa) h += '<div class="placa">' + escapar(c.placa) + "</div>";
-      h += '<div class="sub">' + escapar(servicio) +
-           (c.linea ? "  ·  Línea " + escapar(c.linea) : "") + "</div>";
-
-      // Las mismas banderitas de la cola, para reconocer el carro.
-      if (c.es_express) h += '<span class="express">&#9873; EXPRESS</span> ';
-      if (c.aviso) {
-        h += '<span class="aviso-servicio ' + claseDeAviso(c.aviso) + '">&#9888; ' +
-             escapar(c.aviso) + "</span> ";
-      }
-      if (c.a_mano) h += '<span class="aviso-servicio mano">&#9888; LAVADO A MANO</span>';
-
-      // El prelavado va SOLO, y el tunel se anuncia al lado como "(+4
-      // Túnel)". Asi el supervisor ve cuanto estuvo de verdad en
-      // prelavado sin perder de vista que el total lleva el tunel
-      // encima.
-      //
-      // Se usa el tunel REAL guardado, no un 4 fijo. Casi todos duran 4
-      // min porque el flujo de un solo toque los fabrica asi, pero los
-      // carros del flujo viejo traen tiempos medidos de verdad (hay de
-      // 1, 3, 5 y hasta 8 min). Restar 4 a esos les inventaria prelavado
-      // que no existio. Y si algun dia cambia la maquina, esto sigue
-      // bien solo: el numero vive en segundos_de_tunel().
-      // Un renglon por etapa. En la COLA la etiqueta sigue diciendo
-      // "Prelavado + Túnel" —ahi el supervisor ve un estado, no un
-      // desglose— pero aqui el carro ya termino y hay espacio para
-      // separarlos. Se lee mas limpio que meter el tunel entre
-      // parentesis dentro del prelavado.
-      h += renglonTiempo("Prelavado", c.prelavado_seg);
-
-      // El renglon del tunel no existe si el carro se lava a mano: no
-      // entro. Tampoco se pinta un "0 min", que solo haria preguntarse
-      // que paso ahi.
-      if (!c.a_mano && c.tunel_seg) {
-        h += renglonTiempo("Túnel", c.tunel_seg);
-      }
-      h += renglonTiempo("Secado", c.secando_seg);
-      h += renglonTiempo("Total con nosotros", c.total_seg, "total");
-
-      // Los avisos honestos: un tiempo que no es real hay que decirlo,
-      // porque en esta pantalla se lee como si fuera medido.
-      if (c.cerrado_automaticamente) {
-        h += '<div class="ausente">&#9888; Nadie lo entregó: se cerró solo al final del día.' +
-             "<br>Su tiempo no es real y no cuenta en los promedios.</div>";
-      }
-      if (c.tiempo_imposible) {
-        h += '<div class="ausente">&#9888; Se entregó más rápido de lo posible.' +
-             "<br>Casi seguro fue un error o una prueba; no cuenta en el reporte.</div>";
-      }
-
-      h += '<div class="quienes"><div class="titulo2">Lo secaron</div>';
-      if (c.secadores && c.secadores.length) {
-        for (var i = 0; i < c.secadores.length; i++) {
-          h += '<div class="nombre">' + escapar(c.secadores[i]) + "</div>";
-        }
-      } else {
-        h += '<div class="vacio2">Sin secador registrado</div>';
-      }
-      h += "</div>";
-
-      document.getElementById("detalle-cuerpo").innerHTML = h;
+      detalleCarro = c;
+      // Solo cuenta en vivo si lo pidieron Y el carro sigue abierto.
+      detalleCarro._enVivo = !!enVivo && c.entregado_en == null;
+      pintarDetalle();
+      // El cronometro se refresca cada segundo, igual que el de la cola.
+      if (detalleCarro._enVivo) detalleTimer = setInterval(pintarDetalle, 1000);
     })
     .catch(function () {
       document.getElementById("detalle-cuerpo").innerHTML =
@@ -1975,7 +2039,17 @@ function abrirDetalle(id) {
     });
 }
 
+function pintarDetalle() {
+  if (!detalleCarro) return;
+  document.getElementById("detalle-cuerpo").innerHTML =
+    cuerpoDetalle(detalleCarro, detalleCarro._enVivo);
+}
+
 document.getElementById("detalle-cerrar").addEventListener("click", function () {
+  // Se apaga el cronometro al cerrar: si no, seguiria corriendo en el
+  // fondo gastando bateria sin que nadie lo vea.
+  clearInterval(detalleTimer); detalleTimer = null;
+  detalleCarro = null;
   document.getElementById("detalle").style.display = "none";
 });
 
@@ -2079,6 +2153,14 @@ document.getElementById("lista").addEventListener("click", function (ev) {
     if (camara.disabled) return;
     carroDeLaFoto = Number(camara.dataset.foto);
     document.getElementById("camara").click();
+    return;
+  }
+
+  // El boton de info abre el desglose de tiempos, en vivo. No pasa por
+  // "ocupado": solo abre una pantalla, no cambia la etapa del carro.
+  var info = ev.target.closest("button[data-info]");
+  if (info) {
+    abrirDetalle(Number(info.dataset.info), true);
     return;
   }
 

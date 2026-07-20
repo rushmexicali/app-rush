@@ -47,8 +47,21 @@ que hoy describe el botón de galería que se quitó).
   retrocompatible con el front viejo (secador_ids es un campo extra; /editar sin secadores no
   los toca).
 
-Falta el **punto 5** (desglose de un carro activo al tocar su nombre), que también toca
-lógica y se revisa con el dueño.
+### Punto 5 — desglose en vivo de un carro activo (HECHO)
+
+- Botón de **info (ⓘ)** en la tarjeta, donde estaba el de galería (a la izquierda de la
+  cámara). Es un botón y **no** un toque a la tarjeta, a pedido del dueño, para no abrirlo por
+  accidente.
+- Abre el mismo tipo de pantalla que Finalizados, pero **en vivo**: prelavado y túnel
+  estáticos, **secado corriendo** (mm:ss, en verde, "· en curso"), total contando desde que
+  pagó, y los secadores ("Secando ahora").
+- Migración `053`: `detalle_del_carro` ahora devuelve `abierta_etapa` + `abierta_inicio` para
+  contar la etapa abierta en vivo (`secando_seg`/`total_seg` salen nulos mientras no se
+  entrega). **Ya aplicada en producción.** `/carro` no necesitó cambio de Edge Function.
+- Probado: secado avanza 15:09→15:11 con el timer; Finalizados intacto ("Lo secaron",
+  minutos, sin timer). El cronómetro se apaga al cerrar la pantalla.
+
+**Con esto la lista completa del dueño (puntos 1–10) queda hecha.**
 
 ---
 
