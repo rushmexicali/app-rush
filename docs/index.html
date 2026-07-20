@@ -745,6 +745,36 @@ var carros = [];
 // actualizarRelojes().
 var firmaRender = null;
 
+// --- El boton "atras" del telefono cierra la pantalla, no sale de la app -
+// En una app de pantalla completa el back del telefono sale de la app. Aqui
+// se atrapa: cada pantalla que se abre encima (Asignar, Entrega,
+// Finalizados, Detalle) empuja un estado al historial; el back —o el boton
+// de Volver/Cancelar— consume uno y corre el cierre de esa pantalla, en vez
+// de salir. Al no quedar ninguna, el back ya si sale normal.
+//
+// La regla para no desincronizar: TODO cierre (boton o back) pasa por
+// cerrarPantalla() -> history.back() -> popstate, que es el unico que
+// ejecuta el cierre real. Abrir empuja uno; cerrar consume uno.
+var cerradores = [];
+
+function registrarPantalla(cerrar) {
+  cerradores.push(cerrar);
+  // pushState puede fallar en file:// (preview); en https (la app real)
+  // funciona. Si falla, la app sigue igual, solo sin atrapar el back.
+  try { history.pushState({ rush: cerradores.length }, ""); } catch (e) {}
+}
+
+function cerrarPantalla() {
+  if (cerradores.length) history.back();
+}
+
+window.addEventListener("popstate", function () {
+  if (cerradores.length) {
+    var cerrar = cerradores.pop();
+    cerrar();
+  }
+});
+
 // --- Codigo de acceso ------------------------------------------------
 // El repositorio es publico, asi que la URL de la API se puede
 // encontrar. El codigo evita que un desconocido vea la cola o mueva
@@ -1244,6 +1274,7 @@ function abrirPantalla(c, modo) {
   pantalla.scrollTop = 0;
   window.scrollTo(0, 0);
   pintarAsignacion();
+  registrarPantalla(cerrarAsignacion);   // el back del telefono la cierra
 
   // Se refresca al abrir: entre que se cargo la pantalla y llego este
   // carro, alguien pudo haber checado, salido o entrado a descanso.
@@ -1267,7 +1298,9 @@ function cerrarAsignacion() {
   // corregido.
   if (volverAEntregados) {
     volverAEntregados = false;
-    abrirEntregados();
+    // Sin registrar: el estado de Finalizados sigue en la pila desde que se
+    // abrio (Corregir solo lo escondio, no lo saco).
+    abrirEntregados(true);
   }
 }
 
@@ -1558,7 +1591,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (asig) asig.color = this.value.trim() || null;
   });
 
-  document.getElementById("cancelar").addEventListener("click", cerrarAsignacion);
+  document.getElementById("cancelar").addEventListener("click", function () { cerrarPantalla(); });
 
   document.getElementById("confirmar").addEventListener("click", function () {
     if (!asig || ocupado) return;
@@ -1618,7 +1651,7 @@ document.addEventListener("DOMContentLoaded", function () {
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && d.ok === false) { alert(d.error || "No se pudo"); pintarAsignacion(); return; }
-        cerrarAsignacion();
+        cerrarPantalla();
       })
       .catch(function () { alert("Sin conexión. Intenta otra vez."); })
       .then(function () { ocupado = false; consultar(); });
@@ -1703,6 +1736,7 @@ function abrirEntrega(c) {
   document.getElementById("ent-motivos").style.display = "none";
   document.getElementById("entrega").style.display = "block";
   window.scrollTo(0, 0);
+  registrarPantalla(cerrarEntrega);   // el back del telefono la cierra
   cargarMotivos();
 }
 
@@ -1736,7 +1770,7 @@ document.getElementById("entrega").addEventListener("click", function (ev) {
       body: JSON.stringify({ carro: entrega.id })
     })
       .then(function (r) { return r.json(); })
-      .then(function (d) { if (d && d.ok === false) alert(d.error || "No se pudo"); cerrarEntrega(); })
+      .then(function (d) { if (d && d.ok === false) alert(d.error || "No se pudo"); cerrarPantalla(); })
       .catch(function () { alert("Sin conexión. Intenta otra vez."); })
       .then(function () { ocupado = false; consultar(); });
     return;
@@ -1764,14 +1798,14 @@ document.getElementById("entrega").addEventListener("click", function (ev) {
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && d.ok === false) { alert(d.error || "No se pudo"); return; }
-        cerrarEntrega();
+        cerrarPantalla();
       })
       .catch(function () { alert("Sin conexión. Intenta otra vez."); })
       .then(function () { ocupado = false; consultar(); });
   }
 });
 
-document.getElementById("ent-cerrar").addEventListener("click", cerrarEntrega);
+document.getElementById("ent-cerrar").addEventListener("click", function () { cerrarPantalla(); });
 
 // --- Los entregados de hoy -------------------------------------------
 // Por si se entrego uno por equivocacion. Restaurar reusa la misma ruta
@@ -1826,11 +1860,15 @@ function comoSeLee(fecha) {
   return Number(p[2]) + " " + (MESES[Number(p[1]) - 1] || p[1]);
 }
 
-function abrirEntregados() {
+// yaAbierta = true cuando NO es una apertura fresca (refrescar la lista,
+// cambiar de dia, o volver desde Corregir): ahi no se registra otra vez en
+// el historial, porque el estado de esta pantalla ya esta en la pila.
+function abrirEntregados(yaAbierta) {
   document.getElementById("entregados").style.display = "block";
   document.getElementById("entregados-lista").innerHTML =
     '<div class="cual">Cargando…</div>';
   window.scrollTo(0, 0);
+  if (!yaAbierta) registrarPantalla(cerrarEntregados);   // el back la cierra
   cargarDiasDisponibles();
 
   pedir("/entregados" + (diaEntregados ? "?fecha=" + encodeURIComponent(diaEntregados) : ""))
@@ -1889,10 +1927,15 @@ function abrirEntregados() {
     });
 }
 
-document.getElementById("ver-entregados").addEventListener("click", abrirEntregados);
-document.getElementById("entregados-cerrar").addEventListener("click", function () {
+function cerrarEntregados() {
   document.getElementById("entregados").style.display = "none";
-});
+}
+
+// Se envuelve (no se pasa abrirEntregados directo) porque el listener le
+// mandaria el evento como primer argumento, y eso lo tomaria como
+// "yaAbierta" y no registraria la pantalla.
+document.getElementById("ver-entregados").addEventListener("click", function () { abrirEntregados(); });
+document.getElementById("entregados-cerrar").addEventListener("click", function () { cerrarPantalla(); });
 
 // --- Desglose de un carro --------------------------------------------
 // Cuanto duro cada etapa y quien lo seco. Todo viene ya sumado de la
@@ -2017,6 +2060,7 @@ function abrirDetalle(id, enVivo) {
   document.getElementById("detalle-cuerpo").innerHTML = '<div class="sub">Cargando…</div>';
   document.getElementById("detalle").scrollTop = 0;
   window.scrollTo(0, 0);
+  registrarPantalla(cerrarDetalle);   // el back del telefono la cierra
 
   pedir("/carro?id=" + encodeURIComponent(id))
     .then(function (r) { return r.json(); })
@@ -2045,18 +2089,21 @@ function pintarDetalle() {
     cuerpoDetalle(detalleCarro, detalleCarro._enVivo);
 }
 
-document.getElementById("detalle-cerrar").addEventListener("click", function () {
+function cerrarDetalle() {
   // Se apaga el cronometro al cerrar: si no, seguiria corriendo en el
   // fondo gastando bateria sin que nadie lo vea.
   clearInterval(detalleTimer); detalleTimer = null;
   detalleCarro = null;
   document.getElementById("detalle").style.display = "none";
-});
+}
 
-// Cambiar de dia recarga la lista. El valor "" es hoy.
+document.getElementById("detalle-cerrar").addEventListener("click", function () { cerrarPantalla(); });
+
+// Cambiar de dia recarga la lista. El valor "" es hoy. yaAbierta: la
+// pantalla ya esta abierta, no se registra otra vez.
 document.getElementById("entregados-dia").addEventListener("change", function () {
   diaEntregados = this.value;
-  abrirEntregados();
+  abrirEntregados(true);
 });
 
 document.getElementById("entregados-lista").addEventListener("click", function (ev) {
@@ -2094,7 +2141,7 @@ document.getElementById("entregados-lista").addEventListener("click", function (
     .then(function (r) { return r.json(); })
     .then(function (d) {
       if (d && d.ok === false) { alert(d.error || "No se pudo restaurar"); return; }
-      abrirEntregados();
+      abrirEntregados(true);   // refresca; ya esta abierta, no re-registra
     })
     .catch(function () { alert("Sin conexión. Intenta otra vez."); })
     .then(function () { ocupado = false; consultar(); });

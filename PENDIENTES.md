@@ -63,6 +63,23 @@ que hoy describe el botón de galería que se quitó).
 
 **Con esto la lista completa del dueño (puntos 1–10) queda hecha.**
 
+### Extra — el botón "atrás" del teléfono cierra la pantalla, no sale de la app (HECHO)
+
+Pedido del dueño: en Finalizados (y en cualquier pantalla), el back del teléfono sacaba de la
+app. Ahora cierra la pantalla de encima y regresa a la anterior.
+
+- Cada pantalla que se abre (Asignar/Corregir, Entrega, Finalizados, Detalle) empuja un estado
+  al historial; el back —o los botones de Volver/Cancelar— consume uno y corre su cierre. Al
+  no quedar ninguna, el back ya sale normal.
+- Regla anti-desincronización: **todo** cierre pasa por `cerrarPantalla()` → `history.back()`
+  → `popstate`, el único que ejecuta el cierre real. Abrir empuja uno, cerrar consume uno.
+- Probado en el navegador simulando el back (`history.back()`):
+  - Finalizados → back → cola.
+  - Finalizados → Detalle → back → Finalizados → back → cola.
+  - Finalizados → Corregir → back → **Finalizados** (no la cola) → back → cola.
+  - Entrega → back → cola. Y un back con la pila vacía no truena (sale normal).
+- `pushState` verificado en file://; en la app real (https) funciona igual.
+
 ---
 
 ## Pedidos del dueño — 20/jul/2026
