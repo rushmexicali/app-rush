@@ -636,6 +636,44 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 12.0 Cierre del 20/jul/2026 — el primer día con datos que significan algo
+
+**86 carros** (vs 55 el 19/jul, +56%): el día más grande hasta ahora. 85 entregados y **1 se
+cerró solo** (carro 194, entró 19:44, el supervisor olvidó ese último — se cerró a mano con
+`cerrar_pendientes()`, marcado `cerrado_automaticamente`, así que cuenta como lavado pero sus
+tiempos ficticios no entran a los promedios). La cola amaneció limpia.
+
+**Lo más importante: la calidad de datos dio un salto y ya se puede confiar en los números.**
+
+- **Nota de caja: 84 de 86 (98%)**, contra 2 de 25 el 19/jul. Las cajeras adoptaron el hábito.
+- **Foto 84, placa leída 78 (91%), 6 ilegibles.** 0 placas duplicadas (el bug de la foto mal
+  pegada NO se repitió), 0 reembolsos-fantasma, 0 pruebas, 0 tiempos imposibles, 0 cancelados.
+- **Línea 1 impecable:** 0 express fuera de la 1, 0 no-express en la 1.
+- Reporte del día: espera promedio **43 min**, secado promedio **31 min** (mezcla; completos
+  solos **38 min**), **0 rechazos**.
+
+**Equipos (completos, con aspirado), rápidos y con volumen:** Pablo Cruz 11 carros @ 34 min,
+Jesús Gil 14 @ 34 min, Saul Ramirez 9 @ 37 min, Luis Luna 10 @ 43 min. Walter Rodríguez es de
+hecho el del express: 18 @ 16 min. Equipos de 2 salen a ~20 min.
+
+**Lo que hay que atender (por orden de valor):**
+
+1. 🟡 **El punto 8 (cola virtual) ya está cuantificado y pesa.** De 59 completos, **18 (31%)
+   tuvieron a su secador ocupado con otro carro al arrancar**; eso infla el secado individual
+   **~4.6 min en promedio, hasta 42 min** en el peor caso (la Land Rover de Pablo salió con
+   79 min de "secado" que casi seguro es cola, no trabajo). **Los promedios por persona de
+   arriba están inflados por esto**, sobre todo para los que más cargaron (Pablo 11, Luis 10).
+   El dueño lo está analizando; aquí está el dato para decidir. Sigue EN PAUSA.
+2. 🔵 **"Saul de Anda" sale como "Saul de"** también en el reporte del dueño (no solo la
+   grilla). Bug cosmético del nombre corto, pendiente.
+3. 🟢 **El olvido de prelavado ya tiene regla** (20 min, exenta a mano): hoy solo 2 casos (la
+   Acura de 38 min y la RAM de 19.8 borderline). No es patrón — 2 de 86.
+
+> **El 21/jul es el segundo día de prueba.** El 19/jul se borró (asignaciones al azar); el 20
+> ya salió coherente (línea 1 perfecta, patrones que cuadran). Con dos o tres días así de
+> limpios, los tiempos por persona empiezan a servir de verdad — en cuanto se decida el punto 8,
+> que sin él castiga al que más carros carga.
+
 ## 12. Estado actual — al 19/jul/2026 (fin del día)
 
 **Las 5 fases están en producción y los supervisores ya trabajan con la app.** Ese día
@@ -967,19 +1005,22 @@ quiénes eran en realidad"*. Se borraron **68 asignaciones** (13 personas) y **2
 > **El 21/jul es día de prueba declarado.** Los primeros datos de equipo que van a significar
 > algo son los de ese día en adelante.
 
-### Lo siguiente (en este orden)
+### Lo siguiente (en este orden) — actualizado al cierre del 20/jul/2026
 
-1. **VIGILAR, no construir.** Los supervisores empezaron a usarla el 19/jul/2026 por la
-   tarde. Lo primero de la siguiente sesión es ver cómo se portó, con consultas reales:
-   - ¿Cuántas fotos se están tomando? ¿De cuántas se leyó la placa?
-     `select count(*) filter (where foto_path is not null), count(*) filter (where placa is not null) from carros where creado_en::date = current_date`
-   - ¿Hay rechazos? ¿De quién y por qué? (tabla `rechazos`)
-   - ¿El corte de las 10 PM se congeló solo? (`select * from reportes_diarios`)
-   - ¿Cuántos carros quedaron sin entregar al cierre? Eso delata dónde se traba.
-2. **Preguntarle al dueño cómo le fue al supervisor.** El Paso 7 (darle el teléfono sin
-   explicar nada y anotar dónde se traba) por fin está ocurriendo de verdad.
-3. **Cuando haya una semana limpia, revisar la analítica.** Hoy los números salen de un día
-   sucio y no significan nada del negocio. Ver `es_prueba`, `cancelado_en` y `etapas_medibles`.
+1. **Revisar cómo salió el 21/jul (segundo día de prueba)**, con las mismas consultas de
+   siempre (ver `scripts` y el patrón de análisis del 20/jul): volumen, tiempos por tipo y por
+   equipo (`reporte_del_dia(fecha)`), rechazos, placas/notas, `cerrados_automaticamente`, y
+   anomalías (placas duplicadas, prelavados largos, esperas raras). **Confirmar que el reporte
+   del 20/jul se congeló solo a las 8:30** (`select fecha, congelado_en from reportes_diarios`).
+2. **Decidir el punto 8 (cola virtual).** Ya está el dato: infla el secado ~4.6 min en
+   promedio (18 de 59 completos el 20/jul). Sin él, los tiempos por persona castigan al que más
+   carga. Si se retoma, la recomendación sigue siendo derivar el secado efectivo sin mover la
+   etapa, y guardar/mostrar el `tiempo_en_fila`. Ver `PENDIENTES.md` y la consulta `q11`/`a6`.
+3. **Arreglar el cosmético "Saul de Anda" → sale "Saul de"** en grilla y reporte (saltar las
+   preposiciones al armar el nombre corto). Bajo riesgo.
+4. **Con dos o tres días limpios seguidos, leer la analítica en serio.** El 20/jul ya fue
+   limpio (nota 98%, línea 1 perfecta, 0 duplicadas). Los tiempos por persona empiezan a
+   significar algo — con el punto 8 resuelto, del todo.
 
 ### Lo que se construyó el 19/jul/2026 (para orientarse rápido)
 

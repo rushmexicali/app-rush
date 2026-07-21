@@ -6,6 +6,29 @@
 
 ---
 
+## ✅ CIERRE DEL 20/jul/2026 — todo shippeado
+
+**Todo lo de abajo ya está EN PRODUCCIÓN y en el `CLAUDE.md`** (el estado canónico vive en
+`CLAUDE.md §12.0`). Los 10 pedidos del dueño (1–10), más el fix del stutter de los guiones, el
+manejo del botón atrás del teléfono, el aviso de secador ponchado (texto + guiones verdes en
+demorado), y la regla de prelavado > 20 min. Migraciones `051`–`053` aplicadas; Edge Function
+`app` desplegado. El reporte se congela solo a las 8:30.
+
+**Lo único que queda vivo para las próximas sesiones:**
+
+- ⏸️ **Punto 8 (cola virtual del secado)** — EN PAUSA, el dueño lo analiza. Dato del 20/jul:
+  infla el secado ~4.6 min de promedio (18 de 59 completos). Ver `CLAUDE.md §12.0` y consulta
+  `a6`/`q11`.
+- 🔵 **"Saul de Anda" sale "Saul de"** (grilla y reporte) — cosmético, bajo riesgo.
+- 🟡 **`A GUINDA` por `AU GUINDA`** (carro 124, 20/jul) — decidir si se acepta `A`=automóvil o
+  se corrige en caja. No aflojar el parser por cuenta propia.
+- 📌 **Mañana (21/jul, 2º día de prueba):** confirmar que el reporte del 20 se congeló, y
+  correr el análisis del día como se hizo hoy.
+
+El resto de este archivo es el detalle histórico de cómo se construyó cada cosa el 20/jul.
+
+---
+
 ## Estado del código (20/jul/2026, tarde)
 
 **Lote de bajo riesgo CODIFICADO y probado en el navegador — SIN PUSHEAR.** Los puntos
