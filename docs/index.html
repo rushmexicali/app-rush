@@ -191,19 +191,22 @@
   .avanzar:active { filter: brightness(.8); }
   .avanzar[disabled] { opacity:.45; }
 
-  /* Guiones rojos marchando por la orilla del boton de Asignar (- - - -),
-     dando la vuelta. El supervisor le picaba al icono redondo de
-     prelavado por ser del mismo azul; los guiones en movimiento marcan
-     cual es el boton que SI se toca, sin el ruido de un glow. Solo en
-     Asignar; en "Entregado" (verde) no hace falta.
+  /* Guiones rojos marchando por la orilla de un boton (- - - -), dando la
+     vuelta. Se usa en DOS casos:
+       - el boton de Asignar, porque el supervisor le picaba al icono
+         redondo de prelavado por ser del mismo azul;
+       - el boton de Corregir cuando un secador asignado ya marco salida,
+         para llevar al supervisor a reasignar ahi.
+     La clase es generica (`.girando`) para poder ponersela a cualquiera.
 
      Son cuatro tiras de guiones, una por lado, que marchan en circulo
      (arriba -> derecha -> abajo -> izquierda). Se anima
      'background-position', que se queda DENTRO de la caja: no hay nada
      que rotar, asi que nunca se sale del boton (que es lo que pasaba al
-     rotar un elemento tan ancho). */
-  .avanzar.girando { position: relative; }
-  .avanzar.girando::before {
+     rotar un elemento tan ancho). border-radius 14px = el de los dos
+     botones. */
+  .girando { position: relative; }
+  .girando::before {
     content: "";
     position: absolute;
     inset: 0;
@@ -967,8 +970,8 @@ function pintar() {
     // Se poncho quien lo estaba secando. No se reasigna solo: el
     // supervisor decide, porque puede ser que otro ya lo haya tomado.
     if (c.ausentes && c.ausentes.length) {
-      html += '<div class="ausente">&#9888; Se poncho ' + escapar(c.ausentes.join(", ")) +
-              '<br>Reasigna este carro</div>';
+      html += '<div class="ausente">&#9888; ' + escapar(c.ausentes.join(", ")) +
+              ' marcó salida.<br>Asigna a otro secador</div>';
     }
 
     html +=   '<div class="acciones">';
@@ -978,10 +981,12 @@ function pintar() {
     html +=     '<button class="avanzar' + (c.estado !== "secando" ? " girando" : "") +
                   '" data-accion="avanzar" data-carro="' + c.id + '">' +
                   escapar(ACCIONES[c.estado] || "Siguiente") + '</button>';
-    // Corregir abre la pantalla de captura (tipo, color, marca). Sirve
-    // siempre, incluso antes de asignar: es donde el supervisor arregla
-    // lo que la cajera no puso.
-    html +=     '<button class="corregir" data-editar="' + c.id + '">Corregir</button>';
+    // Corregir abre la pantalla de captura (tipo, color, marca, secadores).
+    // Sirve siempre, incluso antes de asignar. Si un secador ya marco
+    // salida, lleva los guiones rojos: es aqui donde se reasigna.
+    var secadorSalio = c.ausentes && c.ausentes.length;
+    html +=     '<button class="corregir' + (secadorSalio ? " girando" : "") +
+                  '" data-editar="' + c.id + '">Corregir</button>';
     // Regresar deshace el paso anterior. En prelavado no hay a donde.
     html +=     '<button class="corregir" data-accion="corregir" data-carro="' + c.id +
                   '"' + (c.estado === "prelavado" ? " disabled" : "") + '>Regresar</button>';

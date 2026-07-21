@@ -387,9 +387,12 @@ acumulando desde el día uno aunque todavía no se use.
   conviene trabajar más**. Bloquearlos sería trabajar en contra de ellos y del negocio. La
   confirmación existe para que nunca sea por accidente, no para desalentarlo.
 - **Si un secador se poncha con un carro asignado**, la tarjeta del carro muestra un aviso
-  rojo con el nombre de quien se fue. No se reasigna solo ni se borra el registro: quién secó
-  ese carro es dato de eficiencia, y además puede que otro ya lo haya tomado. El supervisor
-  decide.
+  rojo: **"⚠ \<nombre(s)> marcó salida. Asigna a otro secador"** (texto del 20/jul/2026), y el
+  botón **Corregir se pinta con los guiones rojos girando** para llevar al supervisor justo
+  ahí — que es donde ahora se reasigna (Corregir edita secadores). No se reasigna solo ni se
+  borra el registro: quién secó ese carro es dato de eficiencia, y además puede que otro ya lo
+  haya tomado. El supervisor decide. Los guiones solo salen en ese caso (usan la clase genérica
+  `.girando`, la misma del botón de Asignar).
 - Si alguien se ponchó (clock-out) mientras secaba un carro, ese carro se marca visualmente
   para reasignarlo, sin perder quién lo estaba secando.
 - Siempre debe existir un botón **"No aparece el empleado / agregar manual"** como
