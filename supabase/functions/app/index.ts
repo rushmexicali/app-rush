@@ -67,11 +67,13 @@ function autorizado(req: Request, url: URL): boolean {
 const DEMORA_SEG: Record<string, number> = {
   // Prelavado: 19 minutos.
   //
-  // Eran 15, pero desde el 19/jul/2026 este estado ya no es solo el
-  // prelavado: cubre todo lo que pasa antes de secar (prelavado + tunel +
-  // el rato hasta que el supervisor asigna), porque ahora es un solo
-  // toque. 15 de prelavado + 4 del tunel = 19.
-  prelavado: 1140,
+  // Este estado cubre todo lo que pasa antes de secar (prelavado + tunel +
+  // el rato hasta que el supervisor asigna). El dueno lo subio a 20 min el
+  // 20/jul/2026: un lavado normal que pasa de 20 min sin asignarse casi
+  // seguro es que el supervisor lo olvido (paso con una Acura de 38 min).
+  // OJO: los lavados a MANO no se pintan rojo por prelavado (tardan mas de
+  // por si); esa excepcion vive abajo, en el calculo de 'limite' por carro.
+  prelavado: 1200,
 
   // Estos dos ya no se generan: quedan por los carros que venian en
   // camino cuando cambio el flujo. Se pueden borrar cuando la cola este
@@ -385,6 +387,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
       // El cronometro cuenta desde que arranco la etapa ABIERTA (sin fin).
       // Si no hay ninguna abierta, se cae a la hora de entrada del carro.
       const abierta = (c.etapas ?? []).find((e: any) => !e.fin);
+
+      // A los cuantos segundos se pinta rojo. Un lavado a mano tarda
+      // legitimamente mas en prelavado (se lava a mano, no pasa por tunel),
+      // asi que NO se pinta rojo por el tiempo de prelavado: un a_mano de 30
+      // min ahi es normal, un lavado normal de 30 min significa que el
+      // supervisor olvido asignarlo. Los demas estados no cambian.
+      let limite = DEMORA_SEG[c.estado] ?? 0;
+      if (c.estado === "prelavado" && c.a_mano) limite = 0;
+
       return {
         id: c.id,
         estado: c.estado,
@@ -406,7 +417,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         cliente: c.cliente,
         placa: c.placa,
         etapa_inicio: abierta?.inicio ?? c.creado_en,
-        limite: DEMORA_SEG[c.estado] ?? 0,
+        limite,
         // Nombres de los secadores que ya se poncharon, si los hay.
         ausentes: sinSecador.get(c.id) ?? [],
         secadores: secadoresDe.get(c.id) ?? [],

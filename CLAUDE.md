@@ -72,12 +72,21 @@ tecnología.** Toda decisión de diseño se juzga contra esto:
 
   | Etapa | Rojo |
   |---|---|
-  | Antes de secar (prelavado + túnel + espera) | a los **19 min** |
+  | Antes de secar (prelavado + túnel + espera), **si NO es a mano** | a los **20 min** |
+  | Antes de secar, **lavado a mano** | nunca (tarda más de por sí) |
   | Secando | a los 35 min |
 
-  Los 19 minutos son los 15 de prelavado más los 4 del túnel. **Cambió el 19/jul/2026**
-  junto con el flujo de un solo toque: ahora un solo estado cubre todo lo que pasa antes de
-  secar, así que el umbral tuvo que absorber también el túnel.
+  El 19/jul/2026 el umbral de antes-de-secar era **19 min** (15 de prelavado + 4 del túnel),
+  cuando el flujo pasó a un solo toque y el estado tuvo que absorber el túnel.
+
+  **Cambió a 20 min el 20/jul/2026**, y se le agregó la excepción del lavado a mano. Motivo: un
+  lavado normal que pasa de 20 min sin asignarse casi seguro es que el supervisor lo **olvidó**
+  (pasó con una `CAMIONETA BLANCO ACURA` que acumuló **38 min** de prelavado antes de que se le
+  asignara). Pero un lavado **a mano** tarda más ahí de forma legítima —se lava a mano, no pasa
+  por túnel—, así que a ésos no se les pinta rojo por el tiempo de prelavado. El umbral vive en
+  `DEMORA_SEG.prelavado` (1200 s) y la excepción en el cálculo de `limite` por carro en `/cola`
+  (`a_mano && prelavado → limite = 0`). Cuando el carro se asigna, pasa a secando y manda el
+  umbral de 35 min.
 
   > "Túnel" y "falta asignar" ya no existen como estados que el supervisor vea. Sus umbrales
   > siguen en el código solo por los carros que venían en camino cuando cambió el flujo, y se
