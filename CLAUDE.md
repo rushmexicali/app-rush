@@ -393,6 +393,11 @@ acumulando desde el día uno aunque todavía no se use.
   borra el registro: quién secó ese carro es dato de eficiencia, y además puede que otro ya lo
   haya tomado. El supervisor decide. Los guiones solo salen en ese caso (usan la clase genérica
   `.girando`, la misma del botón de Asignar).
+  - **Si la tarjeta ya está demorada (pasó los 35 min, toda roja), el aviso y los guiones se
+    vuelven VERDES** (20/jul/2026): en rojo sobre rojo se perdían. El color del guion sale de
+    la variable `--guion` (rojo por defecto, verde en `.carro.demorado`), y el mensaje usa
+    `.demorado .ausente`. Aplica a cualquier `.girando` dentro de una tarjeta roja, así que un
+    botón de Asignar demorado también trae los guiones verdes — mismo principio de contraste.
 - Si alguien se ponchó (clock-out) mientras secaba un carro, ese carro se marca visualmente
   para reasignarlo, sin perder quién lo estaba secando.
 - Siempre debe existir un botón **"No aparece el empleado / agregar manual"** como

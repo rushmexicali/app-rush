@@ -41,7 +41,7 @@
     grid-template-columns: minmax(0, 1fr) auto;
     column-gap: 12px;
   }
-  .carro.demorado { background:#3d1418; border-color:#ff4d4f; }
+  .carro.demorado { background:#3d1418; border-color:#ff4d4f; --guion:#3fb950; }
 
   .unidad {
     grid-column: 1; grid-row: 1;
@@ -166,6 +166,13 @@
     font-size: 17px; font-weight: 700;
     line-height: 1.25;
   }
+  /* Si la tarjeta ya esta demorada (toda roja), el aviso de reasignar se
+     vuelve VERDE: en rojo sobre rojo se perdia. Es el mismo verde de los
+     guiones del boton (ver --guion). */
+  .demorado .ausente {
+    background:#0f2e18; color:#7ee787;
+    border-left-color:#3fb950;
+  }
 
   /* Los botones son lo mas importante de la pantalla: gigantes, uno por
      accion, y el texto dice QUE HACE, no algo generico. */
@@ -212,11 +219,14 @@
     inset: 0;
     border-radius: 14px;
     pointer-events: none;
+    /* El color del guion sale de --guion (rojo por defecto). En una
+       tarjeta demorada, que ya es toda roja, se vuelve verde para
+       contrastar y no perderse — ver .carro.demorado abajo. */
     background-image:
-      repeating-linear-gradient(90deg, #ff2626 0 22px, transparent 22px 33px),
-      repeating-linear-gradient(90deg, #ff2626 0 22px, transparent 22px 33px),
-      repeating-linear-gradient(0deg,  #ff2626 0 22px, transparent 22px 33px),
-      repeating-linear-gradient(0deg,  #ff2626 0 22px, transparent 22px 33px);
+      repeating-linear-gradient(90deg, var(--guion, #ff2626) 0 22px, transparent 22px 33px),
+      repeating-linear-gradient(90deg, var(--guion, #ff2626) 0 22px, transparent 22px 33px),
+      repeating-linear-gradient(0deg,  var(--guion, #ff2626) 0 22px, transparent 22px 33px),
+      repeating-linear-gradient(0deg,  var(--guion, #ff2626) 0 22px, transparent 22px 33px);
     background-size: 33px 3px, 33px 3px, 3px 33px, 3px 33px;
     background-position: 0 0, 0 100%, 0 0, 100% 0;
     background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
