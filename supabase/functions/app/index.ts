@@ -644,9 +644,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return json({ ok: false, error: "falta el numero de carro" }, 400);
     }
 
+    // La pantalla ahora manda VARIOS motivos (arreglo). Se acepta tambien
+    // el singular `motivo` por si algun telefono viejo lo sigue mandando:
+    // asi un cambio de la app no rompe una entrega a medias.
+    const motivos: string[] = Array.isArray(cuerpo?.motivos)
+      ? cuerpo.motivos.map((m: any) => String(m))
+      : (cuerpo?.motivo != null ? [String(cuerpo.motivo)] : []);
+
     const { data, error } = await db.rpc("rechazar_entrega", {
       p_carro: carro,
-      p_motivo: String(cuerpo?.motivo ?? ""),
+      p_motivos: motivos,
     });
 
     if (error) {
@@ -870,6 +877,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return json({ error: error.message }, 500);
     }
     if (!data) return json({ error: "Ese carro no existe" }, 404);
+
+    // La foto vive en un bucket PRIVADO (en las fotos se ven placas), asi
+    // que la ruta cruda no sirve: hay que firmarla. Se firma al vuelo y no
+    // se cachea como en /cola porque el desglose se abre de tanto en tanto,
+    // no cada 3 segundos. Si falla, el carro se ve igual, solo sin foto.
+    if (data.foto_path) {
+      const { data: firmada } = await db.storage
+        .from("fotos")
+        .createSignedUrl(data.foto_path, 3600);
+      data.foto = firmada?.signedUrl ?? null;
+    }
+
     return json(data);
   }
 

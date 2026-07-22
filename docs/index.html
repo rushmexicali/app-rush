@@ -439,6 +439,10 @@
   .opcion.bueno { background:#3fb950; border-color:#3fb950; color:#08090b; min-height:96px; font-size:24px; }
   .opcion.malo  { background:transparent; border-color:#ff4d4f; color:#ff7875; min-height:96px; font-size:24px; }
   .opcion.volver { width:100%; margin-top:26px; min-height:66px; font-size:19px; }
+  /* El boton que confirma el rechazo, debajo de los motivos. Del ancho
+     completo y separado de la rejilla para que no se confunda con un
+     motivo mas. */
+  #ent-rechazar { width:100%; margin-top:18px; }
 
   /* Tarjeta de un entregado: mucho mas sencilla que la de la cola. Aqui
      no hay cronometro ni etapas, solo reconocerlo y poder restaurarlo. */
@@ -562,6 +566,53 @@
     display:none; background:#3d1418; color:#ffb3b3;
     padding:12px; border-radius:12px; margin-bottom:12px; font-size:17px;
   }
+
+  /* Visor de la foto en grande. Encima de TODO (60): se abre desde la cola
+     (la miniatura de la tarjeta), desde el desglose y desde finalizados.
+     Fondo negro para que la foto no compita con nada. */
+  #visor-foto {
+    display:none; position:fixed; inset:0; z-index:60;
+    background:#000;
+    flex-direction:column;
+  }
+  #visor-foto-img {
+    flex:1 1 auto; width:100%; min-height:0;
+    object-fit:contain; background:#000;
+  }
+  #visor-foto-barra {
+    flex:0 0 auto; display:flex; gap:10px;
+    padding:12px 14px calc(12px + env(safe-area-inset-bottom));
+    background:#0d1117; border-top:1px solid #21262d;
+  }
+  #visor-foto-cerrar {
+    flex:0 0 auto; min-width:120px; min-height:64px;
+    font-size:19px; font-weight:700;
+    background:transparent; color:#adbac7;
+    border:2px solid #30363d; border-radius:14px; cursor:pointer;
+  }
+  #visor-foto-cerrar:active { background:#161b22; }
+  /* Reemplazar en azul, la accion principal del visor cuando el carro se
+     esta trabajando. Se esconde en el desglose de finalizados: ahi ya se
+     entrego, se asume correcta. */
+  #visor-foto-reemplazar {
+    flex:1; min-height:64px;
+    font-size:20px; font-weight:800;
+    background:#2f81f7; color:#fff;
+    border:none; border-radius:14px; cursor:pointer;
+  }
+  #visor-foto-reemplazar:active { filter:brightness(.85); }
+
+  /* La foto dentro del desglose: un recuadro que se abre en grande al
+     tocarlo. Del ancho de la pantalla para que se reconozca el carro sin
+     tener que abrirlo. */
+  .foto-detalle {
+    display:block; width:100%; margin:14px 0 4px; padding:0;
+    background:#161b22; border:1px solid #30363d; border-radius:14px;
+    overflow:hidden; cursor:pointer;
+  }
+  .foto-detalle img {
+    width:100%; max-height:240px; object-fit:cover; display:block;
+  }
 </style>
 </head>
 <body>
@@ -644,8 +695,12 @@
   </div>
 
   <div id="ent-motivos" style="display:none">
-    <div class="seccion">¿Qué le faltó?</div>
+    <!-- Se pueden marcar VARIOS. No se rechaza al tocar uno: hay que
+         confirmar con el boton de abajo. Toca de nuevo un motivo para
+         quitarlo. -->
+    <div class="seccion">¿Qué le faltó? <span class="pendiente">— marca todo lo que aplique</span></div>
     <div class="rejilla motivos" id="ent-lista-motivos"></div>
+    <button id="ent-rechazar" class="opcion malo" disabled>RECHAZAR</button>
   </div>
 
   <button id="ent-cerrar" class="opcion volver">Cancelar</button>
@@ -678,6 +733,17 @@
     <button id="detalle-cerrar">&#8592;&nbsp; Volver</button>
   </div>
   <div id="detalle-cuerpo"></div>
+</div>
+
+<!-- Ver la foto en grande. Se abre al tocar la miniatura de una tarjeta
+     (con boton para reemplazarla) o la foto del desglose (sin el, porque
+     ahi ya se entrego y se asume correcta). -->
+<div id="visor-foto">
+  <img id="visor-foto-img" src="" alt="Foto del carro">
+  <div id="visor-foto-barra">
+    <button id="visor-foto-cerrar">&#8592;&nbsp; Volver</button>
+    <button id="visor-foto-reemplazar">Reemplazar foto</button>
+  </div>
 </div>
 
 <!-- capture="environment" abre la camara TRASERA directo, no la galeria.
@@ -734,7 +800,7 @@ var ACCIONES = {
   prelavado:   "Asignar unidad",
   tunel:       "Asignar unidad",
   por_asignar: "Asignar unidad",
-  secando:     "Entregado"
+  secando:     "ENTREGAR"
 };
 
 // Los colores más vistos en la operación real. Un solo botón por color:
@@ -1713,6 +1779,7 @@ function achicar(archivo) {
 // seco. El objetivo no es castigar: es saber a quien entrenar y en que.
 var entrega = null;      // el carro que se esta por entregar
 var MOTIVOS = [];        // se piden una vez y se guardan
+var motivosElegidos = []; // los que el supervisor marco en el rechazo actual
 
 // Respaldo. La lista buena vive en la base (motivos_de_rechazo), pero el
 // supervisor NUNCA debe quedarse en una pantalla de rechazo sin botones:
@@ -1768,9 +1835,19 @@ function pintarMotivos() {
   var lista = MOTIVOS.length ? MOTIVOS : MOTIVOS_RESPALDO;
   var h = "";
   for (var i = 0; i < lista.length; i++) {
-    h += botonOpcion(lista[i], false, 'data-motivo="' + escapar(lista[i]) + '"');
+    // Se pinta "elegida" el que ya esta marcado: se pueden marcar varios.
+    var marcado = motivosElegidos.indexOf(lista[i]) >= 0;
+    h += botonOpcion(lista[i], marcado, 'data-motivo="' + escapar(lista[i]) + '"');
   }
   document.getElementById("ent-lista-motivos").innerHTML = h;
+
+  // El boton de confirmar se apaga si no hay nada marcado, y dice cuantos
+  // van para que se vea que se puede marcar mas de uno.
+  var btn = document.getElementById("ent-rechazar");
+  btn.disabled = motivosElegidos.length === 0;
+  btn.textContent = motivosElegidos.length > 1
+    ? "RECHAZAR (" + motivosElegidos.length + ")"
+    : "RECHAZAR";
 }
 
 document.getElementById("entrega").addEventListener("click", function (ev) {
@@ -1795,7 +1872,8 @@ document.getElementById("entrega").addEventListener("click", function (ev) {
   if (b.dataset.rechazar) {
     // No se rechaza todavia: primero hay que decir que falto. El motivo
     // es lo que hace util el registro — sin el solo se sabe que alguien
-    // falla, no que ensenarle.
+    // falla, no que ensenarle. Se puede marcar MAS DE UNO.
+    motivosElegidos = [];
     pintarMotivos();
     document.getElementById("ent-decidir").style.display = "none";
     document.getElementById("ent-motivos").style.display = "block";
@@ -1804,12 +1882,28 @@ document.getElementById("entrega").addEventListener("click", function (ev) {
   }
 
   if (b.dataset.motivo) {
+    // Marca o desmarca. NO rechaza: eso lo hace el boton RECHAZAR de
+    // abajo, para poder juntar varias cosas en un solo rechazo.
+    var m = b.dataset.motivo;
+    var idx = motivosElegidos.indexOf(m);
+    if (idx >= 0) motivosElegidos.splice(idx, 1);
+    else motivosElegidos.push(m);
+    if (navigator.vibrate) navigator.vibrate(15);
+    pintarMotivos();
+    return;
+  }
+
+  if (b.id === "ent-rechazar") {
+    if (!motivosElegidos.length) return;
     ocupado = true;
     if (navigator.vibrate) navigator.vibrate([30, 60, 30]);
+    // Se mandan TODOS los motivos marcados. La base los guarda como UN
+    // solo rechazo (mismo grupo) con varias filas: cuenta como un evento,
+    // no como varios. Ver migracion 054.
     pedir("/rechazar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ carro: entrega.id, motivo: b.dataset.motivo })
+      body: JSON.stringify({ carro: entrega.id, motivos: motivosElegidos })
     })
       .then(function (r) { return r.json(); })
       .then(function (d) {
@@ -1818,6 +1912,7 @@ document.getElementById("entrega").addEventListener("click", function (ev) {
       })
       .catch(function () { alert("Sin conexión. Intenta otra vez."); })
       .then(function () { ocupado = false; consultar(); });
+    return;
   }
 });
 
@@ -2011,6 +2106,14 @@ function cuerpoDetalle(c, enVivo) {
   }
   if (c.a_mano) h += '<span class="aviso-servicio mano">&#9888; LAVADO A MANO</span>';
 
+  // La foto del carro, si la tiene. Se abre en grande al tocarla (sin
+  // boton de reemplazo: aqui ya se entrego, se asume correcta). La firma
+  // la manda la Edge Function en c.foto.
+  if (c.foto) {
+    h += '<button class="foto-detalle" data-ver-foto="' + escapar(c.foto) + '">' +
+           '<img src="' + escapar(c.foto) + '" alt="Foto del carro"></button>';
+  }
+
   // Prelavado. Corre en vivo si el carro todavia no se asigna (raro que se
   // abra el detalle ahi, pero queda honesto).
   h += renglonTiempo("Prelavado" + (corre("prelavado") ? " · en curso" : ""),
@@ -2115,6 +2218,12 @@ function cerrarDetalle() {
 
 document.getElementById("detalle-cerrar").addEventListener("click", function () { cerrarPantalla(); });
 
+// Tocar la foto del desglose la abre en grande, sin boton de reemplazo.
+document.getElementById("detalle-cuerpo").addEventListener("click", function (ev) {
+  var f = ev.target.closest("[data-ver-foto]");
+  if (f) abrirVisorFoto(f.dataset.verFoto, null, false);
+});
+
 // Cambiar de dia recarga la lista. El valor "" es hoy. yaAbierta: la
 // pantalla ya esta abierta, no se registra otra vez.
 document.getElementById("entregados-dia").addEventListener("change", function () {
@@ -2193,11 +2302,51 @@ function subirFoto(archivo, id) {
     });
 }
 
+// --- Ver la foto en grande -------------------------------------------
+// Se abre desde la miniatura de una tarjeta (con "Reemplazar foto") o
+// desde el desglose (sin el). Es una pantalla mas, asi que registra su
+// cierre para que el back del telefono la cierre como las demas.
+var visorFotoId = null;
+
+function abrirVisorFoto(url, id, conReemplazo) {
+  if (!url) return;
+  visorFotoId = id || null;
+  document.getElementById("visor-foto-img").src = url;
+  document.getElementById("visor-foto-reemplazar").style.display =
+    conReemplazo ? "block" : "none";
+  document.getElementById("visor-foto").style.display = "flex";
+  window.scrollTo(0, 0);
+  registrarPantalla(cerrarVisorFoto);
+}
+
+function cerrarVisorFoto() {
+  visorFotoId = null;
+  document.getElementById("visor-foto").style.display = "none";
+  // Se suelta la imagen para no dejarla cargada en memoria de fondo.
+  document.getElementById("visor-foto-img").src = "";
+}
+
 document.addEventListener("DOMContentLoaded", function () {
   document.getElementById("camara").addEventListener("change", function (ev) {
     var archivo = ev.target.files && ev.target.files[0];
     ev.target.value = "";                  // permite repetir la misma foto
     subirFoto(archivo, carroDeLaFoto);
+  });
+
+  document.getElementById("visor-foto-cerrar").addEventListener("click", function () {
+    cerrarPantalla();
+  });
+
+  // Reemplazar: se cierra el visor (por history, para no desincronizar) y
+  // se abre la camara para ESE carro. Se guarda el id antes de cerrar,
+  // porque cerrar lo borra.
+  document.getElementById("visor-foto-reemplazar").addEventListener("click", function () {
+    var id = visorFotoId;
+    cerrarPantalla();
+    if (id) {
+      carroDeLaFoto = id;
+      document.getElementById("camara").click();
+    }
   });
 });
 
@@ -2214,8 +2363,20 @@ document.getElementById("lista").addEventListener("click", function (ev) {
     // Un boton disabled no dispara click, pero por si acaso: sin carril y
     // secador la foto no se abre.
     if (camara.disabled) return;
-    carroDeLaFoto = Number(camara.dataset.foto);
-    document.getElementById("camara").click();
+    var idFoto = Number(camara.dataset.foto);
+    // Si YA hay foto, se abre en grande (con boton para reemplazarla); asi
+    // el supervisor la revisa sin volver a disparar la camara por error. Si
+    // no hay, se abre la camara directo como siempre.
+    var cf = null;
+    for (var jf = 0; jf < carros.length; jf++) {
+      if (carros[jf].id === idFoto) { cf = carros[jf]; break; }
+    }
+    if (cf && cf.foto) {
+      abrirVisorFoto(cf.foto, idFoto, true);
+    } else {
+      carroDeLaFoto = idFoto;
+      document.getElementById("camara").click();
+    }
     return;
   }
 
@@ -2245,6 +2406,15 @@ document.getElementById("lista").addEventListener("click", function (ev) {
 
   var boton = ev.target.closest("button[data-accion]");
   if (!boton || ocupado) return;
+
+  // "Regresar" (data-accion="corregir") deshace el paso anterior y manda
+  // SOLO, sin abrir pantalla. Es facil picarlo por error —esta junto a
+  // Corregir y del mismo tamano— y regresar reinicia el cronometro de
+  // secado, asi que se confirma antes. El CLAUDE.md pide que nunca haya un
+  // paso destructivo por accidente.
+  if (boton.dataset.accion === "corregir") {
+    if (!confirm("¿Seguro que quieres regresar este carro a prelavado?\n\nSe reinicia el cronómetro de secado.")) return;
+  }
 
   // El boton principal nunca manda solo: siempre abre una pantalla.
   //   antes de secar -> asignar linea y secadores
