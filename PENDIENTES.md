@@ -6,6 +6,40 @@
 
 ---
 
+## ✅ CIERRE DEL 22/jul/2026 — análisis del día + limpieza del backend
+
+**Todo shippeado y verificado.** Migraciones `055`–`060` aplicadas en producción, Edge
+Functions `app` y `sincronizar-jibble` desplegadas. El estado canónico vive en
+`CLAUDE.md §11.9`; aquí sólo queda lo que sigue vivo.
+
+**Lo que se hizo:** una sola regla para "servicio especial" (`055`), un solo sistema de colores
+y "Saul de Anda" completo (`056`), borrado de lo muerto + índice para `/cola` (`057`), el
+reporte deja de escanear la historia (`058`), el trigger de venta deja de reparsear seis veces
+(`059`), y Jibble sólo de 6 AM a 10 PM hora local (`060`).
+
+**Cómo se verificó** (el método vale más que los cambios): línea base de 32 KB con la salida
+real del sistema **antes** de tocar nada, y comparación después de **cada** migración. 52 casos
+de clasificación, 331 ventas releídas, 7 escenarios de reporte, un ciclo completo de carro
+(venta → asignar → corregir → rechazar → entregar → restaurar → devolución) y 8,760 horas de
+ventana horaria. Todos los endpoints probados con `curl` contra la API real.
+
+### Lo que queda vivo
+
+- 🟡 **DECIDIR: el umbral del secado de 0 segundos.** 8 carros en dos días (5 el 21/jul, 3 el
+  22) con secado de ~6 s: son olvidos registrados tarde, no trabajo. Hunden el promedio de la
+  persona a la que se le anotan. Sugerido: secado < 3 min cuenta como lavado pero fuera de los
+  promedios, igual que `cerrado_automaticamente`. **Falta el número del dueño.**
+- ⏸️ **Punto 8 (cola virtual)** — sigue EN PAUSA, el dueño lo analiza. Ya hay dos días de dato:
+  infla el secado 4.6 min (20/jul) y 5.9 min (22/jul), y cambia el ranking por persona.
+- 🔵 **Avisar cuando dos carros del mismo día comparten placa.** Ya van dos veces (19/jul
+  carros 69/71, 21/jul carros 269/272). Señal barata de foto pegada al carro equivocado.
+- 🟡 **`A GUINDA` por `AU GUINDA`** (carro 124, 20/jul) — decidir si se acepta `A`=automóvil o
+  se corrige en caja. No aflojar el parser por cuenta propia.
+- 🔵 **Preguntar por dos huecos del 22/jul:** faltan las 4 fotos de 13:00–13:59, y 5 de las 7
+  notas de caja faltantes son de la mañana temprano. Los dos huelen a turno, no a bug.
+
+---
+
 ## ✅ CIERRE DEL 20/jul/2026 — todo shippeado
 
 **Todo lo de abajo ya está EN PRODUCCIÓN y en el `CLAUDE.md`** (el estado canónico vive en

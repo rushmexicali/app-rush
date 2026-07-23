@@ -75,10 +75,22 @@ async function token(): Promise<string> {
 // La fecha del dia EN MEXICALI. Si se usara UTC, entre las 17:00 y la
 // medianoche local Jibble ya estaria contestando por el dia siguiente y
 // la lista saldria vacia con todo el turno de la tarde trabajando.
+//
+// ⚠️ ANTES esto restaba 7 horas a mano, y eso tenia fecha de caducidad:
+// Mexicali cambia de horario dos veces al ano y en invierno es UTC-8.
+// El primer domingo de noviembre, entre las 11 PM y la medianoche local,
+// habria pedido el dia EQUIVOCADO y la lista de secadores habria salido
+// vacia con gente trabajando. Y si algun dia cambia la ley del horario
+// de verano, el desfase escrito a mano queda mal para siempre.
+//
+// Ahora lo resuelve Intl con la zona horaria, que es el mismo patron que
+// ya usa hoyEnMexicali() en la funcion 'app'. "en-CA" da YYYY-MM-DD, que
+// es justo el formato que Jibble espera.
 function hoyMexicali(): string {
-  const ahora = new Date();
-  const local = new Date(ahora.getTime() - 7 * 60 * 60 * 1000);
-  return local.toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Tijuana",
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {

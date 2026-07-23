@@ -179,6 +179,15 @@ solamente tiene que estar asignando líneas y secadores"*.
     y no cálculo en la Edge Function justamente para no tener dos reglas para la misma
     pregunta — el error que este proyecto ya cometió tres veces. Además se puede consultar:
     `select count(*) from carros where aviso = 'LAVADO A MANO'`.
+  - 🔴 **Y el error se había cometido OTRA VEZ, adentro.** Hasta el 22/jul/2026,
+    `aviso_de_servicio()` y `tipo_de_servicio()` llevaban la **misma condición copiada palabra
+    por palabra** (`categoría = 'Paquetes Especial'` o el nombre empieza con
+    `encerado`/`detallado` o contiene `brillo`), cada una devolviendo algo distinto con ella:
+    la primera el texto de la banderita, la segunda la sección del reporte. Nunca falló porque
+    nadie había dado de alta un servicio nuevo — el día que pasara, una se enteraba y la otra
+    no, **en silencio**. La migración `055` la dejó en un solo lugar,
+    `es_servicio_especial(producto, categoría)`, y las dos le preguntan a ella. **Si la regla
+    cambia, se cambia ahí y nada más.**
 - **Asignar unidad**: el único toque antes de secar. Abre pantalla completa: tipo, color,
   marca, línea y secador(es), con botones grandes.
 - **Secando**: corre el cronómetro de secado (el dato clave para medir eficiencia).
@@ -385,6 +394,23 @@ acumulando desde el día uno aunque todavía no se use.
 
 - La Edge Function también se suscribe a los webhooks de Jibble: **clock-in, clock-out,
   break** → actualiza una tabla "empleados activos ahora".
+- **Sólo se sincroniza de 6 AM a 10 PM, hora de Mexicali** (22/jul/2026, migración `060`).
+  Antes corría cada minuto **24/7**: 1,440 invocaciones diarias y ~7,200 llamadas a la API de
+  Jibble, muchas preguntando "quién está checado" a un taller cerrado de madrugada. Ahora son
+  ~960 y ~4,800 (-33%). La ventana lleva margen a propósito —dos horas antes de abrir y dos
+  después de cerrar— por si un turno se alarga.
+
+  ⚠️ **La guardia va en la FUNCIÓN (`sincronizar_jibble_si_toca`), no en el horario del cron.**
+  `pg_cron` corre en UTC, y escribir "13-5 * * *" sería clavar el desfase a mano: Mexicali
+  cambia de horario dos veces al año, y si algún día cambia la ley —como ya pasó en México en
+  2022— la ventana queda mal para siempre sin que nadie se entere. Así, el cron dispara cada
+  minuto (cuesta nada: es un `select` que ni sale de la base) y **quien decide es Postgres
+  preguntándole a `America/Tijuana`**. Mismo patrón que `congelar_reporte` (migración `035`).
+
+  Se verificó hora por hora sobre **un año completo (8,760 horas)**: 0 corridas fuera de la
+  ventana local, y los 364 días completos dan exactamente 16 horas. El cron con horario UTC
+  fijo habría estado mal **254 horas al año** (ej.: el 30/nov a las 21:00 local no habría
+  corrido, y el 1/dic a las 5:00 AM sí).
 - Al abrir la app cada mañana, además hacer una llamada de **sincronización** al endpoint
   de "gente marcada" de Jibble, por si se perdió algún webhook.
 - En la pantalla de asignar secador, la grilla solo muestra a quien está marcado ahora, con
@@ -636,6 +662,113 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 11.9 Cierre del 22/jul/2026 — tercer día limpio, y limpieza del backend
+
+**87 carros**, todos entregados, la cola quedó vacía sola (0 cerrados automáticamente). Espera
+promedio **39.2 min** — cuarto día seguido bajando (46.8 → 43.3 → 41.2 → 39.2) con el volumen
+ya estable en ~87-90. Secado 27.4 min. **0 rechazos, 0 placas duplicadas, 0 cancelados, 0
+pruebas, 0 tiempos imposibles, 0 devoluciones.** Línea 1 impecable por tercer día (26 express
+dentro, 0 fuera).
+
+**Lo que se aflojó:** nota de caja 80/87 (92%, contra 98% el 20) — 5 de los 7 sin nota son de
+la mañana temprano, se ve como un turno que arrancó sin el hábito. Y **foto 77/87 (89%)**, con
+un hueco perfecto de **13:00 a 13:59: 4 carros, 0 fotos**.
+
+**El hallazgo del día: tres carros con 6 segundos de "secado"** (369, 370, 291), con prelavados
+de 60, 38 y 43 min. Es el mismo evento visto de los dos lados: el supervisor olvidó el carro y,
+al acordarse, lo asignó y lo entregó de un jalón. Dos consecuencias:
+
+- **Los únicos 3 prelavados largos del día son exactamente esos 3 carros** — o sea el 100% de
+  los "prelavado > 20 min" son error de captura, no lentitud del taller.
+- **El filtro de `tiempo_imposible` no los atrapa**, porque mira el total de pago a entrega
+  (64, 42 y 47 min, normales). Lo imposible es el *secado*, no el total.
+
+Sacarlos sube el secado promedio de 27.4 a 28.4 min (completos: 33.1 → 34.8). Poco en el
+agregado, letal en el número individual: Jose Manuel aparece con "1 completo a 0.1 min". Y es
+un patrón **nuevo**: 0 casos el 20/jul, **5 el 21**, 3 el 22. 👉 **Falta decidir el umbral**
+(sugerido: <3 min de secado no entra a los promedios, igual que `cerrado_automaticamente`).
+
+**Punto 8 (cola virtual), dato del 22:** 19 de 61 completos (31%) arrancaron con su secador
+ocupado; cola promedio 19.2 min. Infla el secado de completos **5.9 min** (33.1 pared → 27.2
+efectivo). Y **cambia el ranking**: Jesús Gil 30.1→24.4, Pablo Cruz 29.7→25.7, Saul Ramirez
+41.3→30.7, Mario Hernández 37.7→31.0. Sin corregir, Saul se ve 39% más lento que Pablo con el
+mismo volumen; corregido, 19%.
+
+> **Del 21/jul:** los "2 eventos de rechazo" son **el mismo carro (211) rechazado dos veces con
+> un minuto de diferencia** (12:17 Luis Luna por Tablero, 12:18 Luis Luna + Jorge Luna por
+> Vidrios). El reporte lo dice bien (`carros: 1`), pero a Luis Luna se le cuentan 2 rechazos
+> por un solo carro. Y hay **una placa duplicada el 21/jul** (carros 269 y 272, `WBZ919B`) —
+> el patrón de la foto pegada al carro equivocado, otra vez.
+
+### La limpieza del backend (migraciones 055–060)
+
+Auditoría completa del backend leyendo **lo que vive en la base** (`pg_proc`, `pg_indexes`,
+`cron.job`), no las migraciones históricas — cada migración reemplaza a la anterior, así que el
+archivo miente y sólo la base dice la verdad. Se encontraron y arreglaron cinco cosas.
+
+**El método, que es lo que hay que repetir:** antes de tocar nada se capturó una **línea base**
+de 32 KB con la salida real del sistema (reportes de los 4 días, clasificación de todo el
+catálogo, columnas generadas de los 324 carros, desgloses, grilla de secadores, historial de
+placas, interpretación de las 331 notas). Después de **cada** migración se volvió a capturar y
+se comparó. Todo cambio no intencional era un bug hasta demostrar lo contrario.
+
+| Migración | Qué resuelve |
+|---|---|
+| `055` | **Una sola regla de "servicio especial"** (`es_servicio_especial`). `aviso_de_servicio` y `tipo_de_servicio` tenían la MISMA condición copiada. Se borró `tipo_de_servicio(text,text)` |
+| `056` | **Un solo sistema de colores.** Había DOS y producían 4 pares de secadores con color idéntico. Y "Saul de Anda" ya no sale "Saul de" |
+| `057` | Se borra lo muerto: `orden_etapas`, vista `etapas_medibles`, columna `empleados.iniciales`, índice degenerado. Índice nuevo para `/cola` |
+| `058` | El reporte **deja de escanear toda la historia** para leer un día. Y el orden de `equipos` se vuelve determinista |
+| `059` | El trigger de venta deja de reparsear el mismo JSON 6 veces |
+| `060` | **Jibble sólo de 6 AM a 10 PM**, hora de Mexicali |
+
+**Detalles que importan si esto se toca:**
+
+- ⚠️ **`carros.aviso`, `carros.a_mano` y `carros.tiempo_imposible` son columnas GENERADAS sobre
+  funciones.** Reemplazar la función **NO recalcula lo ya guardado** — quedarían dos verdades
+  conviviendo. Hay que forzarlo con `update carros set producto = producto`. (No se puede con
+  `set id = id`: `id` es `generated always as identity`.) La 055 lo hace y lo comprueba.
+- 🔴 **Los dos sistemas de colores, medido, no supuesto:** `sincronizar_empleados` usaba
+  `color_de(id)` (hash sobre 12 colores) y `agregar_secador_manual` usaba
+  `asignar_colores_libres()` (índice sobre 16) — **y el segundo repintaba a todos los que
+  vinieran de Jibble**. Resultado: Luis Chávez/Jose Manuel, Saul de Anda/Jaime Gallegos,
+  Fermin Cortez/Saul Ramirez y Carlos Alonso/Luis Luna con el color **exactamente igual** en la
+  grilla donde el supervisor escoge sin leer. Además `coalesce(min(n), 1)` mandaba a **todos**
+  al color 1 cuando se acababan los índices, y con 19 personas y 16 colores ya estaba pasando.
+  Ahora la paleta tiene 24, **los 16 primeros en el mismo orden** para que nadie con color
+  asignado tuviera que reaprenderlo: cambiaron sólo los 4 que chocaban.
+- **El orden de `equipos` no era determinista** y nadie lo había visto. `order by carros desc,
+  equipo` no desempata por tipo, así que un equipo con la misma cantidad de carros en dos tipos
+  (Pablo Cruz el 20/jul: 1 encerado y 1 express) barajaba sus dos renglones solo. Se descubrió
+  porque la comparación contra la línea base marcó una diferencia en un cambio que no tenía
+  nada que ver — **dos renglones intercambiados con cara de dato cambiado**.
+- **`empleados.iniciales` estaba muerta Y equivocada**: la vista `secadores` la ignoraba y
+  recalculaba `iniciales_de()` sobre otro nombre. 3 de 19 no coincidían (Walter tenía guardado
+  `WA` y en pantalla salía `WR`). La app siempre leyó la vista.
+- **`carros_cancelado_idx` era un índice degenerado**: indexaba `cancelado_en` filtrando
+  `where cancelado_en is null`, o sea que sus 318 entradas tenían todas la clave `null`. Se
+  cambió por `carros_cola_idx`, parcial y con el predicado idéntico al de `/cola` — verificado
+  con `EXPLAIN`: pasa de recorrer la tabla a `Index Scan`, 1 buffer.
+
+**Lo que NO se tocó, con su razón:**
+
+- **`historial_placas`** agrupa toda la tabla. Se midió: **1.6 ms** hoy, y la pregunta "cuáles
+  han venido más" **obliga** a agrupar todo. Proyectado a un año son ~200 ms en una pantalla de
+  uso esporádico, no como `/cola` que corre cada 3 s. Cambiar el contrato del endpoint costaba
+  más de lo que ahorraba.
+- **`etapa_efectiva()`**: la usa `avanzar_etapa`. Traduce estados que ya no se generan, pero
+  quitarla dejaría pasar un carro sin validar si alguno reapareciera. No se gana nada.
+- **La doble llamada a `interpretar_nota`** (una en `nota_de_la_venta` para decidir si un
+  descuento se lee como nota, otra en el trigger para leerla). Quitarla obliga a cambiar el
+  contrato de `nota_de_la_venta`, que devuelve texto. Son 90 llamadas al día sobre una función
+  inmutable; no vale tocar el camino por donde entra el dinero.
+- **`tunel`/`por_asignar` en el front**: se quitaron del backend (`DEMORA_SEG`) pero se dejaron
+  en `docs/index.html`, donde son defensivos y no dependen del backend.
+
+> 💡 **`detalle_venta()` decide que desanidó bien mirando si hay `products`.** Se comprobó
+> contra las 5 devoluciones reales: **todas traen `products`** y el trigger las lee bien. Si
+> algún día Zettle mandara una devolución sin ese campo, no cancelaría el carro. No se cambió
+> porque funciona con los datos reales, pero queda dicho.
+
 ## 12.0 Cierre del 20/jul/2026 — el primer día con datos que significan algo
 
 **86 carros** (vs 55 el 19/jul, +56%): el día más grande hasta ahora. 85 entregados y **1 se
@@ -867,6 +1000,15 @@ el error barato. El caro es el servicio invisible, y es el que acababa de pasar.
   visto porque con un solo motivo el número sale bien.** Arreglado en la migración `036`.
 - **El día de hoy siempre se calcula al vuelo**, aunque ya exista fila congelada. Un día en
   curso todavía cambia.
+- **Las CTEs del reporte filtran por los carros del rango** (migración `058`, 22/jul/2026).
+  Antes `secado` y `equipo_por_carro` agrupaban las tablas **completas** y hasta después hacían
+  `left join` contra el día: el 22/jul agrupaba 318 filas de etapas para usar 87. Crece lineal
+  con el histórico, y el reporte se llama una vez **por cada día consultado** — con un rango de
+  un mes, treinta veces.
+- **El `order by` de `equipos` desempata por `tipo`.** Sin eso, un mismo equipo con la misma
+  cantidad de carros en dos tipos distintos empata y Postgres baraja los dos renglones a su
+  antojo. Si algún día se compara la salida del reporte contra una versión anterior, eso
+  aparece como "un dato cambió" cuando sólo se movieron de lugar.
 - **El reporte acepta un RANGO de días** (20/jul/2026), con dos casillas como en Zettle.
   `reporte_del_dia` **delega** en `reporte_del_rango(desde, hasta)`: hay **una sola
   implementación** y el día es el caso particular. Escribir una segunda función habría sido el
@@ -1005,22 +1147,28 @@ quiénes eran en realidad"*. Se borraron **68 asignaciones** (13 personas) y **2
 > **El 21/jul es día de prueba declarado.** Los primeros datos de equipo que van a significar
 > algo son los de ese día en adelante.
 
-### Lo siguiente (en este orden) — actualizado al cierre del 20/jul/2026
+### Lo siguiente (en este orden) — actualizado al cierre del 22/jul/2026
 
-1. **Revisar cómo salió el 21/jul (segundo día de prueba)**, con las mismas consultas de
-   siempre (ver `scripts` y el patrón de análisis del 20/jul): volumen, tiempos por tipo y por
-   equipo (`reporte_del_dia(fecha)`), rechazos, placas/notas, `cerrados_automaticamente`, y
-   anomalías (placas duplicadas, prelavados largos, esperas raras). **Confirmar que el reporte
-   del 20/jul se congeló solo a las 8:30** (`select fecha, congelado_en from reportes_diarios`).
-2. **Decidir el punto 8 (cola virtual).** Ya está el dato: infla el secado ~4.6 min en
-   promedio (18 de 59 completos el 20/jul). Sin él, los tiempos por persona castigan al que más
-   carga. Si se retoma, la recomendación sigue siendo derivar el secado efectivo sin mover la
-   etapa, y guardar/mostrar el `tiempo_en_fila`. Ver `PENDIENTES.md` y la consulta `q11`/`a6`.
-3. **Arreglar el cosmético "Saul de Anda" → sale "Saul de"** en grilla y reporte (saltar las
-   preposiciones al armar el nombre corto). Bajo riesgo.
-4. **Con dos o tres días limpios seguidos, leer la analítica en serio.** El 20/jul ya fue
-   limpio (nota 98%, línea 1 perfecta, 0 duplicadas). Los tiempos por persona empiezan a
-   significar algo — con el punto 8 resuelto, del todo.
+1. **Decidir el umbral del secado de 0 segundos.** Es el hallazgo nuevo del 22/jul: 8 carros en
+   dos días con secado de ~6 s, que son olvidos registrados tarde, no trabajo. Sugerido:
+   secado < 3 min cuenta como vehículo lavado pero **no entra a los promedios**, igual que
+   `cerrado_automaticamente`. Falta la palabra del dueño sobre el número.
+2. **Decidir el punto 8 (cola virtual).** Ya hay dos días de dato: infla el secado 4.6 min
+   (20/jul) y 5.9 min (22/jul), y **cambia el ranking por persona** — Saul Ramirez pasa de
+   41.3 a 30.7 min. Sin resolverlo, los tiempos por persona castigan al que más carga. La
+   recomendación sigue siendo derivar el secado efectivo sin mover la etapa, y guardar/mostrar
+   el `tiempo_en_fila`. Ver `PENDIENTES.md`.
+3. **Avisar cuando dos carros del mismo día comparten placa.** Ya van dos veces (19/jul carros
+   69/71, 21/jul carros 269/272). Es la señal barata de la foto pegada al carro equivocado, y
+   hoy nadie se entera. Ver §12.1.
+4. **Ver por qué el 22/jul faltaron fotos de 13:00 a 13:59** (4 carros, 0 fotos) y por qué la
+   nota de caja bajó a 92% con 5 huecos en la mañana temprano. Los dos huelen a turno, no a
+   bug: se confirma preguntando, no consultando.
+5. **Con la analítica ya limpia, leer los tiempos por persona en serio** — en cuanto estén
+   resueltos los puntos 1 y 2, que son justo los dos que hoy los distorsionan.
+
+> ✅ Resuelto el 22/jul: el cosmético **"Saul de Anda" → salía "Saul de"** en grilla y reporte
+> (migración `056`), junto con toda la limpieza del backend. Ver §11.9.
 
 ### Lo que se construyó el 19/jul/2026 (para orientarse rápido)
 

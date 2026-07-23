@@ -65,7 +65,7 @@ function autorizado(req: Request, url: URL): boolean {
 //   >0  = segundos despues de los cuales se pone rojo
 // ---------------------------------------------------------------------
 const DEMORA_SEG: Record<string, number> = {
-  // Prelavado: 19 minutos.
+  // Prelavado: 20 minutos.
   //
   // Este estado cubre todo lo que pasa antes de secar (prelavado + tunel +
   // el rato hasta que el supervisor asigna). El dueno lo subio a 20 min el
@@ -75,14 +75,17 @@ const DEMORA_SEG: Record<string, number> = {
   // por si); esa excepcion vive abajo, en el calculo de 'limite' por carro.
   prelavado: 1200,
 
-  // Estos dos ya no se generan: quedan por los carros que venian en
-  // camino cuando cambio el flujo. Se pueden borrar cuando la cola este
-  // limpia de ellos.
-  tunel: 0,
-  por_asignar: -1,
-
   // Secando: 35 minutos.
   secando: 2100,
+
+  // Los estados 'tunel' y 'por_asignar' se quitaron de aqui el
+  // 22/jul/2026. Dejaron de generarse cuando el flujo paso a un solo
+  // toque (migracion 024) y solo seguian por los carros que venian en
+  // camino ese dia. Se comprobo antes de quitarlos: la cola esta en CERO
+  // carros abiertos, y ningun camino del codigo los vuelve a producir
+  // (regresar_etapa solo devuelve 'prelavado' o 'secando'). Si por lo que
+  // sea reapareciera uno, el "?? 0" de abajo lo deja sin rojo en vez de
+  // tronar.
 };
 
 // Que dia es HOY en Mexicali, no en UTC. Despues de las 4-5 PM local ya
