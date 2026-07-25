@@ -639,22 +639,25 @@
   <div class="quien" id="asig-quien"></div>
   <div class="cual" id="asig-cual"></div>
 
-  <div class="seccion">Tipo</div>
-  <div class="rejilla tipos" id="asig-tipos"></div>
+  <!-- Tipo y color: SOLO en modo Corregir. Al asignar, la pantalla es solo
+       linea + secador (24/jul/2026); el tipo/color ya vienen de la nota de
+       la cajera y la marca/submarca de la foto. La marca ya no se captura a
+       mano en ningun lado. -->
+  <div id="asig-datos" style="display:none">
+    <div class="seccion">Tipo</div>
+    <div class="rejilla tipos" id="asig-tipos"></div>
 
-  <div class="seccion">Color</div>
-  <div class="rejilla colores" id="asig-colores"></div>
-  <!-- El campo vive FUERA de la rejilla (que se redibuja) para que no se
-       borre mientras el supervisor teclea. Se muestra/oculta, no se
-       recrea. -->
-  <div id="asig-color-otro" style="display:none">
-    <input id="asig-color-input" class="color-otro-input" type="text"
-           inputmode="text" autocomplete="off" autocapitalize="characters"
-           placeholder="ESCRIBE EL COLOR">
+    <div class="seccion">Color</div>
+    <div class="rejilla colores" id="asig-colores"></div>
+    <!-- El campo vive FUERA de la rejilla (que se redibuja) para que no se
+         borre mientras el supervisor teclea. Se muestra/oculta, no se
+         recrea. -->
+    <div id="asig-color-otro" style="display:none">
+      <input id="asig-color-input" class="color-otro-input" type="text"
+             inputmode="text" autocomplete="off" autocapitalize="characters"
+             placeholder="ESCRIBE EL COLOR">
+    </div>
   </div>
-
-  <div class="seccion">Marca <span id="asig-marca-estado" class="pendiente">— falta</span></div>
-  <div class="rejilla marcas" id="asig-marcas"></div>
 
   <div id="asig-solo-asignar">
     <div class="seccion">Línea <span id="asig-linea-estado" class="pendiente">— falta</span></div>
@@ -921,23 +924,30 @@ function reloj(segundos) {
 }
 
 function describir(c) {
-  // Lo primero que ve el supervisor debe ser como reconocer el carro a
-  // simple vista. El orden es el que usaria alguien senalando al carro:
-  // que tipo es, de que color, y de que marca.
+  // Como reconocer el carro a simple vista. Marca, submarca y tipo salen de
+  // la FOTO (24/jul/2026); el supervisor ya no captura datos del vehiculo.
   //
-  // La marca aparece hasta que el supervisor la captura al asignar; la
-  // cajera solo pone tipo y color en la nota.
+  // Si la foto detecto el MODELO (submarca), ese manda: "TOYOTA COROLLA
+  // BLANCO", y se quita el tipo generico — un Corolla ya se sabe que es
+  // auto. Se deja la marca para que modelos ambiguos no queden huerfanos
+  // ("MAZDA MAZDA3", "CHRYSLER 300"). Si no hay modelo, cae a lo que puso
+  // la cajera: TIPO COLOR (mas la marca si la foto alcanzo a leer el logo).
   var partes = [];
-  if (c.tipo_unidad) partes.push(TIPOS[c.tipo_unidad] || c.tipo_unidad.toUpperCase());
-  if (c.color) partes.push(c.color);
-  if (c.marca) partes.push(c.marca);
-
-  // La placa NO va aqui: tiene su propio renglon debajo (ver .placa).
-  // Si no hay ni tipo ni color ni marca pero si placa, el "Sin datos" no
-  // aparece — con la placa ya hay como reconocer el carro.
-  if (partes.length === 0) {
-    return c.placa ? "" : '<span class="falta">Sin datos del carro</span>';
+  if (c.submarca) {
+    if (c.marca) partes.push(c.marca);
+    partes.push(c.submarca);
+  } else {
+    if (c.tipo_unidad) partes.push(TIPOS[c.tipo_unidad] || c.tipo_unidad.toUpperCase());
+    if (c.color) partes.push(c.color);
+    if (c.marca) partes.push(c.marca);
+    // La placa NO va aqui: tiene su propio renglon debajo (ver .placa). Si
+    // no hay datos pero si placa, el "Sin datos" no aparece.
+    if (partes.length === 0) {
+      return c.placa ? "" : '<span class="falta">Sin datos del carro</span>';
+    }
+    return escapar(partes.join(" "));
   }
+  if (c.color) partes.push(c.color);
   return escapar(partes.join(" "));
 }
 
@@ -950,7 +960,7 @@ function pintar() {
   // datos, y se actualizan aparte.
   var firma = JSON.stringify(carros.map(function (c) {
     return [c.id, c.estado, c.linea, c.es_express, c.producto, c.variante,
-            c.aviso, c.a_mano, c.tipo_unidad, c.color, c.marca, c.placa,
+            c.aviso, c.a_mano, c.tipo_unidad, c.color, c.marca, c.submarca, c.placa,
             c.foto, (c.ausentes || []).join(","), (c.secadores || []).join(",")];
   }));
   if (firma === firmaRender && document.querySelector("#lista .carro")) {
@@ -1211,27 +1221,9 @@ function consultar() {
     .catch(function () { avisarError(true); });
 }
 
-// --- Asignar linea, marca y secadores --------------------------------
-
-// Las 8 de siempre, como botones grandes a la mano. Cubren la mayoria
-// de los carros que entran.
-var MARCAS_RAPIDAS = [
-  "TOYOTA", "HONDA", "VOLKSWAGEN", "NISSAN",
-  "CHEVROLET", "KIA", "MAZDA", "FORD"
-];
-
-// El resto, detras de "Otra". Mexicali es frontera, asi que hay mas
-// marcas americanas de las que se verian en el centro del pais, y las
-// chinas que crecieron fuerte estos anos.
-var MARCAS_EXTRA = [
-  "HYUNDAI", "JEEP", "RAM", "DODGE", "GMC", "CHRYSLER",
-  "BUICK", "CADILLAC", "LINCOLN", "TESLA",
-  "SUZUKI", "MITSUBISHI", "SUBARU", "ACURA", "LEXUS", "INFINITI",
-  "RENAULT", "PEUGEOT", "FIAT", "SEAT", "CUPRA", "VOLVO",
-  "BMW", "MERCEDES", "AUDI", "MINI", "PORSCHE", "LAND ROVER",
-  "MG", "CHIREY", "BYD", "JETOUR", "OMODA", "GWM", "CHANGAN", "JAC",
-  "BAIC", "GEELY", "ISUZU", "OTRA"
-];
+// --- Asignar linea y secadores ---------------------------------------
+// La marca ya no se captura a mano: sale de la foto (24/jul/2026). Por eso
+// se quito la grilla de marcas y sus dos listas.
 
 // De que color va la banderita de servicio especial.
 //
@@ -1291,7 +1283,6 @@ function cargarSecadores() {
 // Es la misma pantalla y no dos porque el supervisor ya la conoce: lo
 // unico que cambia es cuanto pide.
 var asig = null;
-var verMasMarcas = false;
 // Se abre el campo de "otro color" cuando el supervisor lo pide, o solo,
 // si el color que ya trae el carro no es de los comunes.
 var verColorManual = false;
@@ -1304,7 +1295,6 @@ function abrirPantalla(c, modo) {
     express: !!c.es_express,
     tipo: c.tipo_unidad || null,
     color: c.color || null,
-    marca: c.marca || null,
     linea: c.linea || null,
     // Se PRESELECCIONan los secadores que el carro ya tiene (ids), para que
     // en Corregir salgan marcados y se puedan editar libre, igual que el
@@ -1319,7 +1309,6 @@ function abrirPantalla(c, modo) {
   for (var kk = 0; kk < idsPrev.length; kk++) {
     if (idsPrev[kk]) asig.nombreActualPorId[idsPrev[kk]] = nomsPrev[kk] || "Secador";
   }
-  verMasMarcas = false;
   verColorManual = false;
 
   // Los express solo pueden ir a la 1, asi que se elige sola: un toque
@@ -1345,6 +1334,11 @@ function abrirPantalla(c, modo) {
   // tambien se puede cambiar ahi.
   document.getElementById("asig-solo-asignar").style.display =
     (modo === "asignar" || c.estado === "secando") ? "block" : "none";
+
+  // Tipo y color solo se editan en Corregir (por si la nota de la cajera
+  // viene mal). Al asignar, la pantalla es solo linea + secador.
+  document.getElementById("asig-datos").style.display =
+    (modo === "corregir") ? "block" : "none";
 
   var pantalla = document.getElementById("asignar");
   pantalla.style.display = "block";
@@ -1432,15 +1426,7 @@ function pintarAsignacion() {
     caja.style.display = "none";
   }
 
-  // --- Marcas ---
-  var lista = MARCAS_RAPIDAS.slice();
-  if (verMasMarcas) lista = lista.concat(MARCAS_EXTRA);
-  h = "";
-  for (var i = 0; i < lista.length; i++) {
-    h += botonOpcion(lista[i], asig.marca === lista[i], 'data-marca="' + escapar(lista[i]) + '"');
-  }
-  if (!verMasMarcas) h += botonOpcion("Otra marca...", false, 'data-mas="1"');
-  document.getElementById("asig-marcas").innerHTML = h;
+  // La marca ya no se captura aqui: sale de la foto (24/jul/2026).
 
   // --- Lineas ---
   h = "";
@@ -1535,7 +1521,6 @@ function pintarAsignacion() {
     e.className = listo ? "listo" : "pendiente";
     e.textContent = texto;
   }
-  marcar("asig-marca-estado", !!asig.marca, asig.marca ? "— " + asig.marca : "— falta");
   marcar("asig-linea-estado", !!asig.linea, asig.linea ? "— línea " + asig.linea : "— falta");
   // Resumen tipo el tablero de Jibble: cuantos hay de cada cosa. Da el
   // panorama sin tener que contar botones. Igual en Asignar y en Corregir:
@@ -1570,7 +1555,6 @@ function pintarAsignacion() {
   // Un boton gris sin explicacion se ve igual que un boton roto. Si no
   // se puede confirmar, el boton DICE que falta en vez de quedarse mudo.
   var faltan = [];
-  if (!asig.marca) faltan.push("la marca");
   if (!asig.linea) faltan.push("la línea");
   if (asig.secadores.length === 0) faltan.push("un secador");
 
@@ -1586,11 +1570,10 @@ document.addEventListener("DOMContentLoaded", function () {
     var b = ev.target.closest("button");
     if (!b || !asig) return;
 
-    if (b.dataset.mas) { verMasMarcas = true; }
     // Tipo y color se apagan al volver a tocarlos: si el supervisor le
     // pico por error debe poder dejarlo vacio, no quedarse obligado a
     // inventar un dato.
-    else if (b.dataset.tipo) {
+    if (b.dataset.tipo) {
       asig.tipo = (asig.tipo === b.dataset.tipo) ? null : b.dataset.tipo;
     }
     else if (b.dataset.color) {
@@ -1613,7 +1596,6 @@ document.addEventListener("DOMContentLoaded", function () {
       }
       return;
     }
-    else if (b.dataset.marca) { asig.marca = b.dataset.marca; }
     else if (b.dataset.linea) { asig.linea = Number(b.dataset.linea); }
     else if (b.dataset.manual) {
       var nom = prompt("¿Cómo se llama? (no aparece en Jibble)");
@@ -1691,7 +1673,7 @@ document.addEventListener("DOMContentLoaded", function () {
         carro: asig.carro,
         tipo_unidad: asig.tipo,
         color: asig.color,
-        marca: asig.marca,
+        // La marca ya no se manda: sale de la foto (24/jul/2026).
         // La linea solo se manda si el carro ya esta secando; antes de eso
         // la base la rechaza porque todavia no hay secadores asignados.
         linea: asig.estado === "secando" ? asig.linea : null
@@ -1708,15 +1690,14 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     } else {
       ruta = "/asignar";
-      // Se mandan las dos cosas: el id para medir eficiencia por persona,
-      // y el nombre tal como se ve hoy, para que el historial siga
-      // diciendo quien seco aunque esa persona salga de Jibble.
+      // Al asignar solo van linea y secadores (24/jul/2026). El tipo/color
+      // ya se guardaron desde la nota; la marca/submarca salen de la foto.
+      // De los secadores se mandan las dos cosas: el id para medir
+      // eficiencia por persona, y el nombre tal como se ve hoy, para que el
+      // historial siga diciendo quien seco aunque salga de Jibble.
       cuerpo = {
         carro: asig.carro,
         linea: asig.linea,
-        marca: asig.marca,
-        tipo_unidad: asig.tipo,
-        color: asig.color,
         empleados: asig.secadores,
         secadores: asig.secadores.map(function (id) {
           var p = SECADORES.filter(function (x) { return x.id === id; })[0];

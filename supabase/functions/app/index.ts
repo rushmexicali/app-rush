@@ -110,7 +110,7 @@ function json(cuerpo: unknown, status = 200): Response {
 }
 
 // ---------------------------------------------------------------------
-// Leer la placa de la foto (Claude Sonnet 5)
+// Leer la foto del carro (Claude Sonnet 5): placa + marca + submarca + tipo
 //
 // Se le manda la MISMA imagen que ya se subio, sin agrandarla. Se midio
 // el 19/jul/2026 con una foto real del taller: la placa medira ~170px de
@@ -118,19 +118,28 @@ function json(cuerpo: unknown, status = 200): Response {
 // leyendola. La nota del CLAUDE.md que pedia subir a 2000px estaba
 // basada en una estimacion pesimista y resulto innecesaria.
 //
-// Devuelve la placa, o null si no se pudo leer. NUNCA lanza: si Anthropic
-// se cae, tarda, o contesta algo raro, se devuelve null y la foto queda
-// guardada igual. La foto es opcional y no debe bloquear al carro.
+// Desde el 24/jul/2026 la misma llamada saca tambien MARCA, SUBMARCA
+// (modelo) y TIPO de carroceria. Se probo sobre 59 fotos reales: la foto
+// (trasera, para la placa) trae el modelo emblemado en la cajuela, y el
+// mercado mexicano lo hace legible. La marca sale ~98% cuando se
+// compromete. El costo marginal es casi cero: la imagen ya se manda.
+//
+// Devuelve lo que pudo leer; cada campo por su cuenta (aceptacion parcial:
+// la placa puede salir y la marca no, o al reves). NUNCA lanza: si
+// Anthropic se cae, tarda, o contesta algo raro, se devuelve todo null y
+// la foto queda guardada igual. La foto es opcional y no bloquea al carro.
 //
 // Sonnet 5 y no Opus: tiene vision de alta resolucion (lo que se
-// necesita) y cuesta un tercio. Esto es OCR, no razonamiento — por eso
-// tambien va con "thinking" apagado y esfuerzo bajo. Si algun dia las
-// lecturas salen flojas, ahi es donde hay que subirle.
+// necesita) y cuesta un tercio. Va con "thinking" apagado y esfuerzo bajo.
+// Si algun dia las lecturas salen flojas, ahi es donde hay que subirle.
 // ---------------------------------------------------------------------
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 
-const INSTRUCCION_PLACA = `Eres un lector de placas vehiculares. La foto es de un auto en un lavado de Mexicali, Baja California.
+const TIPOS_VALIDOS = ["automovil", "camioneta", "pickup", "pasajeros"];
 
+const INSTRUCCION_FOTO = `Miras la foto de un auto en un lavado de Mexicali, Baja California, y devuelves dos cosas: la PLACA y la IDENTIFICACION del vehiculo (marca, modelo y tipo de carroceria).
+
+== PLACA ==
 En Mexicali circulan TRES tipos de placa, y las tres son normales aqui:
 1. Placa oficial mexicana (Baja California u otro estado).
 2. Placa oficial de ESTADOS UNIDOS. Mexicali es frontera y entran muchas, sobre todo
@@ -143,27 +152,50 @@ En Mexicali circulan TRES tipos de placa, y las tres son normales aqui:
    normalmente de 4 a 7 digitos, a veces con letras. NO tienen el formato de una placa
    oficial y eso es correcto: NO las rechaces por eso.
 
-Que devolver:
+Campos de placa:
 - "placa": el identificador del vehiculo (el numero grande) tal como se ve, CONSERVANDO
   los guiones o espacios que la placa tenga impresos. No agregues separadores que no esten.
 - "organizacion": el nombre de la asociacion si la placa es del tipo 3 y alcanzas a
   leerlo. Si es placa oficial, o no se lee, null.
 - El MARCO del portaplacas no es parte de la placa: nombres de agencia y lemas
   publicitarios ("Go Further", "Ford", el nombre de una distribuidora) se IGNORAN.
+- "placa_legible" = true SOLO si leiste con certeza todos los caracteres del
+  identificador. Si estan borrosos, cortados, tapados, o dudas entre dos (0 y O, 1 e I,
+  8 y B), entonces placa_legible=false y placa=null. NUNCA adivines un caracter de la
+  placa. Que el nombre de la organizacion este tapado NO hace ilegible la placa.
 
-Reglas estrictas:
-- legible=true significa: leiste con certeza todos los caracteres del identificador.
-  Que el nombre de la organizacion este tapado NO hace ilegible la placa; deja
-  organizacion=null y devuelve el numero.
-- Si los caracteres del identificador estan borrosos, cortados o tapados, o dudas
-  entre dos (0 y O, 1 e I, 8 y B), entonces legible=false y placa=null.
-- NUNCA adivines un caracter. NUNCA completes ni corrijas el formato para que "se vea bien".
-- Un dato inventado es peor que uno vacio.`;
+== IDENTIFICACION DEL VEHICULO ==
+Casi todos los autos traen el logo de la marca al centro y el modelo escrito en un
+emblema en la cajuela o compuerta trasera.
+- "marca": la marca (Toyota, Honda, Nissan, Ford, Chevrolet, Volkswagen, Kia, RAM,
+  Buick, etc.). Si lees la SUBMARCA pero no distingues el logo, DEDUCE la marca del
+  modelo (un "Corolla" es Toyota, un "Civic" es Honda, un "K5" es Kia). El marco o
+  portaplacas NO define la marca; usa el logo y los emblemas del propio auto.
+- "submarca": el modelo (Corolla, Civic, CR-V, Sentra, Versa, Aveo, Jetta, K5, L200...).
+  Es el MODELO, no la version: "Big Horn", "Sport", "LE", "XLE", "Limited", "Sense",
+  "Advance" son versiones, no submarcas — no las pongas.
+- "tipo": la carroceria, uno de: "automovil" (sedan o hatchback), "camioneta" (SUV o van
+  familiar), "pickup" (con batea de carga), "pasajeros" (combi o van de 5 hileras de
+  asientos). Usa el modelo cuando lo conozcas: un Corolla es "automovil", una RAV4 es
+  "camioneta", una L200 es "pickup".
 
-type Lectura = { placa: string | null; organizacion: string | null };
-const SIN_LECTURA: Lectura = { placa: null, organizacion: null };
+Para marca, submarca y tipo: da tu MEJOR identificacion aunque no estes 100% seguro;
+deja null SOLO si de plano no puedes distinguir. Pero NUNCA inventes un modelo que no
+corresponde a lo que ves — un dato inventado es peor que uno vacio. (Esto es distinto de
+la placa, donde la regla es estricta: solo si la leiste con certeza.)`;
 
-async function leerPlaca(imagenBase64: string): Promise<Lectura> {
+type Lectura = {
+  placa: string | null;
+  organizacion: string | null;
+  marca: string | null;
+  submarca: string | null;
+  tipo: string | null;
+};
+const SIN_LECTURA: Lectura = {
+  placa: null, organizacion: null, marca: null, submarca: null, tipo: null,
+};
+
+async function leerFoto(imagenBase64: string): Promise<Lectura> {
   if (!ANTHROPIC_API_KEY) {
     console.error("ANTHROPIC_API_KEY no configurada. No se leen placas.");
     return SIN_LECTURA;
@@ -185,7 +217,7 @@ async function leerPlaca(imagenBase64: string): Promise<Lectura> {
       },
       body: JSON.stringify({
         model: "claude-sonnet-5",
-        max_tokens: 200,
+        max_tokens: 300,
         thinking: { type: "disabled" },
         output_config: {
           effort: "low",
@@ -197,14 +229,24 @@ async function leerPlaca(imagenBase64: string): Promise<Lectura> {
               type: "object",
               properties: {
                 placa: { anyOf: [{ type: "string" }, { type: "null" }] },
-                // Todavia no se guarda en ninguna columna. Se pide de todas
-                // formas porque le da al modelo DONDE poner el nombre de la
-                // asociacion; sin este campo lo mete dentro de "placa" y
-                // ensucia el historial (ONAPPAFA 72973 != 72973).
+                // Le da al modelo DONDE poner el nombre de la asociacion;
+                // sin este campo lo mete dentro de "placa" y ensucia el
+                // historial (ONAPPAFA 72973 != 72973).
                 organizacion: { anyOf: [{ type: "string" }, { type: "null" }] },
-                legible: { type: "boolean" },
+                placa_legible: { type: "boolean" },
+                // Marca, modelo y carroceria del auto. Se aceptan con
+                // cualquier confianza (solo null se descarta); la placa
+                // sigue siendo estricta con placa_legible.
+                marca: { anyOf: [{ type: "string" }, { type: "null" }] },
+                submarca: { anyOf: [{ type: "string" }, { type: "null" }] },
+                tipo: {
+                  anyOf: [
+                    { type: "string", enum: ["automovil", "camioneta", "pickup", "pasajeros"] },
+                    { type: "null" },
+                  ],
+                },
               },
-              required: ["placa", "organizacion", "legible"],
+              required: ["placa", "organizacion", "placa_legible", "marca", "submarca", "tipo"],
               additionalProperties: false,
             },
           },
@@ -216,7 +258,7 @@ async function leerPlaca(imagenBase64: string): Promise<Lectura> {
               type: "image",
               source: { type: "base64", media_type: "image/jpeg", data: imagenBase64 },
             },
-            { type: "text", text: INSTRUCCION_PLACA },
+            { type: "text", text: INSTRUCCION_FOTO },
           ],
         }],
       }),
@@ -239,19 +281,33 @@ async function leerPlaca(imagenBase64: string): Promise<Lectura> {
     const texto = datos?.content?.find((b: any) => b?.type === "text")?.text ?? "";
     const leido = JSON.parse(texto);
 
-    // La regla de oro: solo se acepta si el modelo dijo que SI se lee.
-    if (leido?.legible !== true) return SIN_LECTURA;
+    const limpiar = (v: unknown): string | null => {
+      const t = String(v ?? "").trim();
+      return t === "" ? null : t;
+    };
 
-    const placa = String(leido?.placa ?? "").trim().toUpperCase();
-    if (placa === "") return SIN_LECTURA;
+    // La placa es ESTRICTA: solo se acepta si el modelo dijo que la leyo
+    // con certeza. Si no, placa=null — pero eso ya NO tumba marca/submarca/
+    // tipo (esa es la aceptacion parcial que pidio el dueño).
+    let placa: string | null = null;
+    let organizacion: string | null = null;
+    if (leido?.placa_legible === true) {
+      placa = limpiar(leido?.placa)?.toUpperCase() ?? null;
+      // La organizacion solo acompana a una placa leida: sola seria raro
+      // (se leyo el letrero chico pero no los numeros grandes).
+      if (placa) organizacion = limpiar(leido?.organizacion)?.toUpperCase() ?? null;
+    }
 
-    // La organizacion solo se guarda si vino con placa. Sola no sirve de
-    // nada y ademas seria raro: significaria que se leyo el letrero chico
-    // de arriba pero no los numeros grandes.
-    const org = String(leido?.organizacion ?? "").trim().toUpperCase();
-    return { placa, organizacion: org === "" ? null : org };
+    // Marca/submarca/tipo: mejor identificacion con cualquier confianza;
+    // null si vino vacio. La marca se guarda en mayusculas en la RPC.
+    const marca = limpiar(leido?.marca);
+    const submarca = limpiar(leido?.submarca);
+    const tipoRaw = limpiar(leido?.tipo)?.toLowerCase() ?? null;
+    const tipo = tipoRaw && TIPOS_VALIDOS.includes(tipoRaw) ? tipoRaw : null;
+
+    return { placa, organizacion, marca, submarca, tipo };
   } catch (e) {
-    console.error("Fallo al leer la placa:", e);
+    console.error("Fallo al leer la foto:", e);
     return SIN_LECTURA;
   } finally {
     clearTimeout(reloj);
@@ -290,7 +346,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .from("carros")
       .select(`
         id, estado, linea, es_express, producto, variante, aviso, a_mano,
-        tipo_unidad, color, marca, cliente, nota, creado_en, foto_path, placa,
+        tipo_unidad, color, marca, submarca, cliente, nota, creado_en, foto_path, placa,
         foto_url, foto_url_expira,
         etapas ( etapa, inicio, fin )
       `)
@@ -417,6 +473,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         tipo_unidad: c.tipo_unidad,
         color: c.color,
         marca: c.marca,
+        submarca: c.submarca,
         cliente: c.cliente,
         placa: c.placa,
         etapa_inicio: abierta?.inicio ?? c.creado_en,
@@ -491,26 +548,28 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return json({ ok: false, error: errGuardar.message }, 500);
     }
 
-    // La placa se lee DESPUES de que la foto ya quedo guardada, para que
-    // un problema aqui nunca se lleve entre las patas la foto. Si no se
-    // pudo leer se guarda placa_en de todas formas: eso distingue "se
-    // intento y no se pudo" de "nunca se intento".
-    const { placa, organizacion } = await leerPlaca(puro);
-    const { error: errPlaca } = await db
-      .from("carros")
-      .update({
-        placa,
-        placa_organizacion: organizacion,
-        placa_en: new Date().toISOString(),
-      })
-      .eq("id", carro);
+    // La foto se LEE despues de que ya quedo guardada, para que un problema
+    // aqui nunca se lleve entre las patas la foto. De una sola llamada salen
+    // placa, marca, submarca y tipo. Se guardan con guardar_datos_de_foto
+    // (RPC 061), que hace coalesce por campo: un null nunca borra lo ya
+    // guardado (aceptacion parcial), y placa_en se pone siempre — eso
+    // distingue "se intento y no se pudo" de "nunca se intento".
+    const { placa, organizacion, marca, submarca, tipo } = await leerFoto(puro);
+    const { error: errDatos } = await db.rpc("guardar_datos_de_foto", {
+      p_carro: carro,
+      p_placa: placa,
+      p_org: organizacion,
+      p_marca: marca,
+      p_submarca: submarca,
+      p_tipo: tipo,
+    });
 
-    if (errPlaca) {
+    if (errDatos) {
       // No se le devuelve error al telefono: la foto SI se guardo.
-      console.error("No se pudo guardar la placa del carro", carro, ":", errPlaca);
+      console.error("No se pudieron guardar los datos de la foto del carro", carro, ":", errDatos);
     }
 
-    return json({ ok: true, camino, placa });
+    return json({ ok: true, camino, placa, marca, submarca, tipo });
   }
 
   // --- Quien puede secar ---------------------------------------------
@@ -558,7 +617,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json(data);
   }
 
-  // --- Asignar linea, marca y secadores ------------------------------
+  // --- Asignar linea y secadores -------------------------------------
+  // Desde el 24/jul/2026 la pantalla de asignar solo pide linea + secador.
+  // El tipo y el color ya vienen de la nota de la cajera (guardados al
+  // crear el carro); la marca/submarca/tipo ahora salen de la foto. Por eso
+  // este handler dejo de recibir y guardar tipo/color/marca.
   if (ruta === "/asignar") {
     if (req.method !== "POST") return json({ error: "usa POST" }, 405);
 
@@ -573,34 +636,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
       p_carro: Number(cuerpo?.carro),
       p_linea: Number(cuerpo?.linea),
       p_secadores: Array.isArray(cuerpo?.secadores) ? cuerpo.secadores : [],
-      p_marca: cuerpo?.marca ?? null,
+      p_marca: null,
       p_empleados: Array.isArray(cuerpo?.empleados) ? cuerpo.empleados : null,
     });
 
     if (error) {
       console.error("Fallo al asignar el carro", cuerpo?.carro, ":", error);
       return json({ ok: false, error: error.message }, 500);
-    }
-
-    // El tipo y el color se capturan en la MISMA pantalla, pero no son
-    // asunto de asignar_carro (que valida lineas y secadores). Se guardan
-    // aparte, y solo si la asignacion funciono.
-    const tipo  = String(cuerpo?.tipo_unidad ?? "").trim();
-    const color = String(cuerpo?.color ?? "").trim();
-    if ((data as any)?.ok !== false && (tipo || color)) {
-      const { error: errDatos } = await db.rpc("editar_carro", {
-        p_carro: Number(cuerpo?.carro),
-        p_tipo_unidad: tipo || null,
-        p_color: color || null,
-        p_marca: null,
-        p_linea: null,
-      });
-      // No se le devuelve error al telefono: el carro YA quedo asignado,
-      // que es lo que importa. El dato se puede volver a poner con
-      // Corregir.
-      if (errDatos) {
-        console.error("Asignado, pero no se pudo guardar tipo/color:", errDatos);
-      }
     }
 
     return json(data);
@@ -714,6 +756,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       tipo_unidad: c.tipo_unidad,
       color: c.color,
       marca: c.marca,
+      submarca: c.submarca,
       placa: c.placa,
       linea: c.linea,
       es_express: c.es_express,
@@ -748,7 +791,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       p_carro: carro,
       p_tipo_unidad: limpio(cuerpo?.tipo_unidad),
       p_color: limpio(cuerpo?.color),
-      p_marca: limpio(cuerpo?.marca),
+      // La marca ya no la toca el supervisor: sale de la foto (061). Se
+      // manda null, que por el coalesce de editar_carro nunca la borra.
+      p_marca: null,
       p_linea: cuerpo?.linea == null ? null : Number(cuerpo.linea),
       // Solo cuando se mandan (Corregir de un carro secando). Nulo = no
       // tocar los secadores. Los dos van juntos: nombres para el historial,

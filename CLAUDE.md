@@ -188,8 +188,10 @@ solamente tiene que estar asignando líneas y secadores"*.
     no, **en silencio**. La migración `055` la dejó en un solo lugar,
     `es_servicio_especial(producto, categoría)`, y las dos le preguntan a ella. **Si la regla
     cambia, se cambia ahí y nada más.**
-- **Asignar unidad**: el único toque antes de secar. Abre pantalla completa: tipo, color,
-  marca, línea y secador(es), con botones grandes.
+- **Asignar unidad**: el único toque antes de secar. Abre pantalla completa con **solo línea y
+  secador(es)**, con botones grandes (24/jul/2026). Tipo y color ya vienen de la nota de la
+  cajera; marca/submarca/tipo salen de la foto. Antes esta pantalla también capturaba
+  tipo/color/marca — se quitaron (ver §9 "La marca, submarca y tipo salen de la foto").
 - **Secando**: corre el cronómetro de secado (el dato clave para medir eficiencia).
 - **Entregado**: se cierra el carro.
 
@@ -219,7 +221,7 @@ máquina.
 | Botón | Qué hace |
 |---|---|
 | **Asignar unidad** / **Entregado** (grande) | El toque principal. **Nunca manda solo: siempre abre una pantalla.** Lleva **guiones rojos girando** por la orilla (ver abajo) |
-| **Corregir** | Abre la misma pantalla en modo captura: tipo, color, marca — **y si el carro ya seca, también los secadores** (ver abajo). Sirve en cualquier momento, incluso antes de asignar |
+| **Corregir** | Abre la misma pantalla en modo captura: tipo, color — **y si el carro ya seca, también los secadores** (ver abajo). La marca ya no se edita (sale de la foto, 24/jul/2026). Sirve en cualquier momento, incluso antes de asignar |
 | **Regresar** | Deshace el paso anterior. Apagado en prelavado, no hay a dónde |
 
 **El botón de Asignar lleva guiones rojos girando por la orilla** (`- - - -`, marching ants),
@@ -231,7 +233,8 @@ la pantalla).
 
 **Corregir sí cambia los secadores** (20/jul/2026, corrige la regla vieja de "para eso está
 Regresar"). Al abrir Corregir de un carro secando, los secadores actuales salen
-**preseleccionados** y se editan libremente, igual que el tipo y el color. Uno que ya checó
+**preseleccionados** y se editan libremente, igual que el tipo y el color (la **marca ya no**:
+sale de la foto desde el 24/jul/2026). Uno que ya checó
 salida sale en gris con "ya no aparece", para verlo y poder quitarlo. Al guardar,
 `editar_carro` (migración `052`) reconcilia las asignaciones **sin tocar las etapas**, así que
 el cronómetro de secado **no se reinicia** — esa es la diferencia con Regresar, que sí lo
@@ -551,11 +554,54 @@ Reglas de interpretación:
 > la app la interpreta bien (24 de 25; la única falla fue `A GUINDA` por `AU GUINDA`, código
 > `A` que no existe). El respaldo de captura manual sigue ahí por si acaso.
 
+### La marca, submarca y tipo salen de la foto — el supervisor ya no captura marca (24/jul/2026)
+
+Hasta el 24/jul la **marca** solo la ponía el supervisor a mano al asignar (la nota de la
+cajera da tipo, color y cliente, nunca marca). Una prueba sobre **59 fotos reales de archivo**
+mostró que la misma foto que ya se usa para la placa saca **marca y modelo (submarca) con ~98%
+de precisión** cuando la IA se compromete, y que hasta **cacha errores de captura del
+supervisor** (en 59 carros: BYD→Buick, Lexus→Kia K5, SEAT→Suzuki). El costo marginal es casi
+cero: la imagen ya se manda a Sonnet 5; solo se le piden más campos en la **misma** llamada
+(`leerFoto`, antes `leerPlaca`).
+
+Decisión del dueño: **quitarle al supervisor la captura de marca por completo.** Marca,
+submarca y tipo de carrocería pasan a venir de la foto. Reglas:
+
+- **Cualquier confianza se acepta (alta/media/baja). Solo `null` no se guarda.** El costo es
+  que a veces entra una marca equivocada (1 de 54 en la prueba: un Dodge Attitude→Honda por
+  rebadge); es dato descriptivo, no afecta reportes ni la línea 1, y se asume a cambio de cero
+  fricción.
+- **Aceptación parcial POR CAMPO:** si se lee la placa pero no la marca, se guarda la placa; un
+  campo `null` **nunca** tumba a los demás. La placa sigue siendo estricta (`placa_legible`);
+  marca/submarca/tipo se aceptan con la mejor identificación.
+- **Si se lee la submarca pero no la marca, la IA deduce la marca** (Corolla→Toyota). Vive en
+  el prompt.
+- **Cuando la foto trae tipo, corrige al de la cajera.** Una cajera que puso "camioneta" a un
+  Corolla queda "automovil" (la IA sabe que un Corolla es sedán). Si la foto no trae tipo, se
+  queda el de la cajera. En pantalla, cuando hay submarca el tipo genérico se **reemplaza** por
+  el modelo: "AUTO BLANCO" → "TOYOTA COROLLA BLANCO" (se deja la marca para que modelos
+  ambiguos —"MAZDA MAZDA3", "CHRYSLER 300"— no queden huérfanos).
+
+Mecánica: `carros.submarca` (columna nueva, migración `061`). La foto se guarda con la RPC
+**`guardar_datos_de_foto`** (061), que hace **coalesce por campo** (un `null` nunca borra lo ya
+guardado) y pone `placa_en` siempre. **No toca `datos_de_nota`** (esa mide si la cajera llenó
+la nota; que la foto corrija el tipo no dice nada de la nota — mismo cuidado que la `051`). El
+`detalle_del_carro` también devuelve submarca (`062`). Probado end-to-end: un carro de prueba
+con tipo `camioneta` + foto de un Corolla quedó `marca=TOYOTA, submarca=COROLLA,
+tipo_unidad=automovil, placa=A83-NVV-8`.
+
+**En la app:** la pantalla de **Asignar** se redujo a **solo línea + secador** (se quitaron las
+grillas de tipo/color/marca). **Corregir** conserva tipo y color (por si la nota viene mal)
+pero **ya no la marca**. `/asignar` dejó de mandar tipo/color/marca; `/editar` dejó de mandar
+marca. La grilla de marcas (`MARCAS_RAPIDAS`/`MARCAS_EXTRA`) y su andamiaje se borraron del
+front.
+
 ### La placa se lee sola de la foto (implementado 19/jul/2026)
 
 Cuando el supervisor sube la foto, la Edge Function `app` se la manda a **Claude Sonnet 5**
 y guarda la placa en `carros.placa`. La placa aparece en la tarjeta con su propio recuadro,
 antes de tipo/color/marca: es el único identificador que no se repite.
+La lectura ahora la hace `leerFoto` (misma llamada que saca marca/submarca/tipo, ver arriba).
 
 #### En Mexicali circulan TRES tipos de placa (corregido 19/jul/2026)
 
@@ -627,7 +673,9 @@ para adivinar.
   tarjeta de cada carro; el supervisor lo captura cuando tiene un momento libre. Si el carro
   sale sin datos, no pasa nada.
 - Captura **sin teclado** hasta donde se pueda:
-  - Marca: grilla de botones con las marcas comunes de la zona + "Otra".
+  - ~~Marca: grilla de botones~~ **La marca ya no se captura a mano (24/jul/2026):** sale de la
+    foto, junto con la submarca y el tipo. La grilla de marcas se borró. Ver "La marca, submarca
+    y tipo salen de la foto".
   - Color: grilla con los comunes (BLANCO, GRIS, NEGRO, ROJO, AZUL, VERDE) + botón **"Otro…"**
     para escribir uno raro (20/jul/2026). El campo se ve **siempre en MAYÚSCULAS** aunque el
     teclado esté en minúsculas: se sube en el `input`, no solo con CSS (con CSS solo se pinta y
