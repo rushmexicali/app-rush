@@ -13,6 +13,10 @@ herramientas/
 # === Ajustes locales de Claude Code (son de esta maquina, no del proyecto) ===
 .claude/settings.local.json
 
+# === Bitacora de conversaciones (local y privada, no va al repo publico) ===
+# La lee sola cada sesion via el import @BITACORA.md del CLAUDE.md.
+BITACORA.md
+
 # === Archivos basura de Windows / editores ===
 Thumbs.db
 desktop.ini
