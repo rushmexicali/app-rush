@@ -4,14 +4,6 @@
 > sesión. Ajústalo con el tiempo: cuando cambie una decisión, edítala aquí — es la fuente de
 > la verdad. Marca lo que aún no está decidido en la sección "Decisiones pendientes".
 
-@BITACORA.md
-
-> ☝️ La línea de arriba importa la **bitácora de conversaciones** (local y privada, en
-> `.gitignore`): el diario de qué se hizo en cada sesión. Se lee sola al iniciar cada chat.
-> **Regla:** al cerrar cada sesión, agregar ahí una entrada nueva (ver instrucciones dentro de
-> `BITACORA.md`). Las decisiones **durables** van aquí en el `CLAUDE.md`; la bitácora es el
-> "qué pasó ese día". Si `BITACORA.md` no existe en este checkout, se crea con ese formato.
-
 ---
 
 ## 1. Qué es esto
@@ -56,10 +48,13 @@ Estas reglas aplican en **todas** las sesiones:
 - **Verifica desde afuera, no confíes en la pantalla.** Después de cada cosa que construyas,
   compruébala con una llamada real (`curl.exe`, consulta a la base) en vez de suponer que
   quedó bien. Varios errores de la Fase 1 se detectaron así, no viendo el panel.
-- **Mantén la bitácora al día.** Al **cerrar** cada sesión (o cuando el dueño lo pida), agrega
-  una entrada nueva hasta arriba de `BITACORA.md` (fecha, qué se hizo, decisiones, pendiente).
-  Es el diario de conversaciones, local y privado; se lee solo al iniciar (import `@BITACORA.md`).
-  Las decisiones durables van aquí en el `CLAUDE.md`, no en la bitácora.
+- **Cambios de UX del app en vivo: front y back se despliegan JUNTOS, de preferencia en el
+  corte de turno.** Aprendido el 24/jul/2026: se desplegó el backend solo (para probar
+  `/foto`), lo que dejó un estado medio-desplegado y **forzó** subir el front a media operación,
+  con el supervisor y 11 carros en la cola. Un cambio de pantalla a mitad del turno choca con la
+  regla de "a prueba de abuelitos" (cero sorpresas). Si un cambio toca la UI que el supervisor
+  ve, se termina TODO, se prueba, y se sube front+back de corrido y en el momento de menos
+  operación — no el backend por su cuenta.
 
 ## 3. Problema que resuelve
 
