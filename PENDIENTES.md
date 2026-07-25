@@ -6,6 +6,34 @@
 
 ---
 
+## ✅ CIERRE DEL 24/jul/2026 — marca/modelo de la foto, review adversarial, analítica calibrada
+
+**Todo shippeado y verificado.** Migraciones `061`–`065` en producción, Edge Function `app`
+desplegada. El estado canónico vive en `CLAUDE.md §11.85` (índice del día), §9 (marca/submarca/tipo
+de la foto) y §12 "Lo siguiente" (puntos 1 y 2 ya RESUELTOS). Aquí sólo lo que sigue vivo.
+
+**Lo que se resolvió hoy (ya no está pendiente):**
+- ✅ **Marca/submarca/tipo de la foto** — el supervisor ya no captura marca. `061`/`062`/`063`.
+- ✅ **Umbral del secado corto** — el dueño fijó **3 min**; fuera del promedio de secado (no de la
+  espera, que es real). `064`. Se surface `secados_descartados`.
+- ✅ **Punto 8 (cola virtual)** — el dueño escogió **opción B: solo mostrar contexto**. El reporte
+  muestra "encimados" por equipo, sin tocar promedios ni pedir toques al supervisor. `065`.
+- ✅ **Bitácora dedicada** — se intentó y se **mató** (tercera fuente que se desincroniza). El
+  cierre del día vive en `CLAUDE.md` (secciones fechadas) + `memory/`.
+
+**Lo que queda vivo:**
+
+- 🔵 **Avisar cuando dos carros del mismo día comparten placa.** Ya van dos veces (19/jul 69/71,
+  21/jul 269/272). Señal barata de foto pegada al carro equivocado. La `063` **angosta** el daño
+  (re-tomar foto limpia el dato ajeno) pero no avisa del choque. Sigue pendiente.
+- 🟡 **`A GUINDA` por `AU GUINDA`** (carro 124, 20/jul) — decidir si se acepta `A`=automóvil o se
+  corrige en caja. No aflojar el parser por cuenta propia.
+- 🔵 **Preguntar por dos huecos del 22/jul:** faltan las 4 fotos de 13:00–13:59, y 5 de las 7 notas
+  de caja faltantes son de la mañana temprano. Huelen a turno, no a bug. Se confirma preguntando.
+- 📌 **Con la analítica ya calibrada (puntos 1 y 2 hechos), leer los tiempos por persona en serio.**
+
+---
+
 ## ✅ CIERRE DEL 22/jul/2026 — análisis del día + limpieza del backend
 
 **Todo shippeado y verificado.** Migraciones `055`–`060` aplicadas en producción, Edge

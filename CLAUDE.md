@@ -583,19 +583,25 @@ submarca y tipo de carrocería pasan a venir de la foto. Reglas:
   marca/submarca/tipo se aceptan con la mejor identificación.
 - **Si se lee la submarca pero no la marca, la IA deduce la marca** (Corolla→Toyota). Vive en
   el prompt.
-- **Cuando la foto trae tipo, corrige al de la cajera.** Una cajera que puso "camioneta" a un
-  Corolla queda "automovil" (la IA sabe que un Corolla es sedán). Si la foto no trae tipo, se
-  queda el de la cajera. En pantalla, cuando hay submarca el tipo genérico se **reemplaza** por
-  el modelo: "AUTO BLANCO" → "TOYOTA COROLLA BLANCO" (se deja la marca para que modelos
-  ambiguos —"MAZDA MAZDA3", "CHRYSLER 300"— no queden huérfanos).
+- **Cuando la foto reconoce el MODELO (submarca), corrige el tipo de la cajera.** Una cajera que
+  puso "camioneta" a un Corolla queda "automovil" (la IA sabe que un Corolla es sedán). ⚠️ **Solo
+  cuando hay submarca** (migración `063`): sin submarca el tipo de la foto es puro ojo (falló 9 de
+  57 en la prueba — un Wrangler salió "pickup"), así que **no pisa a la cajera**, solo rellena si
+  venía vacío. En pantalla, cuando hay submarca el tipo genérico se **reemplaza** por el modelo:
+  "AUTO BLANCO" → "TOYOTA COROLLA BLANCO" (se deja la marca para que modelos ambiguos —"MAZDA
+  MAZDA3", "CHRYSLER 300"— no queden huérfanos).
 
 Mecánica: `carros.submarca` (columna nueva, migración `061`). La foto se guarda con la RPC
-**`guardar_datos_de_foto`** (061), que hace **coalesce por campo** (un `null` nunca borra lo ya
-guardado) y pone `placa_en` siempre. **No toca `datos_de_nota`** (esa mide si la cajera llenó
-la nota; que la foto corrija el tipo no dice nada de la nota — mismo cuidado que la `051`). El
-`detalle_del_carro` también devuelve submarca (`062`). Probado end-to-end: un carro de prueba
-con tipo `camioneta` + foto de un Corolla quedó `marca=TOYOTA, submarca=COROLLA,
-tipo_unidad=automovil, placa=A83-NVV-8`.
+**`guardar_datos_de_foto`**. ⚠️ **La foto es AUTORITATIVA: sobrescribe placa/marca/submarca**
+(migración `063`, corrige el `coalesce` original de la 061). Así, re-tomar una foto buena
+**limpia** el dato de un carro fotografiado por error — esa re-toma es la vía de corrección que
+faltaba, ya que marca/submarca no se editan a mano. Pero solo se escribe cuando **de verdad hubo
+lectura**: si Anthropic hace timeout o falla, `leerFoto` devuelve `null` y `/foto` **no toca nada**
+(si no, un timeout en una re-subida borraría una lectura buena anterior). `placa_en` se pone
+siempre; **no toca `datos_de_nota`** (esa mide si la cajera llenó la nota — mismo cuidado que la
+`051`). El `detalle_del_carro` también devuelve submarca (`062`). Probado end-to-end: un carro de
+prueba con tipo `camioneta` + foto de un Corolla quedó `marca=TOYOTA, submarca=COROLLA,
+tipo_unidad=automovil, placa=A83-NVV-8`; y una segunda subida con datos basura los sobrescribió.
 
 **En la app:** la pantalla de **Asignar** se redujo a **solo línea + secador** (se quitaron las
 grillas de tipo/color/marca). **Corregir** conserva tipo y color (por si la nota viene mal)
@@ -716,6 +722,42 @@ para adivinar.
 
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
+
+## 11.85 Cierre del 24/jul/2026 — marca/modelo de la foto, review adversarial, y analítica calibrada
+
+Sesión grande. Todo shippeado, verificado y en producción (migraciones `061`–`065`). El estado
+canónico vive en las secciones de siempre; esto es el índice del día.
+
+**1. Marca, submarca y tipo salen de la foto (el supervisor ya no captura marca).** Ver §9. La
+misma llamada que lee la placa saca marca/modelo/tipo (`leerFoto`). Asignar quedó en **solo línea
++ secador**; Corregir conserva tipo/color pero **ya no marca**. Migraciones `061` (columna
+`submarca` + RPC) y `062` (detalle con submarca). Probado sobre 59 fotos reales (~98% en marca).
+
+**2. Review adversarial + sus arreglos.** El dueño pidió "poke holes". De los huecos que salieron:
+- **La foto es AUTORITATIVA (`063`)**: sobrescribe placa/marca/submarca (antes `coalesce`), lo que
+  recupera el caso de la foto pegada al carro equivocado — re-tomar una foto buena limpia el dato
+  ajeno, y es la vía de corrección que faltaba. Pero `/foto` **no escribe si no hubo lectura**
+  (timeout/error → `leerFoto` da `null`), para no borrar datos buenos en una re-subida.
+- **El tipo solo corrige a la cajera si hay submarca (`063`)** — sin modelo, el tipo es puro ojo y
+  no debe pisar. Ver §9.
+- **Lectura de placa re-verificada**: el prompt fusionado no la degradó (57/59 placas idénticas al
+  prompt viejo; las 2 que difieren son un carácter ambiguo en placas borrosas).
+- **Regla de despliegue** (§2): cambios de UX en vivo se suben front+back juntos, en el corte.
+- **Se mató la bitácora dedicada**: era una tercera fuente que se iba a desincronizar con esto y
+  con `memory/`. El cierre del día vive aquí, en el `CLAUDE.md`, como esta misma sección.
+
+**3. Analítica por persona por fin calibrada** (era el punto #1 del proyecto y estaba distorsionado):
+- **Secado < 3 min fuera del promedio (`064`)** — olvidos entregados tarde (6 seg de "secado") que
+  hacían ver rápido a alguien. Cuentan como lavado; su secado no promedia. Su espera SÍ (fue real).
+  Ver §12 "Lo siguiente" punto 1.
+- **Contexto de "encimados" (`065`, opción B del dueño)** — el reporte muestra cuántos carros le
+  entraron a cada persona **mientras ya estaba ocupada**, sin tocar ningún promedio y sin un toque
+  más del supervisor. Deja de castigar al que más carga. Ver §12 "Lo siguiente" punto 2.
+
+**4. Operación del día.** La cola se descontroló al cierre (problema con un supervisor); se sacaron
+por completo (cancelados, reversible) los 4 carros atorados. Y se **re-congeló el 20–24 jul** con la
+analítica nueva (secado limpio + encimados), conservando su `congelado_en` original. El 19/jul se
+dejó intacto (día sucio conocido).
 
 ## 11.9 Cierre del 22/jul/2026 — tercer día limpio, y limpieza del backend
 
