@@ -1204,15 +1204,23 @@ quiénes eran en realidad"*. Se borraron **68 asignaciones** (13 personas) y **2
 
 ### Lo siguiente (en este orden) — actualizado al cierre del 22/jul/2026
 
-1. **Decidir el umbral del secado de 0 segundos.** Es el hallazgo nuevo del 22/jul: 8 carros en
-   dos días con secado de ~6 s, que son olvidos registrados tarde, no trabajo. Sugerido:
-   secado < 3 min cuenta como vehículo lavado pero **no entra a los promedios**, igual que
-   `cerrado_automaticamente`. Falta la palabra del dueño sobre el número.
+1. ~~**Decidir el umbral del secado de 0 segundos.**~~ **RESUELTO (24/jul/2026, migración `064`).**
+   El dueño fijó **3 min**: un secado < 3 min (imposible) cuenta como vehículo lavado pero **su
+   secado no entra a los promedios** (general y por equipo). Matiz respecto a la sugerencia
+   original: se saca **solo del secado, NO de la espera** — a diferencia de `cerrado_automaticamente`
+   (cuya hora de entrega es fabricada), el olvido SÍ se entregó, así que su espera de pago-a-entrega
+   es real y cuenta. Se surface `secados_descartados` en el reporte. Verificado día por día: el
+   20/jul (0 casos) quedó idéntico; el 21 sacó 5 y el 22 sacó 3, subiendo el secado 27.4→28.4 min
+   justo como estaba previsto. El umbral vive en `secado_min` (180 s) dentro de `reporte_del_rango`.
 2. **Decidir el punto 8 (cola virtual).** Ya hay dos días de dato: infla el secado 4.6 min
    (20/jul) y 5.9 min (22/jul), y **cambia el ranking por persona** — Saul Ramirez pasa de
-   41.3 a 30.7 min. Sin resolverlo, los tiempos por persona castigan al que más carga. La
-   recomendación sigue siendo derivar el secado efectivo sin mover la etapa, y guardar/mostrar
-   el `tiempo_en_fila`. Ver `PENDIENTES.md`.
+   41.3 a 30.7 min. Sin resolverlo, los tiempos por persona castigan al que más carga. **El dueño
+   descartó (24/jul) la solución que exige un toque más del supervisor** (son de la tercera edad y
+   pierden la huella del carro tras asignarlo). Sugerencia viva: derivar solo de los datos si a la
+   persona le entró un carro **mientras ya estaba ocupada** (hora de asignación vs. entrega del
+   anterior) y **sacar esos del promedio de esa persona** (siguen contando como lavado) + mostrar
+   cuántos le entraron encimados. Es un sí/no robusto (no una resta que se va a negativo como la
+   versión pausada), automático y sin toques. **Falta que el dueño escoja.** Ver `PENDIENTES.md`.
 3. **Avisar cuando dos carros del mismo día comparten placa.** Ya van dos veces (19/jul carros
    69/71, 21/jul carros 269/272). Es la señal barata de la foto pegada al carro equivocado, y
    hoy nadie se entera. Ver §12.1.

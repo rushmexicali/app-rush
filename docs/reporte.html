@@ -197,6 +197,14 @@ function pintarReporte(r) {
     html += tarjeta(r.descartados_por_tiempo, "No se contaron",
               "Entregados más rápido de lo posible (20 min, o 10 en express). Casi seguro error o prueba");
   }
+  // Igual: solo si no es cero. Carros con secado de menos de 3 min — un
+  // olvido asignado y entregado tarde de un jalon. Cuentan como lavado,
+  // pero su secado no entra al promedio. Si sale alto, se estan olvidando
+  // carros.
+  if (r.secados_descartados) {
+    html += tarjeta(r.secados_descartados, "Secados muy cortos",
+              "Menos de 3 min de secado (imposible): olvidos entregados tarde. No cuentan en el promedio de secado");
+  }
   html +=   tarjeta(duracion(r.espera_promedio_seg), "Espera promedio por carro",
               "De que paga a que se lo entregan");
   html +=   tarjeta(duracion(r.secado_promedio_seg), "Secado promedio", "General, todos los equipos");
