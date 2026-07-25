@@ -254,14 +254,21 @@ function pintarReporte(r) {
               (carrosDelTipo ? ' <span class="cuantos">' + carrosDelTipo + " carros</span>" : "") +
               "</h3>";
       html += '<div class="aviso chico">' + escapar(sec.nota) + "</div>";
-      html += '<table><tr><th>Equipo</th><th class="num">Carros</th><th class="num">Secado promedio</th></tr>';
+      html += '<table><tr><th>Equipo</th><th class="num">Carros</th><th class="num">Secado promedio</th><th class="num">Le entraron encimados</th></tr>';
       for (var i = 0; i < filas.length; i++) {
+        var enc = filas[i].encimados || 0;
+        var pct = filas[i].carros ? Math.round(enc * 100 / filas[i].carros) : 0;
         html += "<tr><td>" + escapar(filas[i].equipo) + "</td>" +
                 '<td class="num">' + filas[i].carros + "</td>" +
-                '<td class="num">' + duracion(filas[i].secado_promedio_seg) + "</td></tr>";
+                '<td class="num">' + duracion(filas[i].secado_promedio_seg) + "</td>" +
+                '<td class="num">' + (enc ? enc + " (" + pct + "%)" : "—") + "</td></tr>";
       }
       html += "</table>";
     }
+    html += '<div class="aviso"><b>"Le entraron encimados"</b> = carros que llegaron cuando esa persona ' +
+            'ya estaba secando otro, así que tuvieron que esperar su turno. Ese rato de espera se cuenta ' +
+            'como secado, así que <b>a quien más carga le sube el promedio sin ser más lento</b>. ' +
+            'Un secado alto con muchos encimados es saturación, no lentitud.</div>';
     html += '<div class="aviso">El promedio de secado sale de los carros que <b>ya terminaron</b>. ' +
             'Un equipo con carros todavía secando aparece con menos tiempo del que va a tener. ' +
             'Un mismo equipo puede salir en varias secciones: se le mide aparte lo que hizo de cada tipo.</div>';

@@ -1212,15 +1212,18 @@ quiénes eran en realidad"*. Se borraron **68 asignaciones** (13 personas) y **2
    es real y cuenta. Se surface `secados_descartados` en el reporte. Verificado día por día: el
    20/jul (0 casos) quedó idéntico; el 21 sacó 5 y el 22 sacó 3, subiendo el secado 27.4→28.4 min
    justo como estaba previsto. El umbral vive en `secado_min` (180 s) dentro de `reporte_del_rango`.
-2. **Decidir el punto 8 (cola virtual).** Ya hay dos días de dato: infla el secado 4.6 min
-   (20/jul) y 5.9 min (22/jul), y **cambia el ranking por persona** — Saul Ramirez pasa de
-   41.3 a 30.7 min. Sin resolverlo, los tiempos por persona castigan al que más carga. **El dueño
-   descartó (24/jul) la solución que exige un toque más del supervisor** (son de la tercera edad y
-   pierden la huella del carro tras asignarlo). Sugerencia viva: derivar solo de los datos si a la
-   persona le entró un carro **mientras ya estaba ocupada** (hora de asignación vs. entrega del
-   anterior) y **sacar esos del promedio de esa persona** (siguen contando como lavado) + mostrar
-   cuántos le entraron encimados. Es un sí/no robusto (no una resta que se va a negativo como la
-   versión pausada), automático y sin toques. **Falta que el dueño escoja.** Ver `PENDIENTES.md`.
+2. ~~**Decidir el punto 8 (cola virtual).**~~ **RESUELTO (24/jul/2026, migración `065`).** Infla el
+   secado del que más carga (le entran más carros encimados) y lo hace ver lento sin serlo. El dueño
+   **descartó** tocar el número o pedir un toque más al supervisor (son de la tercera edad y pierden
+   la huella del carro tras asignarlo). Escogió la **opción B: solo mostrar contexto.** El reporte
+   ahora trae, por equipo y en general, cuántos carros **arrancaron encimados** (al asignarlos, ese
+   secador ya traía otro sin entregar) — se saca de la hora de asignación vs. la entrega del otro,
+   **sin ninguna acción del supervisor**. Es un conteo sí/no, no una resta, así que **no se va a
+   negativo** con el caso de secado en paralelo (carro 109) que hizo pausar la versión que corregía
+   el número. Los promedios de secado quedan **idénticos** (verificado día por día); solo se agregan
+   campos. La página del dueño muestra "Le entraron encimados: N (X%)" junto a cada equipo, con la
+   nota de que un secado alto con muchos encimados es saturación, no lentitud. Ej. real (20/jul):
+   Jesús Gil 7 de 14 (50%).
 3. **Avisar cuando dos carros del mismo día comparten placa.** Ya van dos veces (19/jul carros
    69/71, 21/jul carros 269/272). Es la señal barata de la foto pegada al carro equivocado, y
    hoy nadie se entera. Ver §12.1.
