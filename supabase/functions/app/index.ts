@@ -191,14 +191,17 @@ type Lectura = {
   submarca: string | null;
   tipo: string | null;
 };
-const SIN_LECTURA: Lectura = {
-  placa: null, organizacion: null, marca: null, submarca: null, tipo: null,
-};
-
-async function leerFoto(imagenBase64: string): Promise<Lectura> {
+// Devuelve un objeto SOLO cuando de verdad hubo una lectura del modelo (los
+// campos pueden venir null: "mire y no identifique esto"). Devuelve `null`
+// cuando NO hubo lectura (sin API key, timeout, error de red, o el modelo se
+// nego): en ese caso no sabemos nada, y quien llama NO debe tocar los datos
+// del carro — si no, un timeout en una re-subida borraria una lectura buena
+// anterior. Es la diferencia entre "la foto no muestra nada" (dato) y "no
+// alcanzamos a mirar" (falla de infra).
+async function leerFoto(imagenBase64: string): Promise<Lectura | null> {
   if (!ANTHROPIC_API_KEY) {
     console.error("ANTHROPIC_API_KEY no configurada. No se leen placas.");
-    return SIN_LECTURA;
+    return null;
   }
 
   // Si Anthropic se tarda, se corta. Vale mas devolverle la pantalla al
@@ -266,7 +269,7 @@ async function leerFoto(imagenBase64: string): Promise<Lectura> {
 
     if (!r.ok) {
       console.error("Anthropic respondio", r.status, ":", (await r.text()).slice(0, 300));
-      return SIN_LECTURA;
+      return null;
     }
 
     const datos = await r.json();
@@ -275,7 +278,7 @@ async function leerFoto(imagenBase64: string): Promise<Lectura> {
     // nuestro; simplemente no hay placa.
     if (datos?.stop_reason === "refusal") {
       console.error("Anthropic se nego a leer la foto.");
-      return SIN_LECTURA;
+      return null;
     }
 
     const texto = datos?.content?.find((b: any) => b?.type === "text")?.text ?? "";
@@ -308,7 +311,7 @@ async function leerFoto(imagenBase64: string): Promise<Lectura> {
     return { placa, organizacion, marca, submarca, tipo };
   } catch (e) {
     console.error("Fallo al leer la foto:", e);
-    return SIN_LECTURA;
+    return null;
   } finally {
     clearTimeout(reloj);
   }
@@ -550,26 +553,40 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     // La foto se LEE despues de que ya quedo guardada, para que un problema
     // aqui nunca se lleve entre las patas la foto. De una sola llamada salen
-    // placa, marca, submarca y tipo. Se guardan con guardar_datos_de_foto
-    // (RPC 061), que hace coalesce por campo: un null nunca borra lo ya
-    // guardado (aceptacion parcial), y placa_en se pone siempre — eso
-    // distingue "se intento y no se pudo" de "nunca se intento".
-    const { placa, organizacion, marca, submarca, tipo } = await leerFoto(puro);
-    const { error: errDatos } = await db.rpc("guardar_datos_de_foto", {
-      p_carro: carro,
-      p_placa: placa,
-      p_org: organizacion,
-      p_marca: marca,
-      p_submarca: submarca,
-      p_tipo: tipo,
-    });
-
-    if (errDatos) {
-      // No se le devuelve error al telefono: la foto SI se guardo.
-      console.error("No se pudieron guardar los datos de la foto del carro", carro, ":", errDatos);
+    // placa, marca, submarca y tipo.
+    //
+    // SOLO se escribe si de verdad hubo lectura. guardar_datos_de_foto (063)
+    // SOBREESCRIBE (la foto nueva es autoritativa: re-tomar una foto buena
+    // limpia el dato de un carro fotografiado por error). Justo por eso NO se
+    // debe llamar cuando leerFoto devolvio null (timeout/error/negativa): ahi
+    // no hubo lectura, y sobrescribir borraria una lectura buena anterior. La
+    // foto ya quedo guardada; el supervisor puede re-subir para reintentar.
+    const lectura = await leerFoto(puro);
+    if (lectura) {
+      const { error: errDatos } = await db.rpc("guardar_datos_de_foto", {
+        p_carro: carro,
+        p_placa: lectura.placa,
+        p_org: lectura.organizacion,
+        p_marca: lectura.marca,
+        p_submarca: lectura.submarca,
+        p_tipo: lectura.tipo,
+      });
+      if (errDatos) {
+        // No se le devuelve error al telefono: la foto SI se guardo.
+        console.error("No se pudieron guardar los datos de la foto del carro", carro, ":", errDatos);
+      }
+    } else {
+      console.error("Foto guardada pero sin lectura del modelo; los datos del carro no se tocan:", carro);
     }
 
-    return json({ ok: true, camino, placa, marca, submarca, tipo });
+    return json({
+      ok: true,
+      camino,
+      placa: lectura?.placa ?? null,
+      marca: lectura?.marca ?? null,
+      submarca: lectura?.submarca ?? null,
+      tipo: lectura?.tipo ?? null,
+    });
   }
 
   // --- Quien puede secar ---------------------------------------------
