@@ -978,5 +978,146 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ placas: data ?? [] });
   }
 
+  // ===================================================================
+  // CRM / Lealtad de la cajera (067). Todas detras del codigo de acceso.
+  // Modelo persona-centrico: la lealtad es de la PERSONA; la placa solo
+  // facilita la busqueda (N-a-N). La logica vive en la base (RPCs).
+  // ===================================================================
+
+  // --- Personas: buscar (por placa o por nombre) / crear-editar --------
+  if (ruta === "/personas") {
+    if (req.method === "GET") {
+      const placa = url.searchParams.get("placa");
+      const q = url.searchParams.get("q");
+      if (placa !== null) {
+        const { data, error } = await db.rpc("personas_por_placa", { p_placa: placa });
+        if (error) { console.error("personas_por_placa:", error); return json({ error: error.message }, 500); }
+        return json({ personas: data ?? [] });
+      }
+      if (q !== null) {
+        const { data, error } = await db.rpc("buscar_personas", { p_q: q });
+        if (error) { console.error("buscar_personas:", error); return json({ error: error.message }, 500); }
+        return json({ personas: data ?? [] });
+      }
+      return json({ error: "falta placa o q" }, 400);
+    }
+    if (req.method === "POST") {
+      let cuerpo: any;
+      try { cuerpo = await req.json(); } catch { return json({ ok: false, error: "cuerpo invalido" }, 400); }
+      const { data, error } = await db.rpc("upsert_persona", {
+        p_id: cuerpo?.id ?? null,
+        p_nombre: cuerpo?.nombre ?? null,
+        p_telefono: cuerpo?.telefono ?? null,
+        p_notas: cuerpo?.notas ?? null,
+      });
+      if (error) { console.error("upsert_persona:", error); return json({ error: error.message }, 500); }
+      return json(data);
+    }
+    return json({ error: "usa GET o POST" }, 405);
+  }
+
+  // --- Leer la placa de una foto (sin tocar ningun carro) --------------
+  // Igual que /foto pero la lectura es para la caja: sube la foto a
+  // capturas/ y devuelve lo que leyo. El amarre al carro se hace despues,
+  // con /enlazar, cuando ya nacio el carro de la venta.
+  if (ruta === "/leer-placa") {
+    if (req.method !== "POST") return json({ error: "usa POST" }, 405);
+    let cuerpo: any;
+    try { cuerpo = await req.json(); } catch { return json({ ok: false, error: "cuerpo invalido" }, 400); }
+    const datos = String(cuerpo?.imagen ?? "");
+    if (!datos) return json({ ok: false, error: "falta imagen" }, 400);
+
+    const coma = datos.indexOf(",");
+    const puro = coma >= 0 ? datos.slice(coma + 1) : datos;
+
+    let binario: Uint8Array;
+    try {
+      const cruda = atob(puro);
+      binario = new Uint8Array(cruda.length);
+      for (let i = 0; i < cruda.length; i++) binario[i] = cruda.charCodeAt(i);
+    } catch { return json({ ok: false, error: "imagen ilegible" }, 400); }
+
+    const dia = new Date().toISOString().slice(0, 10);
+    const camino = `capturas/${dia}/cap-${Date.now()}.jpg`;
+    const { error: errSubir } = await db.storage
+      .from("fotos").upload(camino, binario, { contentType: "image/jpeg", upsert: true });
+    if (errSubir) { console.error("Fallo al subir la captura:", errSubir); return json({ ok: false, error: errSubir.message }, 500); }
+
+    const lectura = await leerFoto(puro);
+    return json({
+      ok: true,
+      foto_path: camino,
+      placa: lectura?.placa ?? null,
+      marca: lectura?.marca ?? null,
+      submarca: lectura?.submarca ?? null,
+      tipo: lectura?.tipo ?? null,
+    });
+  }
+
+  // --- Registrar una visita (cuenta lealtad; auto-liga la placa) -------
+  if (ruta === "/visita") {
+    if (req.method !== "POST") return json({ error: "usa POST" }, 405);
+    let cuerpo: any;
+    try { cuerpo = await req.json(); } catch { return json({ ok: false, error: "cuerpo invalido" }, 400); }
+    if (!cuerpo?.persona) return json({ ok: false, error: "falta persona" }, 400);
+    const { data, error } = await db.rpc("registrar_visita", {
+      p_persona: Number(cuerpo.persona),
+      p_placa: cuerpo?.placa ?? null,
+      p_marca: cuerpo?.marca ?? null,
+      p_submarca: cuerpo?.submarca ?? null,
+      p_tipo: cuerpo?.tipo ?? null,
+      p_color: cuerpo?.color ?? null,
+      p_foto_path: cuerpo?.foto_path ?? null,
+      p_es_gratis: cuerpo?.es_gratis ?? false,
+      p_caja: cuerpo?.caja ?? "principal",
+    });
+    if (error) { console.error("registrar_visita:", error); return json({ error: error.message }, 500); }
+    return json(data);
+  }
+
+  // --- Descartar una visita (no hubo venta) ---------------------------
+  if (ruta === "/descartar-visita") {
+    if (req.method !== "POST") return json({ error: "usa POST" }, 405);
+    let cuerpo: any;
+    try { cuerpo = await req.json(); } catch { return json({ ok: false, error: "cuerpo invalido" }, 400); }
+    if (!cuerpo?.visita) return json({ ok: false, error: "falta visita" }, 400);
+    const { data, error } = await db.rpc("descartar_visita", { p_visita: Number(cuerpo.visita) });
+    if (error) { console.error("descartar_visita:", error); return json({ error: error.message }, 500); }
+    return json(data);
+  }
+
+  // --- Enlazar una visita al carro de su venta (autoritativo) ---------
+  if (ruta === "/enlazar") {
+    if (req.method !== "POST") return json({ error: "usa POST" }, 405);
+    let cuerpo: any;
+    try { cuerpo = await req.json(); } catch { return json({ ok: false, error: "cuerpo invalido" }, 400); }
+    if (!cuerpo?.visita || !cuerpo?.carro) return json({ ok: false, error: "falta visita o carro" }, 400);
+    const { data, error } = await db.rpc("enlazar_visita_a_carro", {
+      p_visita: Number(cuerpo.visita), p_carro: Number(cuerpo.carro),
+    });
+    if (error) { console.error("enlazar_visita_a_carro:", error); return json({ error: error.message }, 500); }
+    return json(data);
+  }
+
+  // --- Desenlazar (soltar el carro; no descuenta lealtad) -------------
+  if (ruta === "/desenlazar") {
+    if (req.method !== "POST") return json({ error: "usa POST" }, 405);
+    let cuerpo: any;
+    try { cuerpo = await req.json(); } catch { return json({ ok: false, error: "cuerpo invalido" }, 400); }
+    if (!cuerpo?.visita) return json({ ok: false, error: "falta visita" }, 400);
+    const { data, error } = await db.rpc("desenlazar_visita", { p_visita: Number(cuerpo.visita) });
+    if (error) { console.error("desenlazar_visita:", error); return json({ error: error.message }, 500); }
+    return json(data);
+  }
+
+  // --- Candidatos para enlazar (carros recien nacidos + visitas) ------
+  if (ruta === "/pendientes") {
+    const caja = url.searchParams.get("caja") ?? "principal";
+    const mins = Number(url.searchParams.get("minutos") ?? 20);
+    const { data, error } = await db.rpc("candidatos_para_enlazar", { p_caja: caja, p_minutos: mins });
+    if (error) { console.error("candidatos_para_enlazar:", error); return json({ error: error.message }, 500); }
+    return json(data);
+  }
+
   return json({ error: "ruta desconocida" }, 404);
 });
