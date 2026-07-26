@@ -1,0 +1,589 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1117">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="caja.webmanifest">
+<link rel="apple-touch-icon" href="icono-192.png">
+<title>RUSH — Caja</title>
+
+<!--
+  Pagina APARTE (como reporte.html): la CAJERA, no el supervisor. CRM del
+  programa "6to lavado gratis". Mismo codigo de acceso (rush_codigo), otra URL.
+
+  Modelo persona-centrico: la lealtad es de la PERSONA, no del carro. La placa
+  solo FACILITA la busqueda (una placa puede ligar a varias personas). Las
+  visitas van siempre a la persona.
+
+  "A prueba de abuelitos": botones grandes, un paso a la vez, todo en espanol.
+  Funciona SIN camara (escribir placa / buscar por nombre); la camara del
+  tablet y la Reolink se suman despues.
+-->
+
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; }
+  body {
+    padding:16px 14px calc(24px + env(safe-area-inset-bottom));
+    background:#0d1117; color:#e6edf3;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-text-size-adjust:100%; -webkit-tap-highlight-color:transparent;
+    font-size:18px;
+  }
+  #logo { height:24px; width:auto; display:block; margin-bottom:10px; }
+  h1 { font-size:22px; margin:0 0 2px; }
+  .sub { color:#8b949e; font-size:14px; margin-bottom:18px; }
+
+  .pantalla { display:none; }
+  .pantalla.activa { display:block; }
+
+  .seccion { font-size:16px; font-weight:800; color:#adbac7; margin:18px 0 10px; }
+
+  /* Botones grandes de un toque. */
+  button {
+    font-family:inherit; cursor:pointer; border-radius:14px;
+    border:1px solid #30363d; background:#161b22; color:#e6edf3;
+  }
+  button:active { filter:brightness(.85); }
+  .grande {
+    width:100%; min-height:76px; font-size:23px; font-weight:800;
+    display:flex; align-items:center; justify-content:center; gap:12px;
+    margin:8px 0; padding:14px;
+  }
+  .grande.azul  { background:#2f81f7; border-color:#2f81f7; color:#fff; }
+  .grande.verde { background:#238636; border-color:#238636; color:#fff; }
+  .secundario {
+    width:100%; min-height:56px; font-size:17px; font-weight:700;
+    margin:8px 0; padding:10px; background:#21262d;
+  }
+  .volver { min-height:52px; padding:8px 16px; font-size:16px; font-weight:700; margin-bottom:6px; }
+  .peligro { color:#ff7875; border-color:#3d2224; background:#20161a; }
+
+  /* Campos + su boton en una fila. */
+  .ofila { display:flex; gap:8px; margin:8px 0; }
+  .ofila input {
+    flex:1; min-width:0; font-size:20px; font-weight:700;
+    background:#161b22; color:#fff; border:2px solid #30363d;
+    border-radius:12px; padding:12px; text-transform:uppercase;
+  }
+  .ofila input::placeholder { text-transform:none; color:#6e7681; font-weight:600; letter-spacing:0; }
+  .ofila button { min-width:96px; font-size:17px; font-weight:800; padding:0 14px; }
+
+  #resultados { margin:6px 0; }
+  .tarjeta-p {
+    background:#161b22; border:1px solid #30363d; border-radius:14px;
+    padding:14px; margin:10px 0;
+  }
+  .tarjeta-p .nom { font-size:21px; font-weight:800; }
+  .tarjeta-p .tel { color:#8b949e; font-size:15px; margin-top:2px; }
+  .tarjeta-p .mini-sello { color:#adbac7; font-size:15px; margin-top:6px; }
+  .tarjeta-p button { width:100%; min-height:60px; font-size:19px; font-weight:800; margin-top:10px; background:#2f81f7; border-color:#2f81f7; color:#fff; }
+
+  .nota { color:#8b949e; font-size:14px; margin:8px 0; line-height:1.4; }
+  .nota.aviso { background:#1c2128; border-left:4px solid #d29922; border-radius:6px; padding:10px 12px; color:#c9d1d9; }
+
+  /* Banner de lealtad — lo primero que ve la cajera de la persona. */
+  #banner-lealtad { border-radius:16px; padding:18px; margin:8px 0 14px; text-align:center; }
+  #banner-lealtad.gratis  { background:#132e1b; border:2px solid #3fb950; }
+  #banner-lealtad.pendiente { background:#161b22; border:1px solid #30363d; }
+  #banner-lealtad .grande-txt { font-size:26px; font-weight:900; line-height:1.15; }
+  #banner-lealtad.gratis .grande-txt { color:#3fb950; }
+  #banner-lealtad .sellos { font-size:30px; letter-spacing:6px; margin:10px 0 4px; }
+  #banner-lealtad .visitas { color:#8b949e; font-size:14px; }
+
+  .nombre-grande { font-size:24px; font-weight:800; margin-bottom:2px; }
+  .datos-linea { color:#8b949e; font-size:15px; margin:2px 0; }
+
+  .toggle {
+    display:flex; align-items:center; gap:12px; font-size:19px; font-weight:700;
+    background:#161b22; border:1px solid #30363d; border-radius:12px;
+    padding:14px; margin:12px 0; cursor:pointer;
+  }
+  .toggle input { width:26px; height:26px; }
+  .toggle.on { border-color:#3fb950; background:#132e1b; }
+
+  .campo { margin:10px 0; }
+  .campo label { display:block; font-size:14px; color:#8b949e; margin-bottom:4px; }
+  .campo input, .campo textarea {
+    width:100%; font-size:19px; background:#161b22; color:#fff;
+    border:2px solid #30363d; border-radius:12px; padding:12px; font-family:inherit;
+  }
+
+  .ok { background:#132e1b; border:1px solid #3fb950; color:#3fb950; border-radius:12px; padding:14px; font-size:18px; font-weight:800; margin:8px 0 14px; }
+  .carro-op {
+    width:100%; text-align:left; min-height:64px; margin:8px 0; padding:12px 14px;
+    font-size:17px; font-weight:700; background:#161b22;
+  }
+  .carro-op .l2 { display:block; color:#8b949e; font-size:14px; font-weight:600; margin-top:3px; }
+
+  #acceso {
+    position:fixed; inset:0; background:#0d1117; z-index:50;
+    display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:24px;
+  }
+  #acceso input {
+    font-size:26px; text-align:center; letter-spacing:4px; width:100%; max-width:320px;
+    background:#161b22; color:#fff; border:1px solid #30363d; border-radius:8px; padding:12px;
+  }
+  #malcodigo { color:#ff7875; display:none; }
+</style>
+
+<img id="logo" src="RUSH-Logo.png" alt="RUSH" onerror="this.style.display='none'">
+<h1>Caja</h1>
+<div class="sub">Lealtad · 6to lavado gratis</div>
+
+<!-- ============ Pantalla 1: identificar al cliente ============ -->
+<div id="p-identificar" class="pantalla activa">
+  <div class="seccion">¿Quién es el cliente?</div>
+
+  <button id="btn-foto" class="grande azul">📷 Tomar foto de la placa</button>
+
+  <div class="ofila">
+    <input id="in-placa" inputmode="text" autocapitalize="characters" autocomplete="off" placeholder="O escribe la placa">
+    <button id="btn-placa">Buscar</button>
+  </div>
+  <div class="ofila">
+    <input id="in-nombre" autocomplete="off" placeholder="O busca por nombre">
+    <button id="btn-nombre">Buscar</button>
+  </div>
+
+  <div id="estado-captura" class="nota"></div>
+  <div id="resultados"></div>
+
+  <button id="btn-nueva" class="secundario">+ Registrar cliente nuevo</button>
+</div>
+
+<!-- ============ Pantalla 2: persona + lealtad ============ -->
+<div id="p-persona" class="pantalla">
+  <button class="volver" data-inicio>&#8592; Otro cliente</button>
+
+  <div id="banner-lealtad"></div>
+
+  <div id="datos-persona"></div>
+
+  <button id="btn-editar" class="secundario">Editar datos (teléfono, notas)</button>
+  <div id="form-editar" style="display:none">
+    <div class="campo"><label>Nombre</label><input id="ed-nombre"></div>
+    <div class="campo"><label>Teléfono</label><input id="ed-telefono" inputmode="tel"></div>
+    <div class="campo"><label>Notas</label><textarea id="ed-notas" rows="2"></textarea></div>
+    <button id="btn-guardar-datos" class="secundario">Guardar datos</button>
+  </div>
+
+  <div id="captura-resumen" class="nota"></div>
+
+  <label class="toggle" id="lbl-gratis"><input type="checkbox" id="chk-gratis"> Este lavado es el <b>GRATIS</b></label>
+
+  <button id="btn-registrar" class="grande verde">Registrar visita</button>
+</div>
+
+<!-- ============ Pantalla 3: enlazar a la venta ============ -->
+<div id="p-enlazar" class="pantalla">
+  <div class="ok">✓ Visita registrada. Ahora cóbralo en Zettle.</div>
+  <div class="seccion">¿A qué lavado corresponde? <span id="enl-quien" class="nota" style="display:inline"></span></div>
+  <div id="lista-carros"><div class="nota">Buscando el lavado recién pagado…</div></div>
+  <button id="btn-refrescar" class="secundario">Refrescar</button>
+  <button id="btn-sin-venta" class="secundario peligro">No hubo venta / cancelar</button>
+  <button id="btn-listo" class="grande azul">Listo — siguiente cliente</button>
+</div>
+
+<!-- ============ Pantalla: cliente nuevo ============ -->
+<div id="p-nueva" class="pantalla">
+  <button class="volver" data-inicio>&#8592; Cancelar</button>
+  <div class="seccion">Cliente nuevo</div>
+  <div class="campo"><label>Nombre *</label><input id="nv-nombre" autocapitalize="words"></div>
+  <div class="campo"><label>Teléfono</label><input id="nv-telefono" inputmode="tel"></div>
+  <div class="campo"><label>Notas</label><textarea id="nv-notas" rows="2"></textarea></div>
+  <button id="btn-crear" class="grande verde">Crear y continuar</button>
+</div>
+
+<input id="camara" type="file" accept="image/*" capture="environment" style="display:none">
+
+<div id="acceso">
+  <h2 style="color:#e6edf3">Código de acceso</h2>
+  <input id="campo" inputmode="text" autocapitalize="characters" autocomplete="off">
+  <div id="malcodigo">Código incorrecto</div>
+  <button id="entrar" style="font-size:20px; padding:12px 30px">Entrar</button>
+</div>
+
+<script>
+var API = "https://rwoyfvddhlabmmuvkpjx.supabase.co/functions/v1/app";
+
+// --- Codigo de acceso: mismo almacen que el resto (rush_codigo) ------
+var CODIGO = "";
+function cargarCodigo() {
+  var enLiga = new URLSearchParams(location.search).get("c");
+  if (enLiga) {
+    CODIGO = enLiga.trim().toUpperCase();
+    try { localStorage.setItem("rush_codigo", CODIGO); } catch (e) {}
+    history.replaceState({}, "", location.pathname);
+    return;
+  }
+  try { CODIGO = localStorage.getItem("rush_codigo") || ""; } catch (e) { CODIGO = ""; }
+}
+function pedir(ruta, opciones) {
+  opciones = opciones || {};
+  opciones.headers = opciones.headers || {};
+  opciones.headers["x-codigo"] = CODIGO;
+  opciones.cache = "no-store";
+  return fetch(API + ruta, opciones).then(function (r) {
+    if (r.status === 401) {
+      try { localStorage.removeItem("rush_codigo"); } catch (e) {}
+      CODIGO = ""; pedirCodigo(true); throw new Error("codigo");
+    }
+    return r;
+  });
+}
+function postJSON(ruta, cuerpo) {
+  return pedir(ruta, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(cuerpo)
+  }).then(function (r) { return r.json(); });
+}
+function pedirCodigo(fallo) {
+  document.getElementById("acceso").style.display = "flex";
+  document.getElementById("malcodigo").style.display = fallo ? "block" : "none";
+  document.getElementById("campo").focus();
+}
+function escapar(t) {
+  return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) {
+    return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
+  });
+}
+
+// --- Achicar la foto en el telefono antes de subir (igual que la app) ---
+function achicar(archivo) {
+  return new Promise(function (listo, falla) {
+    var lector = new FileReader();
+    lector.onerror = falla;
+    lector.onload = function () {
+      var img = new Image();
+      img.onerror = falla;
+      img.onload = function () {
+        var max = 1280, an = img.width, al = img.height;
+        if (an > al && an > max) { al = Math.round(al * max / an); an = max; }
+        else if (al > max)       { an = Math.round(an * max / al); al = max; }
+        var lienzo = document.createElement("canvas");
+        lienzo.width = an; lienzo.height = al;
+        lienzo.getContext("2d").drawImage(img, 0, 0, an, al);
+        listo(lienzo.toDataURL("image/jpeg", 0.6));
+      };
+      img.src = lector.result;
+    };
+    lector.readAsDataURL(archivo);
+  });
+}
+
+// --- Navegacion entre pantallas + trampa del boton atras -------------
+// Cada pantalla que se abre empuja un estado; el boton atras del telefono
+// (o "Volver") regresa al inicio en vez de salir de la app.
+var PANTALLAS = ["p-identificar", "p-persona", "p-enlazar", "p-nueva"];
+function mostrar(id, empujar) {
+  PANTALLAS.forEach(function (x) {
+    document.getElementById(x).classList.toggle("activa", x === id);
+  });
+  window.scrollTo(0, 0);
+  if (empujar) { try { history.pushState({ caja: id }, ""); } catch (e) {} }
+}
+window.addEventListener("popstate", function () { irInicio(false); });
+
+// --- Estado del cliente en curso -------------------------------------
+var personaActual = null;   // {id, nombre, telefono, notas, lealtad}
+var captura = null;         // {placa, marca, submarca, tipo, color, foto_path}
+var visitaActual = null;    // id de la visita registrada (para enlazar/descartar)
+
+function irInicio(empujar) {
+  personaActual = null; captura = null; visitaActual = null;
+  document.getElementById("in-placa").value = "";
+  document.getElementById("in-nombre").value = "";
+  document.getElementById("resultados").innerHTML = "";
+  document.getElementById("estado-captura").textContent = "";
+  mostrar("p-identificar", empujar);
+}
+
+// --- Identificar: foto / placa / nombre ------------------------------
+document.getElementById("btn-foto").addEventListener("click", function () {
+  document.getElementById("camara").click();
+});
+document.getElementById("camara").addEventListener("change", function (ev) {
+  var archivo = ev.target.files && ev.target.files[0];
+  ev.target.value = "";
+  if (!archivo) return;
+  var est = document.getElementById("estado-captura");
+  est.textContent = "Leyendo la placa…";
+  achicar(archivo)
+    .then(function (img) { return postJSON("/leer-placa", { imagen: img }); })
+    .then(function (d) {
+      if (!d || d.ok === false) { est.textContent = "No se pudo leer la foto. Escribe la placa a mano."; return; }
+      captura = { placa: d.placa, marca: d.marca, submarca: d.submarca, tipo: d.tipo, color: null, foto_path: d.foto_path };
+      if (d.placa) {
+        document.getElementById("in-placa").value = d.placa;
+        est.textContent = "Placa leída: " + d.placa;
+        buscarPorPlaca(d.placa);
+      } else {
+        est.textContent = "La foto no dejó ver la placa. Escríbela a mano o busca por nombre.";
+      }
+    })
+    .catch(function (e) { if (e && e.message === "codigo") return; est.textContent = "Sin conexión. Intenta otra vez."; });
+});
+
+document.getElementById("btn-placa").addEventListener("click", function () {
+  var v = document.getElementById("in-placa").value.trim();
+  if (!v) return;
+  // Placa escrita a mano: si no hubo foto, la captura lleva solo la placa.
+  if (!captura) captura = { placa: v, marca: null, submarca: null, tipo: null, color: null, foto_path: null };
+  else captura.placa = v;
+  buscarPorPlaca(v);
+});
+document.getElementById("in-placa").addEventListener("keydown", function (ev) {
+  if (ev.key === "Enter") document.getElementById("btn-placa").click();
+});
+
+document.getElementById("btn-nombre").addEventListener("click", function () {
+  var v = document.getElementById("in-nombre").value.trim();
+  if (!v) return;
+  buscarPorNombre(v);
+});
+document.getElementById("in-nombre").addEventListener("keydown", function (ev) {
+  if (ev.key === "Enter") document.getElementById("btn-nombre").click();
+});
+
+function buscarPorPlaca(placa) {
+  pedir("/personas?placa=" + encodeURIComponent(placa))
+    .then(function (r) { return r.json(); })
+    .then(function (d) { pintarResultados(d.personas || [], "placa", placa); })
+    .catch(function (e) { if (e && e.message !== "codigo") avisarResultados("Sin conexión."); });
+}
+function buscarPorNombre(q) {
+  pedir("/personas?q=" + encodeURIComponent(q))
+    .then(function (r) { return r.json(); })
+    .then(function (d) { pintarResultados(d.personas || [], "nombre", q); })
+    .catch(function (e) { if (e && e.message !== "codigo") avisarResultados("Sin conexión."); });
+}
+function avisarResultados(msg) { document.getElementById("resultados").innerHTML = '<div class="nota">' + escapar(msg) + "</div>"; }
+function vecesTexto(n) { return n === 1 ? "1 vez" : n + " veces"; }
+
+function selloTexto(l) {
+  if (!l) return "";
+  var llenos = l.sellos || 0;
+  return "●".repeat(llenos) + "○".repeat(Math.max(0, 5 - llenos)) +
+         (l.elegible ? "  ¡6to GRATIS!" : "  faltan " + (l.faltan != null ? l.faltan : (5 - llenos)));
+}
+
+function pintarResultados(personas, contexto, valor) {
+  var cont = document.getElementById("resultados");
+  var html = "";
+  if (contexto === "placa") {
+    if (personas.length === 0) {
+      html += '<div class="nota aviso">La placa <b>' + escapar(valor) + '</b> no está registrada con nadie. ' +
+              'Busca por nombre o registra un cliente nuevo.</div>';
+    } else if (personas.length === 1) {
+      html += '<div class="nota aviso">Esta placa está ligada a <b>' + escapar(personas[0].nombre) + '</b>. ' +
+              'Pregúntale al cliente: ¿es su registro, o quiere uno nuevo?</div>';
+    } else {
+      html += '<div class="nota aviso">Esta placa está ligada a <b>' + personas.length + ' personas</b>. Elige cuál.</div>';
+    }
+  } else {
+    if (personas.length === 0) {
+      html += '<div class="nota">Nadie con ese nombre. Regístralo como cliente nuevo.</div>';
+    }
+  }
+  personas.forEach(function (p) {
+    var l = p.lealtad || {};
+    html += '<div class="tarjeta-p">' +
+              '<div class="nom">' + escapar(p.nombre) + "</div>" +
+              (p.telefono ? '<div class="tel">' + escapar(p.telefono) + "</div>" : "") +
+              '<div class="mini-sello">' + selloTexto(l) + "</div>" +
+              '<button data-elegir="' + p.id + '">Es este cliente</button>' +
+            "</div>";
+  });
+  cont.innerHTML = html;
+  cont.querySelectorAll("button[data-elegir]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var p = personas.filter(function (x) { return String(x.id) === b.dataset.elegir; })[0];
+      if (p) elegirPersona(p);
+    });
+  });
+}
+
+function elegirPersona(p) {
+  personaActual = p;
+  mostrar("p-persona", true);
+  pintarPersona();
+}
+
+// --- Pantalla persona + lealtad --------------------------------------
+function pintarPersona() {
+  var p = personaActual, l = (p && p.lealtad) || {};
+
+  var banner = document.getElementById("banner-lealtad");
+  banner.className = l.elegible ? "gratis" : "pendiente";
+  var sellos = '<div class="sellos">' + "●".repeat(l.sellos || 0) + "○".repeat(Math.max(0, 5 - (l.sellos || 0))) + "</div>";
+  if (l.elegible) {
+    banner.innerHTML = '<div class="grande-txt">¡6to LAVADO GRATIS!</div>' + sellos +
+                       '<div class="visitas">Ya juntó 5 lavados</div>';
+  } else {
+    banner.innerHTML = '<div class="grande-txt">Faltan ' + (l.faltan != null ? l.faltan : 5) + '</div>' + sellos +
+                       '<div class="visitas">para el lavado gratis</div>';
+  }
+
+  document.getElementById("datos-persona").innerHTML =
+    '<div class="nombre-grande">' + escapar(p.nombre) + "</div>" +
+    (p.telefono ? '<div class="datos-linea">📞 ' + escapar(p.telefono) + "</div>" : "") +
+    (p.notas ? '<div class="datos-linea">📝 ' + escapar(p.notas) + "</div>" : "") +
+    '<div class="datos-linea">Ha venido ' + vecesTexto(l.visitas_totales || 0) + ' o más</div>';
+
+  // El toggle del gratis arranca prendido solo si es elegible; si no, se
+  // puede prender igual pero con aviso (raro, por si el dueno lo autoriza).
+  var chk = document.getElementById("chk-gratis");
+  chk.checked = !!l.elegible;
+  pintarToggleGratis();
+
+  var cap = captura && captura.placa
+    ? "Carro: " + escapar([captura.placa, captura.marca, captura.submarca].filter(Boolean).join(" "))
+    : "Sin placa capturada (registro solo por nombre).";
+  document.getElementById("captura-resumen").textContent = cap;
+
+  document.getElementById("form-editar").style.display = "none";
+}
+function pintarToggleGratis() {
+  document.getElementById("lbl-gratis").classList.toggle("on", document.getElementById("chk-gratis").checked);
+}
+document.getElementById("chk-gratis").addEventListener("change", pintarToggleGratis);
+
+document.getElementById("btn-editar").addEventListener("click", function () {
+  var p = personaActual, f = document.getElementById("form-editar");
+  if (f.style.display === "none") {
+    document.getElementById("ed-nombre").value = p.nombre || "";
+    document.getElementById("ed-telefono").value = p.telefono || "";
+    document.getElementById("ed-notas").value = p.notas || "";
+    f.style.display = "block";
+  } else { f.style.display = "none"; }
+});
+document.getElementById("btn-guardar-datos").addEventListener("click", function () {
+  var nombre = document.getElementById("ed-nombre").value.trim();
+  if (!nombre) { alert("El nombre no puede quedar vacío."); return; }
+  postJSON("/personas", {
+    id: personaActual.id, nombre: nombre,
+    telefono: document.getElementById("ed-telefono").value.trim(),
+    notas: document.getElementById("ed-notas").value.trim()
+  }).then(function (d) {
+    if (d && d.ok === false) { alert(d.error || "No se pudo guardar"); return; }
+    personaActual = d.persona;
+    pintarPersona();
+  }).catch(function (e) { if (e && e.message !== "codigo") alert("Sin conexión."); });
+});
+
+document.getElementById("btn-registrar").addEventListener("click", function () {
+  var btn = this; btn.disabled = true;
+  var c = captura || {};
+  postJSON("/visita", {
+    persona: personaActual.id,
+    placa: c.placa || null, marca: c.marca || null, submarca: c.submarca || null,
+    tipo: c.tipo || null, color: c.color || null, foto_path: c.foto_path || null,
+    es_gratis: document.getElementById("chk-gratis").checked
+  }).then(function (d) {
+    btn.disabled = false;
+    if (d && d.ok === false) { alert(d.error || "No se pudo registrar"); return; }
+    visitaActual = d.visita;
+    document.getElementById("enl-quien").textContent = "— " + personaActual.nombre;
+    mostrar("p-enlazar", true);
+    cargarPendientes();
+  }).catch(function (e) { btn.disabled = false; if (e && e.message !== "codigo") alert("Sin conexión."); });
+});
+
+// --- Cliente nuevo ---------------------------------------------------
+document.getElementById("btn-nueva").addEventListener("click", function () {
+  document.getElementById("nv-nombre").value = document.getElementById("in-nombre").value.trim();
+  document.getElementById("nv-telefono").value = "";
+  document.getElementById("nv-notas").value = "";
+  mostrar("p-nueva", true);
+});
+document.getElementById("btn-crear").addEventListener("click", function () {
+  var nombre = document.getElementById("nv-nombre").value.trim();
+  if (!nombre) { alert("Escribe el nombre."); return; }
+  postJSON("/personas", {
+    nombre: nombre,
+    telefono: document.getElementById("nv-telefono").value.trim(),
+    notas: document.getElementById("nv-notas").value.trim()
+  }).then(function (d) {
+    if (d && d.ok === false) { alert(d.error || "No se pudo crear"); return; }
+    elegirPersona(d.persona);   // reemplaza la pantalla nueva por la de persona
+  }).catch(function (e) { if (e && e.message !== "codigo") alert("Sin conexión."); });
+});
+
+// --- Enlazar a la venta ----------------------------------------------
+function cargarPendientes() {
+  var lista = document.getElementById("lista-carros");
+  lista.innerHTML = '<div class="nota">Buscando el lavado recién pagado…</div>';
+  pedir("/pendientes?minutos=20")
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var carros = (d && d.carros) || [];
+      if (!carros.length) {
+        lista.innerHTML = '<div class="nota aviso">Todavía no aparece el lavado. Cóbralo en Zettle y toca <b>Refrescar</b>. ' +
+                          'Si no vas a cobrar, usa <b>No hubo venta</b>.</div>';
+        return;
+      }
+      var html = "";
+      carros.forEach(function (c) {
+        var hora = c.creado_en ? new Date(c.creado_en).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) : "";
+        var precio = (c.monto != null) ? "$" + c.monto : "";
+        html += '<button class="carro-op" data-carro="' + c.id + '">' +
+                  escapar([c.producto, c.variante].filter(Boolean).join(" ")) +
+                  '<span class="l2">' + [hora, precio, escapar(c.placa || "")].filter(Boolean).join("  ·  ") + "</span>" +
+                "</button>";
+      });
+      lista.innerHTML = html;
+      lista.querySelectorAll("button[data-carro]").forEach(function (b) {
+        b.addEventListener("click", function () { enlazar(Number(b.dataset.carro)); });
+      });
+    })
+    .catch(function (e) { if (e && e.message !== "codigo") lista.innerHTML = '<div class="nota">Sin conexión.</div>'; });
+}
+document.getElementById("btn-refrescar").addEventListener("click", cargarPendientes);
+
+function enlazar(carroId) {
+  postJSON("/enlazar", { visita: visitaActual, carro: carroId })
+    .then(function (d) {
+      if (d && d.ok === false) { alert(d.error || "No se pudo enlazar"); return; }
+      document.getElementById("lista-carros").innerHTML =
+        '<div class="ok">✓ Lavado enlazado. El carro ya quedó identificado.</div>';
+    })
+    .catch(function (e) { if (e && e.message !== "codigo") alert("Sin conexión."); });
+}
+document.getElementById("btn-sin-venta").addEventListener("click", function () {
+  if (!confirm("¿No hubo venta? Se descarta esta visita (no cuenta para la lealtad).")) return;
+  postJSON("/descartar-visita", { visita: visitaActual })
+    .then(function () { irInicio(false); })
+    .catch(function (e) { if (e && e.message !== "codigo") alert("Sin conexión."); });
+});
+document.getElementById("btn-listo").addEventListener("click", function () { irInicio(false); });
+
+// Los botones "Volver / Otro cliente / Cancelar" regresan al inicio.
+document.querySelectorAll("[data-inicio]").forEach(function (b) {
+  b.addEventListener("click", function () { irInicio(false); });
+});
+
+// --- Codigo de acceso ------------------------------------------------
+document.getElementById("entrar").addEventListener("click", function () {
+  var v = document.getElementById("campo").value.trim().toUpperCase();
+  if (!v) return;
+  CODIGO = v;
+  try { localStorage.setItem("rush_codigo", CODIGO); } catch (e) {}
+  document.getElementById("acceso").style.display = "none";
+});
+document.getElementById("campo").addEventListener("keydown", function (ev) {
+  if (ev.key === "Enter") document.getElementById("entrar").click();
+});
+
+// --- Arranque --------------------------------------------------------
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("sw.js").catch(function () {});
+  });
+}
+cargarCodigo();
+if (!CODIGO) pedirCodigo(false);
+irInicio(false);
+</script>
