@@ -95,6 +95,29 @@
   .nota { color:#8b949e; font-size:14px; margin:8px 0; line-height:1.4; }
   .nota.aviso { background:#1c2128; border-left:4px solid #d29922; border-radius:6px; padding:10px 12px; color:#c9d1d9; }
 
+  /* Feed en vivo de la camara. Se toca para prender/apagar. */
+  #feed {
+    position:relative; width:100%; aspect-ratio:16/9; margin:8px 0;
+    border-radius:14px; overflow:hidden; cursor:pointer;
+    background:#0b0f14; border:2px solid #30363d;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #feed-video { width:100%; height:100%; object-fit:cover; display:none; }
+  #feed.feed-vivo { border-color:#3fb950; }
+  #feed.feed-vivo #feed-video { display:block; }
+  #feed-hint {
+    color:#8b949e; font-size:16px; font-weight:800; text-align:center;
+    display:flex; flex-direction:column; align-items:center; gap:8px; pointer-events:none;
+  }
+  #feed-hint .feed-ico { font-size:42px; }
+  /* Vivo: el letrero pasa a una etiqueta chica en una esquina. */
+  #feed.feed-vivo #feed-hint {
+    position:absolute; top:8px; right:8px; flex-direction:row; gap:5px;
+    background:rgba(0,0,0,.6); border-radius:8px; padding:5px 10px;
+    font-size:13px; font-weight:700; color:#e6edf3;
+  }
+  #feed.feed-vivo .feed-ico { display:none; }
+
   /* La placa capturada, en grande y sin guiones. */
   .placa-cap {
     font-size:22px; text-align:center; margin:10px 0;
@@ -164,8 +187,19 @@
 <div id="p-placa" class="pantalla activa">
   <div class="seccion">Captura la placa</div>
 
-  <button id="btn-foto" class="grande azul">📷 Tomar foto</button>
-  <button id="btn-manual" class="grande">&#9000; Capturar placa manualmente</button>
+  <!-- Feed en vivo de la camara. PRODUCCION: la Reolink fija (via go2rtc,
+       WebRTC). AHORA: stand-in con la camara del dispositivo (getUserMedia)
+       para probar toda la UI. Se prende/apaga TOCANDOLO — ahorra bateria del
+       tablet y, si el feed se congela al cambiar el foco a Zettle, un toque lo
+       reinicia. -->
+  <div id="feed" class="feed-apagado">
+    <video id="feed-video" autoplay playsinline muted></video>
+    <div id="feed-hint"><span class="feed-ico">📷</span><span id="feed-hint-txt">Toca para ver la cámara</span></div>
+  </div>
+
+  <button id="btn-foto" class="grande azul">📸 Tomar foto</button>
+  <button id="btn-foto-tablet" class="grande">📱 Tomar foto con cámara de Tablet</button>
+  <button id="btn-manual" class="secundario">&#9000; Capturar placa manualmente</button>
 
   <div id="manual-box" style="display:none">
     <div class="ofila">
@@ -349,6 +383,8 @@ function achicar(archivo) {
 // (o "Volver") regresa al inicio en vez de salir de la app.
 var PANTALLAS = ["p-placa", "p-cliente", "p-persona", "p-enlazar", "p-nueva", "p-historial"];
 function mostrar(id, empujar) {
+  // Al salir de la pantalla de captura, se apaga el feed (ahorra bateria).
+  if (id !== "p-placa" && feedVivo) apagarFeed();
   PANTALLAS.forEach(function (x) {
     document.getElementById(x).classList.toggle("activa", x === id);
   });
@@ -408,32 +444,102 @@ function fijarPlaca(placaCruda, datosFoto) {
   return true;
 }
 
-// --- Tomar foto ---
+// --- Feed en vivo de la camara ---------------------------------------
+// PRODUCCION: WebRTC de la Reolink (via go2rtc). AHORA (stand-in): la camara
+// del dispositivo por getUserMedia, para probar toda la UI. Lo UNICO que
+// cambia cuando entre la Reolink es obtenerStream().
+var feedStream = null, feedVivo = false;
+
+function obtenerStream() {
+  // TODO Reolink: reemplazar por la conexion WebRTC a go2rtc.
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
+    return Promise.reject(new Error("sin camara"));
+  return navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+}
+function prenderFeed() {
+  if (feedVivo) return Promise.resolve();
+  return obtenerStream().then(function (s) {
+    feedStream = s;
+    document.getElementById("feed-video").srcObject = s;
+    feedVivo = true;
+    document.getElementById("feed").className = "feed-vivo";
+    document.getElementById("feed-hint-txt").textContent = "Toca para apagar";
+  }).catch(function (e) {
+    document.getElementById("feed-hint-txt").textContent = "No se pudo abrir la cámara. Usa el botón del tablet.";
+    throw e;
+  });
+}
+function apagarFeed() {
+  if (feedStream) { feedStream.getTracks().forEach(function (t) { t.stop(); }); feedStream = null; }
+  var v = document.getElementById("feed-video"); if (v) v.srcObject = null;
+  feedVivo = false;
+  document.getElementById("feed").className = "feed-apagado";
+  document.getElementById("feed-hint-txt").textContent = "Toca para ver la cámara";
+}
+document.getElementById("feed").addEventListener("click", function () {
+  if (feedVivo) apagarFeed(); else prenderFeed().catch(function () {});
+});
+// Al perder el foco (p.ej. tocar Zettle en split) se apaga: ahorra bateria y
+// evita el cuadro congelado. Al volver, la cajera lo re-toca.
+document.addEventListener("visibilitychange", function () {
+  if (document.hidden && feedVivo) apagarFeed();
+});
+
+function capturarCuadro() {
+  var v = document.getElementById("feed-video");
+  if (!v.videoWidth) return null;
+  var max = 1280, an = v.videoWidth, al = v.videoHeight;
+  if (an > al && an > max) { al = Math.round(al * max / an); an = max; }
+  else if (al > max)       { an = Math.round(an * max / al); al = max; }
+  var c = document.createElement("canvas"); c.width = an; c.height = al;
+  c.getContext("2d").drawImage(v, 0, 0, an, al);
+  return c.toDataURL("image/jpeg", 0.6);
+}
+
+// Manda una imagen ya lista (dataURL) a leer la placa. La usan el feed y el
+// respaldo del tablet.
+function procesarImagen(dataURL) {
+  var est = document.getElementById("estado-captura");
+  est.textContent = "Leyendo la placa…";
+  return postJSON("/leer-placa", { imagen: dataURL }).then(function (d) {
+    if (!d || d.ok === false) { est.textContent = "No se pudo leer. Captura la placa a mano."; return; }
+    var datos = { placa: null, marca: d.marca, submarca: d.submarca, tipo: d.tipo, color: null, foto_path: d.foto_path };
+    if (d.placa && fijarPlaca(d.placa, datos)) {
+      est.textContent = "Placa leída: " + captura.placa;
+    } else {
+      captura = datos;
+      est.textContent = "No se vio la placa. Captúrala a mano.";
+      document.getElementById("manual-box").style.display = "block";
+      document.getElementById("in-placa").focus();
+    }
+  }).catch(function (e) { if (e && e.message === "codigo") return; est.textContent = "Sin conexión. Intenta otra vez."; });
+}
+
+// "Tomar foto" = del feed en vivo. Si esta apagado, lo prende primero (y la
+// cajera apunta y vuelve a tocar), para no capturar un cuadro negro/borroso.
 document.getElementById("btn-foto").addEventListener("click", function () {
+  if (!feedVivo) {
+    prenderFeed().then(function () {
+      document.getElementById("estado-captura").textContent = "Cámara lista. Apunta a la placa y vuelve a tocar Tomar foto.";
+    }).catch(function () {});
+    return;
+  }
+  var img = capturarCuadro();
+  if (!img) { document.getElementById("estado-captura").textContent = "La cámara aún no está lista, intenta otra vez."; return; }
+  procesarImagen(img);
+});
+
+// Respaldo: la camara del propio tablet (handoff a la app del sistema).
+document.getElementById("btn-foto-tablet").addEventListener("click", function () {
   document.getElementById("camara").click();
 });
 document.getElementById("camara").addEventListener("change", function (ev) {
   var archivo = ev.target.files && ev.target.files[0];
   ev.target.value = "";
   if (!archivo) return;
-  var est = document.getElementById("estado-captura");
-  est.textContent = "Leyendo la placa…";
-  achicar(archivo)
-    .then(function (img) { return postJSON("/leer-placa", { imagen: img }); })
-    .then(function (d) {
-      if (!d || d.ok === false) { est.textContent = "No se pudo leer la foto. Captura la placa a mano."; return; }
-      var datos = { placa: null, marca: d.marca, submarca: d.submarca, tipo: d.tipo, color: null, foto_path: d.foto_path };
-      if (d.placa && fijarPlaca(d.placa, datos)) {
-        est.textContent = "Placa leída de la foto.";
-      } else {
-        // La foto se guardo (foto_path) pero no dejo ver la placa: se captura a mano.
-        captura = datos;
-        est.textContent = "La foto no dejó ver la placa. Captúrala a mano.";
-        document.getElementById("manual-box").style.display = "block";
-        document.getElementById("in-placa").focus();
-      }
-    })
-    .catch(function (e) { if (e && e.message === "codigo") return; est.textContent = "Sin conexión. Intenta otra vez."; });
+  achicar(archivo).then(procesarImagen).catch(function (e) {
+    if (e && e.message !== "codigo") document.getElementById("estado-captura").textContent = "No se pudo procesar la foto.";
+  });
 });
 
 // --- Capturar placa manualmente ---
