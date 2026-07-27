@@ -292,6 +292,24 @@ var personaActual = null;   // {id, nombre, telefono, notas, lealtad}
 var captura = null;         // {placa, marca, submarca, tipo, color, foto_path}
 var visitaActual = null;    // id de la visita registrada (para enlazar/descartar)
 
+// Candado contra doble-toque: si el wifi tarda, la cajera no ve respuesta y
+// vuelve a picar. Al primer toque se bloquea TODO boton de escritura y se
+// muestra "Guardando…"; los toques siguientes no hacen nada hasta que
+// termina. Sin esto se crean clientes/visitas duplicados (paso el 26/jul).
+var ocupado = false;
+function conCandado(btn, texto, hacer) {
+  if (ocupado) return;
+  ocupado = true;
+  var orig = btn.textContent;
+  btn.disabled = true; btn.textContent = texto;
+  var soltar = function () { ocupado = false; btn.disabled = false; btn.textContent = orig; };
+  var prom;
+  try { prom = hacer(); } catch (e) { soltar(); return; }
+  Promise.resolve(prom).then(soltar, function (e) {
+    soltar(); if (e && e.message !== "codigo") alert("Sin conexión. Intenta otra vez.");
+  });
+}
+
 function irInicio(empujar) {
   personaActual = null; captura = null; visitaActual = null;
   document.getElementById("in-placa").value = "";
@@ -463,33 +481,35 @@ document.getElementById("btn-editar").addEventListener("click", function () {
 document.getElementById("btn-guardar-datos").addEventListener("click", function () {
   var nombre = document.getElementById("ed-nombre").value.trim();
   if (!nombre) { alert("El nombre no puede quedar vacío."); return; }
-  postJSON("/personas", {
-    id: personaActual.id, nombre: nombre,
-    telefono: document.getElementById("ed-telefono").value.trim(),
-    notas: document.getElementById("ed-notas").value.trim()
-  }).then(function (d) {
-    if (d && d.ok === false) { alert(d.error || "No se pudo guardar"); return; }
-    personaActual = d.persona;
-    pintarPersona();
-  }).catch(function (e) { if (e && e.message !== "codigo") alert("Sin conexión."); });
+  conCandado(this, "Guardando…", function () {
+    return postJSON("/personas", {
+      id: personaActual.id, nombre: nombre,
+      telefono: document.getElementById("ed-telefono").value.trim(),
+      notas: document.getElementById("ed-notas").value.trim()
+    }).then(function (d) {
+      if (d && d.ok === false) { alert(d.error || "No se pudo guardar"); return; }
+      personaActual = d.persona;
+      pintarPersona();
+    });
+  });
 });
 
 document.getElementById("btn-registrar").addEventListener("click", function () {
-  var btn = this; btn.disabled = true;
-  var c = captura || {};
-  postJSON("/visita", {
-    persona: personaActual.id,
-    placa: c.placa || null, marca: c.marca || null, submarca: c.submarca || null,
-    tipo: c.tipo || null, color: c.color || null, foto_path: c.foto_path || null,
-    es_gratis: document.getElementById("chk-gratis").checked
-  }).then(function (d) {
-    btn.disabled = false;
-    if (d && d.ok === false) { alert(d.error || "No se pudo registrar"); return; }
-    visitaActual = d.visita;
-    document.getElementById("enl-quien").textContent = "— " + personaActual.nombre;
-    mostrar("p-enlazar", true);
-    cargarPendientes();
-  }).catch(function (e) { btn.disabled = false; if (e && e.message !== "codigo") alert("Sin conexión."); });
+  conCandado(this, "Registrando…", function () {
+    var c = captura || {};
+    return postJSON("/visita", {
+      persona: personaActual.id,
+      placa: c.placa || null, marca: c.marca || null, submarca: c.submarca || null,
+      tipo: c.tipo || null, color: c.color || null, foto_path: c.foto_path || null,
+      es_gratis: document.getElementById("chk-gratis").checked
+    }).then(function (d) {
+      if (d && d.ok === false) { alert(d.error || "No se pudo registrar"); return; }
+      visitaActual = d.visita;
+      document.getElementById("enl-quien").textContent = "— " + personaActual.nombre;
+      mostrar("p-enlazar", true);
+      cargarPendientes();
+    });
+  });
 });
 
 // --- Cliente nuevo ---------------------------------------------------
@@ -502,14 +522,16 @@ document.getElementById("btn-nueva").addEventListener("click", function () {
 document.getElementById("btn-crear").addEventListener("click", function () {
   var nombre = document.getElementById("nv-nombre").value.trim();
   if (!nombre) { alert("Escribe el nombre."); return; }
-  postJSON("/personas", {
-    nombre: nombre,
-    telefono: document.getElementById("nv-telefono").value.trim(),
-    notas: document.getElementById("nv-notas").value.trim()
-  }).then(function (d) {
-    if (d && d.ok === false) { alert(d.error || "No se pudo crear"); return; }
-    elegirPersona(d.persona);   // reemplaza la pantalla nueva por la de persona
-  }).catch(function (e) { if (e && e.message !== "codigo") alert("Sin conexión."); });
+  conCandado(this, "Guardando…", function () {
+    return postJSON("/personas", {
+      nombre: nombre,
+      telefono: document.getElementById("nv-telefono").value.trim(),
+      notas: document.getElementById("nv-notas").value.trim()
+    }).then(function (d) {
+      if (d && d.ok === false) { alert(d.error || "No se pudo crear"); return; }
+      elegirPersona(d.persona);   // reemplaza la pantalla nueva por la de persona
+    });
+  });
 });
 
 // --- Enlazar a la venta ----------------------------------------------
@@ -536,7 +558,9 @@ function cargarPendientes() {
       });
       lista.innerHTML = html;
       lista.querySelectorAll("button[data-carro]").forEach(function (b) {
-        b.addEventListener("click", function () { enlazar(Number(b.dataset.carro)); });
+        b.addEventListener("click", function () {
+          conCandado(b, "Enlazando…", function () { return enlazar(Number(b.dataset.carro)); });
+        });
       });
     })
     .catch(function (e) { if (e && e.message !== "codigo") lista.innerHTML = '<div class="nota">Sin conexión.</div>'; });
@@ -544,19 +568,18 @@ function cargarPendientes() {
 document.getElementById("btn-refrescar").addEventListener("click", cargarPendientes);
 
 function enlazar(carroId) {
-  postJSON("/enlazar", { visita: visitaActual, carro: carroId })
+  return postJSON("/enlazar", { visita: visitaActual, carro: carroId })
     .then(function (d) {
       if (d && d.ok === false) { alert(d.error || "No se pudo enlazar"); return; }
       document.getElementById("lista-carros").innerHTML =
         '<div class="ok">✓ Lavado enlazado. El carro ya quedó identificado.</div>';
-    })
-    .catch(function (e) { if (e && e.message !== "codigo") alert("Sin conexión."); });
+    });
 }
 document.getElementById("btn-sin-venta").addEventListener("click", function () {
   if (!confirm("¿No hubo venta? Se descarta esta visita (no cuenta para la lealtad).")) return;
-  postJSON("/descartar-visita", { visita: visitaActual })
-    .then(function () { irInicio(false); })
-    .catch(function (e) { if (e && e.message !== "codigo") alert("Sin conexión."); });
+  conCandado(this, "Cancelando…", function () {
+    return postJSON("/descartar-visita", { visita: visitaActual }).then(function () { irInicio(false); });
+  });
 });
 document.getElementById("btn-listo").addEventListener("click", function () { irInicio(false); });
 
