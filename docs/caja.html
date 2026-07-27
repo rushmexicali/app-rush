@@ -470,21 +470,44 @@ function pintarEncabezado(titulo, cuantas) {
   document.getElementById("cliente-encabezado").innerHTML = h;
 }
 
-// --- Buscar por nombre (dentro de la pantalla de cliente) ---
-document.getElementById("btn-nombre").addEventListener("click", function () {
-  var v = document.getElementById("in-nombre").value.trim();
-  if (!v) return;
-  pedir("/personas?q=" + encodeURIComponent(v))
+// --- Buscar por nombre EN VIVO (mientras se escribe) -----------------
+// Barato: NO se consulta por cada tecla. Se espera 300 ms tras la ultima
+// (debounce), asi "MARIA" de corrido = UNA consulta. Minimo 2 letras. Se
+// descarta la respuesta si ya llego otra mas nueva (token), para que no se
+// pinte un resultado viejo encima del actual. La consulta ya esta indexada
+// y trae maximo 25.
+var buscaNombreTimer = null;
+var buscaNombreToken = 0;
+
+function buscarNombre(q) {
+  q = (q || "").trim();
+  var cont = document.getElementById("resultados-nombre");
+  if (q.length < 2) { cont.innerHTML = ""; return; }   // 1 letra no filtra nada util
+  var miToken = ++buscaNombreToken;
+  pedir("/personas?q=" + encodeURIComponent(q))
     .then(function (r) { return r.json(); })
     .then(function (d) {
+      if (miToken !== buscaNombreToken) return;   // respuesta vieja: se ignora
       var arr = d.personas || [];
-      if (!arr.length) document.getElementById("resultados-nombre").innerHTML = '<div class="nota">Nadie con ese nombre. Regístralo como cliente nuevo.</div>';
+      if (!arr.length) cont.innerHTML = '<div class="nota">Nadie con ese nombre. Regístralo como cliente nuevo.</div>';
       else pintarClientes(arr, "resultados-nombre");
     })
-    .catch(function (e) { if (e && e.message !== "codigo") alert("Sin conexión."); });
+    // En vivo no se alerta: si falla la red, no aparecen resultados y ya;
+    // el codigo se maneja como siempre (relanza el candado del acceso).
+    .catch(function (e) { if (e && e.message === "codigo") return; });
+}
+
+document.getElementById("btn-nombre").addEventListener("click", function () {
+  clearTimeout(buscaNombreTimer);
+  buscarNombre(document.getElementById("in-nombre").value);
+});
+document.getElementById("in-nombre").addEventListener("input", function () {
+  var v = this.value;
+  clearTimeout(buscaNombreTimer);
+  buscaNombreTimer = setTimeout(function () { buscarNombre(v); }, 300);
 });
 document.getElementById("in-nombre").addEventListener("keydown", function (ev) {
-  if (ev.key === "Enter") document.getElementById("btn-nombre").click();
+  if (ev.key === "Enter") { clearTimeout(buscaNombreTimer); buscarNombre(this.value); }
 });
 
 function vecesTexto(n) { return n === 1 ? "1 vez" : n + " veces"; }
