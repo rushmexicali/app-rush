@@ -61,6 +61,17 @@
   .volver { min-height:52px; padding:8px 16px; font-size:16px; font-weight:700; margin-bottom:6px; }
   .peligro { color:#ff7875; border-color:#3d2224; background:#20161a; }
 
+  /* Dos botones lado a lado (Editar datos / Ver Historial). */
+  .fila-botones { display:flex; gap:8px; margin:8px 0; }
+  .fila-botones .secundario { flex:1; margin:0; }
+
+  /* Filas del historial del cliente. */
+  .hist-item { background:#161b22; border:1px solid #30363d; border-radius:12px; padding:12px 14px; margin:10px 0; }
+  .hist-item .fecha { font-size:16px; font-weight:800; color:#e6edf3; }
+  .hist-item .linea { color:#8b949e; font-size:14px; margin-top:4px; }
+  .hist-item .linea b { color:#c9d1d9; }
+  .hist-item .gratis-tag { display:inline-block; color:#3fb950; font-weight:800; margin-top:4px; }
+
   /* Campos + su boton en una fila. */
   .ofila { display:flex; gap:8px; margin:8px 0; }
   .ofila input {
@@ -200,7 +211,10 @@
 
   <div id="datos-persona"></div>
 
-  <button id="btn-editar" class="secundario">Editar datos (teléfono, notas)</button>
+  <div class="fila-botones">
+    <button id="btn-editar" class="secundario">Editar datos</button>
+    <button id="btn-historial" class="secundario">Ver Historial</button>
+  </div>
   <div id="form-editar" style="display:none">
     <div class="campo"><label>Nombre</label><input id="ed-nombre"></div>
     <div class="campo"><label>Teléfono</label><input id="ed-telefono" inputmode="tel"></div>
@@ -210,7 +224,7 @@
 
   <div id="captura-resumen" class="nota"></div>
 
-  <label class="toggle" id="lbl-gratis"><input type="checkbox" id="chk-gratis"> Este lavado es el <b>GRATIS</b></label>
+  <label class="toggle" id="lbl-gratis" style="display:none"><input type="checkbox" id="chk-gratis"> Utilizar <b>Lavado GRATIS</b></label>
 
   <button id="btn-registrar" class="grande verde">Registrar visita</button>
 </div>
@@ -244,6 +258,13 @@
   <div class="campo"><label>Teléfono</label><input id="nv-telefono" inputmode="tel"></div>
   <div class="campo"><label>Notas</label><textarea id="nv-notas" rows="2"></textarea></div>
   <button id="btn-crear" class="grande verde">Crear y continuar</button>
+</div>
+
+<!-- ============ Pantalla: historial del cliente ============ -->
+<div id="p-historial" class="pantalla">
+  <button class="volver" id="btn-volver-persona">&#8592; Volver al cliente</button>
+  <div class="seccion" id="hist-nombre">Historial</div>
+  <div id="hist-lista"><div class="nota">Cargando…</div></div>
 </div>
 
 <input id="camara" type="file" accept="image/*" capture="environment" style="display:none">
@@ -326,7 +347,7 @@ function achicar(archivo) {
 // --- Navegacion entre pantallas + trampa del boton atras -------------
 // Cada pantalla que se abre empuja un estado; el boton atras del telefono
 // (o "Volver") regresa al inicio en vez de salir de la app.
-var PANTALLAS = ["p-placa", "p-cliente", "p-persona", "p-enlazar", "p-nueva"];
+var PANTALLAS = ["p-placa", "p-cliente", "p-persona", "p-enlazar", "p-nueva", "p-historial"];
 function mostrar(id, empujar) {
   PANTALLAS.forEach(function (x) {
     document.getElementById(x).classList.toggle("activa", x === id);
@@ -521,9 +542,9 @@ document.getElementById("in-nombre").addEventListener("keydown", function (ev) {
 function vecesTexto(n) { return n === 1 ? "1 vez" : n + " veces"; }
 function selloTexto(l) {
   if (!l) return "";
-  var llenos = l.sellos || 0;
-  return "●".repeat(llenos) + "○".repeat(Math.max(0, 5 - llenos)) +
-         (l.elegible ? "  ¡6to GRATIS!" : "  faltan " + (l.faltan != null ? l.faltan : (5 - llenos)));
+  var prog = l.sellos || 0, disp = l.disponibles || 0;
+  return "●".repeat(prog) + "○".repeat(Math.max(0, 5 - prog)) +
+         (disp > 0 ? "  · " + disp + " gratis" : "  · faltan " + (5 - prog));
 }
 
 function pintarClientes(personas, destino) {
@@ -557,14 +578,20 @@ function elegirPersona(p) {
 function pintarPersona() {
   var p = personaActual, l = (p && p.lealtad) || {};
 
+  // Los lavados gratis se ACUMULAN: cada 5 pagados suma uno. Si tiene, el
+  // banner lo grita; si no, muestra cuanto le falta al siguiente. Los sellos
+  // (●) son el progreso hacia el proximo (0-4).
+  var disp = l.disponibles || 0;
+  var prog = l.sellos || 0;
   var banner = document.getElementById("banner-lealtad");
-  banner.className = l.elegible ? "gratis" : "pendiente";
-  var sellos = '<div class="sellos">' + "●".repeat(l.sellos || 0) + "○".repeat(Math.max(0, 5 - (l.sellos || 0))) + "</div>";
-  if (l.elegible) {
-    banner.innerHTML = '<div class="grande-txt">¡6to LAVADO GRATIS!</div>' + sellos +
-                       '<div class="visitas">Ya juntó 5 lavados</div>';
+  var sellos = '<div class="sellos">' + "●".repeat(prog) + "○".repeat(Math.max(0, 5 - prog)) + "</div>";
+  if (disp > 0) {
+    banner.className = "gratis";
+    banner.innerHTML = '<div class="grande-txt">Tiene ' + disp + ' lavado' + (disp === 1 ? "" : "s") + ' GRATIS</div>' +
+                       sellos + '<div class="visitas">y va ' + prog + '/5 para el siguiente</div>';
   } else {
-    banner.innerHTML = '<div class="grande-txt">Faltan ' + (l.faltan != null ? l.faltan : 5) + '</div>' + sellos +
+    banner.className = "pendiente";
+    banner.innerHTML = '<div class="grande-txt">Faltan ' + (5 - prog) + '</div>' + sellos +
                        '<div class="visitas">para el lavado gratis</div>';
   }
 
@@ -585,10 +612,12 @@ function pintarPersona() {
     '<div class="datos-linea">Ha venido ' + vecesTexto(l.visitas_totales || 0) + ' o más</div>' +
     placasHtml;
 
-  // El toggle del gratis arranca prendido solo si es elegible; si no, se
-  // puede prender igual pero con aviso (raro, por si el dueno lo autoriza).
+  // "Utilizar Lavado GRATIS" solo aparece si tiene lavados gratis; y NO se
+  // prende solo: la cajera lo prende cuando el cliente decide usarlo (puede
+  // preferir guardarlo y pagar un express).
   var chk = document.getElementById("chk-gratis");
-  chk.checked = !!l.elegible;
+  chk.checked = false;
+  document.getElementById("lbl-gratis").style.display = disp > 0 ? "flex" : "none";
   pintarToggleGratis();
 
   var cap = captura && captura.placa
@@ -627,6 +656,55 @@ document.getElementById("btn-guardar-datos").addEventListener("click", function 
     });
   });
 });
+
+// --- Ver Historial ---------------------------------------------------
+document.getElementById("btn-historial").addEventListener("click", function () {
+  var p = personaActual;
+  document.getElementById("hist-nombre").textContent = "Historial de " + p.nombre;
+  document.getElementById("hist-lista").innerHTML = '<div class="nota">Cargando…</div>';
+  mostrar("p-historial", true);
+  pedir("/historial?persona=" + p.id)
+    .then(function (r) { return r.json(); })
+    .then(function (d) { pintarHistorial(d.historial || []); })
+    .catch(function (e) {
+      if (e && e.message !== "codigo")
+        document.getElementById("hist-lista").innerHTML = '<div class="nota">Sin conexión.</div>';
+    });
+});
+document.getElementById("btn-volver-persona").addEventListener("click", function () {
+  mostrar("p-persona", false);
+});
+
+function horaMin(iso) {
+  return iso ? new Date(iso).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) : "—";
+}
+function pintarHistorial(lista) {
+  var cont = document.getElementById("hist-lista");
+  if (!lista.length) {
+    cont.innerHTML = '<div class="nota aviso">Todavía no hay visitas registradas por la caja. ' +
+                     'Las visitas anteriores solo se cuentan en el total, sin detalle.</div>';
+    return;
+  }
+  var html = "";
+  lista.forEach(function (v) {
+    var fecha = v.fecha ? new Date(v.fecha).toLocaleDateString("es-MX", { day: "2-digit", month: "short" }) : "—";
+    var carro = [v.placa, v.producto, v.variante].filter(Boolean).join(" · ") || "Sin carro ligado";
+    var detalle;
+    if (v.enlazado) {
+      var secs = (v.secadores && v.secadores.length) ? v.secadores.join(", ") : "—";
+      detalle = '<div class="linea">Entró <b>' + escapar(horaMin(v.entrada)) + '</b> · Salió <b>' + escapar(horaMin(v.salida)) + "</b></div>" +
+                '<div class="linea">Secó: <b>' + escapar(secs) + "</b></div>";
+    } else {
+      detalle = '<div class="linea">Registro sin lavado ligado</div>';
+    }
+    html += '<div class="hist-item">' +
+              '<div class="fecha">' + escapar(fecha) + (v.es_gratis ? ' <span class="gratis-tag">GRATIS</span>' : "") + "</div>" +
+              '<div class="linea">' + escapar(carro) + "</div>" +
+              detalle +
+            "</div>";
+  });
+  cont.innerHTML = html;
+}
 
 document.getElementById("btn-registrar").addEventListener("click", function () {
   conCandado(this, "Registrando…", function () {

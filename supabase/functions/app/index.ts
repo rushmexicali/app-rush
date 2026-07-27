@@ -1120,5 +1120,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json(data);
   }
 
+  // --- Historial de un cliente (visitas: carro, entrada, salida, secadores) --
+  if (ruta === "/historial") {
+    const persona = Number(url.searchParams.get("persona") ?? 0);
+    if (!persona) return json({ error: "falta persona" }, 400);
+    const { data, error } = await db.rpc("historial_de_persona", { p_persona: persona });
+    if (error) { console.error("historial_de_persona:", error); return json({ error: error.message }, 500); }
+    return json({ historial: data ?? [] });
+  }
+
   return json({ error: "ruta desconocida" }, 404);
 });
