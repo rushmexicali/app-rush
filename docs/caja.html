@@ -84,6 +84,14 @@
   .nota { color:#8b949e; font-size:14px; margin:8px 0; line-height:1.4; }
   .nota.aviso { background:#1c2128; border-left:4px solid #d29922; border-radius:6px; padding:10px 12px; color:#c9d1d9; }
 
+  /* La placa capturada, en grande y sin guiones. */
+  .placa-cap {
+    font-size:22px; text-align:center; margin:10px 0;
+    background:#161b22; border:2px solid #2f81f7; border-radius:12px; padding:14px;
+    letter-spacing:2px;
+  }
+  .placa-cap b { font-size:28px; font-weight:900; }
+
   /* Banner de lealtad — lo primero que ve la cajera de la persona. */
   #banner-lealtad { border-radius:16px; padding:18px; margin:8px 0 14px; text-align:center; }
   #banner-lealtad.gratis  { background:#132e1b; border:2px solid #3fb950; }
@@ -133,23 +141,45 @@
 <h1>Caja</h1>
 <div class="sub">Lealtad · 6to lavado gratis</div>
 
-<!-- ============ Pantalla 1: identificar al cliente ============ -->
-<div id="p-identificar" class="pantalla activa">
-  <div class="seccion">¿Quién es el cliente?</div>
+<!-- ============ Pantalla 1: capturar la placa ============ -->
+<div id="p-placa" class="pantalla activa">
+  <div class="seccion">Captura la placa</div>
 
-  <button id="btn-foto" class="grande azul">📷 Tomar foto de la placa</button>
+  <button id="btn-foto" class="grande azul">📷 Tomar foto</button>
+  <button id="btn-manual" class="grande">&#9000; Capturar placa manualmente</button>
 
-  <div class="ofila">
-    <input id="in-placa" inputmode="text" autocapitalize="characters" autocomplete="off" placeholder="O escribe la placa">
-    <button id="btn-placa">Buscar</button>
+  <div id="manual-box" style="display:none">
+    <div class="ofila">
+      <input id="in-placa" inputmode="text" autocapitalize="characters" autocomplete="off" placeholder="Escribe la placa">
+      <button id="btn-usar">Usar</button>
+    </div>
+    <div class="nota">Con o sin guiones, da igual. Se guarda sin guiones para buscar más fácil.</div>
   </div>
-  <div class="ofila">
-    <input id="in-nombre" autocomplete="off" placeholder="O busca por nombre">
-    <button id="btn-nombre">Buscar</button>
+
+  <div id="placa-lista" style="display:none">
+    <div class="placa-cap">Placa: <b id="placa-txt"></b></div>
+    <button id="btn-buscar" class="grande verde">Buscar</button>
+    <button id="btn-otra" class="secundario">Cambiar placa</button>
   </div>
 
   <div id="estado-captura" class="nota"></div>
+
+  <button id="btn-sin-placa" class="secundario" style="margin-top:22px; color:#8b949e">Buscar cliente sin placa</button>
+</div>
+
+<!-- ============ Pantalla 2: elegir cliente ============ -->
+<div id="p-cliente" class="pantalla">
+  <button class="volver" data-inicio>&#8592; Otra placa</button>
+
+  <div id="cliente-encabezado"></div>
   <div id="resultados"></div>
+
+  <div class="seccion">¿No es ninguno? Busca por nombre</div>
+  <div class="ofila">
+    <input id="in-nombre" autocomplete="off" placeholder="Nombre del cliente">
+    <button id="btn-nombre">Buscar</button>
+  </div>
+  <div id="resultados-nombre"></div>
 
   <button id="btn-nueva" class="secundario">+ Registrar cliente nuevo</button>
 </div>
@@ -277,7 +307,7 @@ function achicar(archivo) {
 // --- Navegacion entre pantallas + trampa del boton atras -------------
 // Cada pantalla que se abre empuja un estado; el boton atras del telefono
 // (o "Volver") regresa al inicio en vez de salir de la app.
-var PANTALLAS = ["p-identificar", "p-persona", "p-enlazar", "p-nueva"];
+var PANTALLAS = ["p-placa", "p-cliente", "p-persona", "p-enlazar", "p-nueva"];
 function mostrar(id, empujar) {
   PANTALLAS.forEach(function (x) {
     document.getElementById(x).classList.toggle("activa", x === id);
@@ -310,16 +340,35 @@ function conCandado(btn, texto, hacer) {
   });
 }
 
+// La placa se guarda SIEMPRE sin guiones (ni espacios): en la base es el
+// valor de busqueda. Los guiones son puro adorno visual del supervisor; aqui
+// no importan y la busqueda funciona con o sin ellos.
+function normPlaca(s) { return String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+
 function irInicio(empujar) {
   personaActual = null; captura = null; visitaActual = null;
   document.getElementById("in-placa").value = "";
   document.getElementById("in-nombre").value = "";
   document.getElementById("resultados").innerHTML = "";
+  document.getElementById("resultados-nombre").innerHTML = "";
+  document.getElementById("manual-box").style.display = "none";
+  document.getElementById("placa-lista").style.display = "none";
   document.getElementById("estado-captura").textContent = "";
-  mostrar("p-identificar", empujar);
+  mostrar("p-placa", empujar);
 }
 
-// --- Identificar: foto / placa / nombre ------------------------------
+// Fija la placa capturada (foto o manual), SIEMPRE limpia, y muestra Buscar.
+function fijarPlaca(placaCruda, datosFoto) {
+  var placa = normPlaca(placaCruda);
+  if (!placa) return false;
+  captura = datosFoto || { placa: null, marca: null, submarca: null, tipo: null, color: null, foto_path: null };
+  captura.placa = placa;
+  document.getElementById("placa-txt").textContent = placa;
+  document.getElementById("placa-lista").style.display = "block";
+  return true;
+}
+
+// --- Tomar foto ---
 document.getElementById("btn-foto").addEventListener("click", function () {
   document.getElementById("camara").click();
 });
@@ -332,55 +381,102 @@ document.getElementById("camara").addEventListener("change", function (ev) {
   achicar(archivo)
     .then(function (img) { return postJSON("/leer-placa", { imagen: img }); })
     .then(function (d) {
-      if (!d || d.ok === false) { est.textContent = "No se pudo leer la foto. Escribe la placa a mano."; return; }
-      captura = { placa: d.placa, marca: d.marca, submarca: d.submarca, tipo: d.tipo, color: null, foto_path: d.foto_path };
-      if (d.placa) {
-        document.getElementById("in-placa").value = d.placa;
-        est.textContent = "Placa leída: " + d.placa;
-        buscarPorPlaca(d.placa);
+      if (!d || d.ok === false) { est.textContent = "No se pudo leer la foto. Captura la placa a mano."; return; }
+      var datos = { placa: null, marca: d.marca, submarca: d.submarca, tipo: d.tipo, color: null, foto_path: d.foto_path };
+      if (d.placa && fijarPlaca(d.placa, datos)) {
+        est.textContent = "Placa leída de la foto.";
       } else {
-        est.textContent = "La foto no dejó ver la placa. Escríbela a mano o busca por nombre.";
+        // La foto se guardo (foto_path) pero no dejo ver la placa: se captura a mano.
+        captura = datos;
+        est.textContent = "La foto no dejó ver la placa. Captúrala a mano.";
+        document.getElementById("manual-box").style.display = "block";
+        document.getElementById("in-placa").focus();
       }
     })
     .catch(function (e) { if (e && e.message === "codigo") return; est.textContent = "Sin conexión. Intenta otra vez."; });
 });
 
-document.getElementById("btn-placa").addEventListener("click", function () {
-  var v = document.getElementById("in-placa").value.trim();
-  if (!v) return;
-  // Placa escrita a mano: si no hubo foto, la captura lleva solo la placa.
-  if (!captura) captura = { placa: v, marca: null, submarca: null, tipo: null, color: null, foto_path: null };
-  else captura.placa = v;
-  buscarPorPlaca(v);
+// --- Capturar placa manualmente ---
+document.getElementById("btn-manual").addEventListener("click", function () {
+  document.getElementById("manual-box").style.display = "block";
+  document.getElementById("in-placa").focus();
+});
+document.getElementById("btn-usar").addEventListener("click", function () {
+  var v = document.getElementById("in-placa").value;
+  if (!normPlaca(v)) { alert("Escribe la placa."); return; }
+  document.getElementById("estado-captura").textContent = "";
+  fijarPlaca(v, captura);   // conserva datos de foto si los hubo
 });
 document.getElementById("in-placa").addEventListener("keydown", function (ev) {
-  if (ev.key === "Enter") document.getElementById("btn-placa").click();
+  if (ev.key === "Enter") document.getElementById("btn-usar").click();
+});
+// Se ve en MAYUSCULAS mientras se escribe (los guiones se quitan al usarla).
+document.getElementById("in-placa").addEventListener("input", function () {
+  var pos = this.selectionStart;
+  this.value = this.value.toUpperCase();
+  try { this.setSelectionRange(pos, pos); } catch (e) {}
+});
+document.getElementById("btn-otra").addEventListener("click", function () {
+  captura = null;
+  document.getElementById("placa-lista").style.display = "none";
+  document.getElementById("in-placa").value = "";
+  document.getElementById("estado-captura").textContent = "";
 });
 
+// --- Buscar por placa -> pantalla de cliente ---
+document.getElementById("btn-buscar").addEventListener("click", function () {
+  if (!captura || !captura.placa) return;
+  var placa = captura.placa;
+  pedir("/personas?placa=" + encodeURIComponent(placa))
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var arr = d.personas || [];
+      mostrar("p-cliente", true);
+      pintarEncabezado("Placa: " + placa, arr.length);
+      pintarClientes(arr, "resultados");
+      document.getElementById("resultados-nombre").innerHTML = "";
+      document.getElementById("in-nombre").value = "";
+    })
+    .catch(function (e) { if (e && e.message !== "codigo") alert("Sin conexión."); });
+});
+
+// --- Buscar cliente sin placa (respaldo, p.ej. placa ilegible) ---
+document.getElementById("btn-sin-placa").addEventListener("click", function () {
+  captura = null;
+  mostrar("p-cliente", true);
+  pintarEncabezado("Sin placa", -1);
+  document.getElementById("resultados").innerHTML = "";
+  document.getElementById("resultados-nombre").innerHTML = "";
+  document.getElementById("in-nombre").value = "";
+  document.getElementById("in-nombre").focus();
+});
+
+function pintarEncabezado(titulo, cuantas) {
+  var h = '<div class="placa-cap"><b>' + escapar(titulo) + "</b></div>";
+  if (cuantas === 0) h += '<div class="nota aviso">Esta placa no está registrada con nadie. Busca por nombre o registra un cliente nuevo.</div>';
+  else if (cuantas === 1) h += '<div class="nota aviso">Esta placa es de este cliente. Confírmalo, o busca/registra otro.</div>';
+  else if (cuantas > 1) h += '<div class="nota aviso">Esta placa está ligada a ' + cuantas + ' personas. Elige cuál.</div>';
+  document.getElementById("cliente-encabezado").innerHTML = h;
+}
+
+// --- Buscar por nombre (dentro de la pantalla de cliente) ---
 document.getElementById("btn-nombre").addEventListener("click", function () {
   var v = document.getElementById("in-nombre").value.trim();
   if (!v) return;
-  buscarPorNombre(v);
+  pedir("/personas?q=" + encodeURIComponent(v))
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var arr = d.personas || [];
+      if (!arr.length) document.getElementById("resultados-nombre").innerHTML = '<div class="nota">Nadie con ese nombre. Regístralo como cliente nuevo.</div>';
+      else pintarClientes(arr, "resultados-nombre");
+    })
+    .catch(function (e) { if (e && e.message !== "codigo") alert("Sin conexión."); });
 });
 document.getElementById("in-nombre").addEventListener("keydown", function (ev) {
   if (ev.key === "Enter") document.getElementById("btn-nombre").click();
 });
 
-function buscarPorPlaca(placa) {
-  pedir("/personas?placa=" + encodeURIComponent(placa))
-    .then(function (r) { return r.json(); })
-    .then(function (d) { pintarResultados(d.personas || [], "placa", placa); })
-    .catch(function (e) { if (e && e.message !== "codigo") avisarResultados("Sin conexión."); });
-}
-function buscarPorNombre(q) {
-  pedir("/personas?q=" + encodeURIComponent(q))
-    .then(function (r) { return r.json(); })
-    .then(function (d) { pintarResultados(d.personas || [], "nombre", q); })
-    .catch(function (e) { if (e && e.message !== "codigo") avisarResultados("Sin conexión."); });
-}
-function avisarResultados(msg) { document.getElementById("resultados").innerHTML = '<div class="nota">' + escapar(msg) + "</div>"; }
 function vecesTexto(n) { return n === 1 ? "1 vez" : n + " veces"; }
-
 function selloTexto(l) {
   if (!l) return "";
   var llenos = l.sellos || 0;
@@ -388,31 +484,16 @@ function selloTexto(l) {
          (l.elegible ? "  ¡6to GRATIS!" : "  faltan " + (l.faltan != null ? l.faltan : (5 - llenos)));
 }
 
-function pintarResultados(personas, contexto, valor) {
-  var cont = document.getElementById("resultados");
+function pintarClientes(personas, destino) {
+  var cont = document.getElementById(destino);
   var html = "";
-  if (contexto === "placa") {
-    if (personas.length === 0) {
-      html += '<div class="nota aviso">La placa <b>' + escapar(valor) + '</b> no está registrada con nadie. ' +
-              'Busca por nombre o registra un cliente nuevo.</div>';
-    } else if (personas.length === 1) {
-      html += '<div class="nota aviso">Esta placa está ligada a <b>' + escapar(personas[0].nombre) + '</b>. ' +
-              'Pregúntale al cliente: ¿es su registro, o quiere uno nuevo?</div>';
-    } else {
-      html += '<div class="nota aviso">Esta placa está ligada a <b>' + personas.length + ' personas</b>. Elige cuál.</div>';
-    }
-  } else {
-    if (personas.length === 0) {
-      html += '<div class="nota">Nadie con ese nombre. Regístralo como cliente nuevo.</div>';
-    }
-  }
   personas.forEach(function (p) {
     var l = p.lealtad || {};
     html += '<div class="tarjeta-p">' +
               '<div class="nom">' + escapar(p.nombre) + "</div>" +
               (p.telefono ? '<div class="tel">' + escapar(p.telefono) + "</div>" : "") +
               '<div class="mini-sello">' + selloTexto(l) + "</div>" +
-              '<button data-elegir="' + p.id + '">Es este cliente</button>' +
+              '<button data-elegir="' + p.id + '">Asignar a este cliente</button>' +
             "</div>";
   });
   cont.innerHTML = html;
