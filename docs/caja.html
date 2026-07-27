@@ -183,19 +183,19 @@
 
   <div id="estado-captura" class="nota"></div>
 
-  <button id="btn-sin-placa" class="secundario" style="margin-top:22px; color:#8b949e">Buscar cliente sin placa</button>
+  <button id="btn-sin-placa" class="secundario" style="margin-top:22px; color:#8b949e">Buscar cliente</button>
 </div>
 
 <!-- ============ Pantalla 2: elegir cliente ============ -->
 <div id="p-cliente" class="pantalla">
-  <button class="volver" data-inicio>&#8592; Otra placa</button>
+  <button class="volver" data-inicio>&#8592; Volver</button>
 
   <div id="cliente-encabezado"></div>
   <div id="resultados"></div>
 
-  <div class="seccion">¿No es ninguno? Busca por nombre</div>
+  <div class="seccion" id="cliente-busca-titulo">Buscar por nombre o placa</div>
   <div class="ofila">
-    <input id="in-nombre" autocomplete="off" placeholder="Nombre del cliente">
+    <input id="in-nombre" autocomplete="off" placeholder="Nombre del cliente o placa">
     <button id="btn-nombre">Buscar</button>
   </div>
   <div id="resultados-nombre"></div>
@@ -480,11 +480,11 @@ document.getElementById("btn-buscar").addEventListener("click", function () {
     .catch(function (e) { if (e && e.message !== "codigo") alert("Sin conexión."); });
 });
 
-// --- Buscar cliente sin placa (respaldo, p.ej. placa ilegible) ---
+// --- Buscar cliente (por nombre o placa, sin capturar la placa antes) ---
 document.getElementById("btn-sin-placa").addEventListener("click", function () {
   captura = null;
   mostrar("p-cliente", true);
-  pintarEncabezado("Sin placa", -1);
+  document.getElementById("cliente-encabezado").innerHTML = "";  // sin recuadro de placa
   document.getElementById("resultados").innerHTML = "";
   document.getElementById("resultados-nombre").innerHTML = "";
   document.getElementById("in-nombre").value = "";
