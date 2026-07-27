@@ -679,7 +679,10 @@ function perfilPlaca(placa, historial, duenos) {
   // Dueño(s) de lealtad de la placa (persona_placas), clicables. Aquí es donde
   // sale el cliente cuando la placa no tiene visitas lavadas que llenen la tabla.
   if (duenos && duenos.length) {
-    html += '<div class="duenos"><span class="duenos-rot">Cliente en lealtad:</span>' +
+    // N-a-N: una placa puede tener varios clientes de lealtad (carro
+    // compartido). Salen todos, separados por coma y cada uno clicable.
+    var rotulo = duenos.length > 1 ? "Clientes en lealtad:" : "Cliente en lealtad:";
+    html += '<div class="duenos"><span class="duenos-rot">' + rotulo + "</span>" +
             duenos.map(function (dn) {
               return '<button class="enlace" data-persona="' + dn.id + '">' + escapar(dn.nombre) + "</button>";
             }).join(", ") + "</div>";
