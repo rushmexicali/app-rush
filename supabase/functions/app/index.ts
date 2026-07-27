@@ -961,17 +961,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // --- Historial por placa --------------------------------------------
   // Sin ?q= devuelve las que mas han venido. Con ?q= busca.
   if (ruta === "/placas") {
-    const q = (url.searchParams.get("q") ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-
-    let consulta = db
+    // Con q: busca por placa, marca o submarca (RPC que normaliza acentos y
+    // mayusculas). Sin q: top 50 por visitas, directo de la vista.
+    const q = (url.searchParams.get("q") ?? "").trim();
+    if (q) {
+      const { data, error } = await db.rpc("buscar_vehiculos", { p_q: q });
+      if (error) { console.error("buscar_vehiculos:", error); return json({ error: error.message }, 500); }
+      return json({ placas: data ?? [] });
+    }
+    const { data, error } = await db
       .from("historial_placas")
-      .select("placa, placa_como_se_lee, visitas, primera_visita, ultima_visita, tipo_unidad, color, marca, cliente, gastado")
+      .select("placa, placa_como_se_lee, visitas, primera_visita, ultima_visita, tipo_unidad, color, marca, submarca, cliente, gastado")
       .order("visitas", { ascending: false })
       .limit(50);
-
-    if (q) consulta = consulta.ilike("placa", `%${q}%`);
-
-    const { data, error } = await consulta;
     if (error) {
       console.error("Fallo al buscar placas:", error);
       return json({ error: error.message }, 500);
@@ -988,6 +990,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // --- Personas: buscar (por placa o por nombre) / crear-editar --------
   if (ruta === "/personas") {
     if (req.method === "GET") {
+      // Por id: el perfil completo de una persona (para abrirlo desde un
+      // resultado de vehiculo, donde solo se tiene el id de la persona).
+      const id = url.searchParams.get("id");
+      if (id !== null) {
+        const { data, error } = await db.rpc("persona_json", { p_persona: Number(id) });
+        if (error) { console.error("persona_json:", error); return json({ error: error.message }, 500); }
+        return json({ persona: data });
+      }
       const placa = url.searchParams.get("placa");
       const q = url.searchParams.get("q");
       if (placa !== null) {
@@ -1122,8 +1132,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // --- Historial de un cliente (visitas: carro, entrada, salida, secadores) --
   if (ruta === "/historial") {
+    // Por placa: todas las visitas de esa placa, con la persona de lealtad
+    // de cada venta. Por persona: las visitas de esa persona (lo de antes).
+    const placa = url.searchParams.get("placa");
+    if (placa !== null) {
+      const { data, error } = await db.rpc("historial_de_placa", { p_placa: placa });
+      if (error) { console.error("historial_de_placa:", error); return json({ error: error.message }, 500); }
+      return json({ historial: data ?? [] });
+    }
     const persona = Number(url.searchParams.get("persona") ?? 0);
-    if (!persona) return json({ error: "falta persona" }, 400);
+    if (!persona) return json({ error: "falta persona o placa" }, 400);
     const { data, error } = await db.rpc("historial_de_persona", { p_persona: persona });
     if (error) { console.error("historial_de_persona:", error); return json({ error: error.message }, 500); }
     return json({ historial: data ?? [] });

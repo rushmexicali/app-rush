@@ -102,29 +102,96 @@
   }
   #acceso input { font-size:26px; text-align:center; letter-spacing:4px; width:100%; max-width:320px; }
   #malcodigo { color:#ff7875; display:none; }
+
+  /* --- Switch Operación | Clientes --- */
+  .switch { display:flex; gap:8px; margin-bottom:18px; }
+  .switch button {
+    flex:1; font-size:16px; font-weight:700; padding:11px 12px;
+    background:#161b22; color:#8b949e; border:1px solid #30363d; border-radius:10px;
+  }
+  .switch button.on { background:#1f6feb; color:#fff; border-color:#1f6feb; }
+
+  /* --- Buscador de clientes: lista de resultados --- */
+  .lista { display:flex; flex-direction:column; gap:8px; margin:4px 0 10px; }
+  .item {
+    display:block; width:100%; text-align:left; position:relative;
+    background:#161b22; border:1px solid #30363d; border-radius:12px; padding:12px 14px;
+  }
+  .item:active { background:#21262d; }
+  .item-nom { font-size:18px; font-weight:800; color:#e6edf3; }
+  .item-sub { font-size:13px; color:#8b949e; margin-top:3px; }
+  .item-badge {
+    position:absolute; top:12px; right:12px;
+    background:#132e1b; color:#3fb950; border:1px solid #3fb950;
+    border-radius:8px; padding:3px 9px; font-size:13px; font-weight:800;
+  }
+
+  /* --- Perfil (persona o placa) --- */
+  .volver { background:transparent; border:none; color:#58a6ff; font-size:15px; padding:6px 0; margin-bottom:2px; cursor:pointer; }
+  .perfil-nom { font-size:26px; margin:2px 0; }
+
+  .tarjeta-lealtad {
+    background:#161b22; border:1px solid #30363d; border-radius:16px;
+    padding:16px; margin:12px 0 6px;
+  }
+  .tarjeta-lealtad.gratis { background:#132e1b; border-color:#3fb950; }
+  .tl-fila { display:flex; gap:10px; }
+  .tl-cel { flex:1; text-align:center; }
+  .tl-num { font-size:30px; font-weight:900; color:#e6edf3; line-height:1; }
+  .tl-num .tl-de { font-size:15px; font-weight:700; color:#8b949e; }
+  .tl-rot { font-size:12px; color:#8b949e; margin-top:5px; }
+  .tl-msg { text-align:center; margin-top:12px; font-size:15px; font-weight:700; color:#3fb950; }
+  .tl-msg.tenue { color:#8b949e; font-weight:600; }
+  .tl-placas { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin-top:12px; }
+  .chip {
+    background:#0d1117; border:1px solid #30363d; border-radius:8px;
+    padding:5px 10px; font-size:14px; font-weight:700; letter-spacing:1px; color:#e6edf3;
+  }
+  .enlace { background:transparent; border:none; color:#58a6ff; font-size:14px; padding:0; cursor:pointer; text-align:left; font-family:inherit; }
+  td .tenue, .tenue { color:#6e7681; }
 </style>
 
 <img id="logo" src="RUSH-Logo.png" alt="RUSH" onerror="this.style.display='none'">
-<h1>Reporte diario</h1>
-<div class="sub" id="encabezado">—</div>
+<h1>Reporte</h1>
 
-<div class="barra">
-  <select id="dia"></select>
-  <button id="respaldo">Descargar respaldo</button>
+<!-- Dos secciones para la MISMA audiencia (el dueno, sentado): Operacion
+     (secadores/tiempos por rango de fechas) y Clientes (buscador + perfiles
+     de lealtad). Un switch, no una tercera URL: el dueno tiene un solo lugar.
+     Cada modo es una tarea distinta, asi que no se apilan en un scroll. -->
+<div class="switch">
+  <button id="tab-op" class="on">Operación</button>
+  <button id="tab-cli">Clientes</button>
 </div>
 
-<!-- Rango de dias, como en Zettle: casilla inicial y casilla final.
-     Va DEBAJO del selector de un dia y no lo reemplaza: ver "ayer" es
-     lo que se hace todos los dias, y el rango es lo ocasional. -->
-<div class="barra rango">
-  <label for="desde">Del</label>
-  <input type="date" id="desde">
-  <label for="hasta">al</label>
-  <input type="date" id="hasta">
-  <button id="ver-rango">Ver</button>
+<div id="vista-op">
+  <div class="sub" id="encabezado">—</div>
+
+  <div class="barra">
+    <select id="dia"></select>
+    <button id="respaldo">Descargar respaldo</button>
+  </div>
+
+  <!-- Rango de dias, como en Zettle: casilla inicial y casilla final.
+       Va DEBAJO del selector de un dia y no lo reemplaza: ver "ayer" es
+       lo que se hace todos los dias, y el rango es lo ocasional. -->
+  <div class="barra rango">
+    <label for="desde">Del</label>
+    <input type="date" id="desde">
+    <label for="hasta">al</label>
+    <input type="date" id="hasta">
+    <button id="ver-rango">Ver</button>
+  </div>
+
+  <div id="contenido"></div>
 </div>
 
-<div id="contenido"></div>
+<div id="vista-cli" style="display:none">
+  <div class="barra">
+    <input id="cli-q" placeholder="Buscar cliente, placa, marca o modelo…"
+           autocomplete="off" autocapitalize="none" style="flex:1; min-width:200px">
+  </div>
+  <div id="cli-res"><div class="vacio">Escribe un nombre, una placa, o una marca/modelo.</div></div>
+</div>
 
 <div id="acceso">
   <h2 style="color:#e6edf3">Código de acceso</h2>
@@ -440,6 +507,204 @@ document.getElementById("entrar").addEventListener("click", function () {
 document.getElementById("campo").addEventListener("keydown", function (ev) {
   if (ev.key === "Enter") document.getElementById("entrar").click();
 });
+
+// =====================================================================
+// Sección CLIENTES — buscador + perfiles de lealtad. Reusa el CRM de caja
+// (mismos endpoints /personas, /historial, /placas). El dueño, sentado,
+// buscando a una persona o una placa; no es la pantalla del supervisor.
+// =====================================================================
+
+function pedirJSON(ruta) {
+  return pedir(ruta).then(function (r) {
+    if (r.status === 401) { pedirCodigo(true); throw new Error("codigo"); }
+    return r.json();
+  });
+}
+
+// --- Switch entre las dos vistas ---
+function mostrarVista(cual) {
+  var op = cual === "op";
+  document.getElementById("vista-op").style.display = op ? "" : "none";
+  document.getElementById("vista-cli").style.display = op ? "none" : "";
+  document.getElementById("tab-op").className = op ? "on" : "";
+  document.getElementById("tab-cli").className = op ? "" : "on";
+  if (!op) document.getElementById("cli-q").focus();
+}
+document.getElementById("tab-op").addEventListener("click", function () { mostrarVista("op"); });
+document.getElementById("tab-cli").addEventListener("click", function () { mostrarVista("cli"); });
+
+// --- Buscar: nombre/placa -> personas; placa/marca/submarca -> vehículos ---
+var cliTimer = null;
+document.getElementById("cli-q").addEventListener("input", function () {
+  var q = this.value.trim();
+  clearTimeout(cliTimer);
+  cliTimer = setTimeout(function () { cliBuscar(q); }, 250);
+});
+
+function cliBuscar(q) {
+  var cont = document.getElementById("cli-res");
+  if (q.length < 2) { cont.innerHTML = '<div class="vacio">Escribe al menos 2 letras.</div>'; return; }
+  cont.innerHTML = '<div class="vacio">Buscando…</div>';
+  Promise.all([
+    pedirJSON("/personas?q=" + encodeURIComponent(q)).catch(function (e) { if (e && e.message === "codigo") throw e; return { personas: [] }; }),
+    pedirJSON("/placas?q=" + encodeURIComponent(q)).catch(function (e) { if (e && e.message === "codigo") throw e; return { placas: [] }; })
+  ]).then(function (res) {
+    // Si el dueño siguió escribiendo, esta respuesta ya no aplica.
+    if (document.getElementById("cli-q").value.trim() !== q) return;
+    cliResultados(res[0].personas || [], res[1].placas || []);
+  }).catch(function (e) { if (e && e.message === "codigo") return; cont.innerHTML = '<div class="vacio">No se pudo buscar.</div>'; });
+}
+
+function cliResultados(personas, placas) {
+  var html = "";
+  if (!personas.length && !placas.length) html = '<div class="vacio">Nada encontrado.</div>';
+
+  if (personas.length) {
+    html += '<h2>Clientes</h2><div class="lista">';
+    personas.forEach(function (p) {
+      var l = p.lealtad || {};
+      var sub = [];
+      if (p.telefono) sub.push(escapar(p.telefono));
+      if (p.placas && p.placas.length) sub.push(escapar(p.placas.join(" · ")));
+      html += '<button class="item" data-persona="' + p.id + '">' +
+              '<div class="item-nom">' + escapar(p.nombre || "(sin nombre)") + "</div>" +
+              (sub.length ? '<div class="item-sub">' + sub.join(" · ") + "</div>" : "") +
+              (l.disponibles ? '<div class="item-badge">' + l.disponibles + " gratis</div>" : "") +
+              "</button>";
+    });
+    html += "</div>";
+  }
+
+  if (placas.length) {
+    html += '<h2>Vehículos</h2><div class="lista">';
+    placas.forEach(function (v) {
+      var desc = [v.marca, v.submarca, v.tipo_unidad, v.color].filter(Boolean).join(" ");
+      var meta = v.visitas + (v.visitas === 1 ? " visita" : " visitas") + (v.cliente ? " · " + escapar(v.cliente) : "");
+      html += '<button class="item" data-placa="' + escapar(v.placa_como_se_lee || v.placa) + '">' +
+              '<div class="item-nom">' + escapar(v.placa_como_se_lee || v.placa) + "</div>" +
+              '<div class="item-sub">' + (desc ? escapar(desc) + " · " : "") + meta + "</div>" +
+              "</button>";
+    });
+    html += "</div>";
+  }
+
+  var cont = document.getElementById("cli-res");
+  cont.innerHTML = html;
+  cliCablearBotones(cont);
+}
+
+// Cablea los botones data-persona / data-placa de un contenedor.
+function cliCablearBotones(cont) {
+  var ps = cont.querySelectorAll("button[data-persona]");
+  for (var i = 0; i < ps.length; i++) (function (b) {
+    b.addEventListener("click", function () { abrirPersona(b.getAttribute("data-persona")); });
+  })(ps[i]);
+  var vs = cont.querySelectorAll("button[data-placa]");
+  for (var j = 0; j < vs.length; j++) (function (b) {
+    b.addEventListener("click", function () { abrirPlaca(b.getAttribute("data-placa")); });
+  })(vs[j]);
+}
+
+function volverABuscar() { cliBuscar(document.getElementById("cli-q").value.trim()); }
+
+// --- Perfil de una PERSONA: tarjeta de lealtad + sus visitas ---
+function abrirPersona(id) {
+  var cont = document.getElementById("cli-res");
+  cont.innerHTML = '<div class="vacio">Cargando…</div>';
+  Promise.all([
+    pedirJSON("/personas?id=" + encodeURIComponent(id)),
+    pedirJSON("/historial?persona=" + encodeURIComponent(id))
+  ]).then(function (res) {
+    perfilPersona(res[0].persona || {}, res[1].historial || []);
+  }).catch(function (e) { if (e && e.message === "codigo") return; cont.innerHTML = '<div class="vacio">No se pudo cargar el perfil.</div>'; });
+}
+
+function perfilPersona(p, historial) {
+  var l = p.lealtad || {};
+  var html = '<button class="volver" id="cli-volver">← Volver a la búsqueda</button>';
+  html += '<div class="perfil-nom">' + escapar(p.nombre || "(sin nombre)") + "</div>";
+  if (p.telefono) html += '<div class="sub">' + escapar(p.telefono) + "</div>";
+
+  html += '<div class="tarjeta-lealtad' + (l.disponibles ? " gratis" : "") + '">';
+  html +=   '<div class="tl-fila">';
+  html +=     '<div class="tl-cel"><div class="tl-num">' + (l.sellos != null ? l.sellos : "—") + '<span class="tl-de">/5</span></div><div class="tl-rot">Sellos</div></div>';
+  html +=     '<div class="tl-cel"><div class="tl-num">' + (l.disponibles || 0) + '</div><div class="tl-rot">Lavados gratis</div></div>';
+  html +=     '<div class="tl-cel"><div class="tl-num">' + (l.visitas_totales || 0) + '</div><div class="tl-rot">Visitas</div></div>';
+  html +=   "</div>";
+  html +=   l.disponibles
+    ? '<div class="tl-msg">Tiene ' + l.disponibles + (l.disponibles === 1 ? " lavado gratis" : " lavados gratis") + " por canjear</div>"
+    : '<div class="tl-msg tenue">Le faltan ' + (l.faltan != null ? l.faltan : "—") + " para el siguiente gratis</div>";
+  if (p.placas && p.placas.length) {
+    html += '<div class="tl-placas">';
+    p.placas.forEach(function (pl) { html += '<span class="chip">' + escapar(pl) + "</span>"; });
+    html += "</div>";
+  }
+  html += "</div>";
+
+  html += "<h2>Visitas</h2>" + tablaVisitas(historial, false);
+
+  var cont = document.getElementById("cli-res");
+  cont.innerHTML = html;
+  document.getElementById("cli-volver").addEventListener("click", volverABuscar);
+}
+
+// --- Perfil de una PLACA: todas sus visitas, con la persona de lealtad ---
+function abrirPlaca(placa) {
+  var cont = document.getElementById("cli-res");
+  cont.innerHTML = '<div class="vacio">Cargando…</div>';
+  pedirJSON("/historial?placa=" + encodeURIComponent(placa)).then(function (d) {
+    perfilPlaca(placa, d.historial || []);
+  }).catch(function (e) { if (e && e.message === "codigo") return; cont.innerHTML = '<div class="vacio">No se pudo cargar.</div>'; });
+}
+
+function perfilPlaca(placa, historial) {
+  var html = '<button class="volver" id="cli-volver">← Volver a la búsqueda</button>';
+  html += '<div class="perfil-nom">' + escapar(placa) + "</div>";
+  var v0 = historial[0];
+  if (v0) {
+    var desc = [v0.marca, v0.submarca, v0.tipo, v0.color].filter(Boolean).join(" ");
+    if (desc) html += '<div class="sub">' + escapar(desc) + "</div>";
+  }
+  html += '<div class="sub">' + historial.length + (historial.length === 1 ? " visita" : " visitas") + "</div>";
+  html += "<h2>Visitas</h2>" + tablaVisitas(historial, true);
+
+  var cont = document.getElementById("cli-res");
+  cont.innerHTML = html;
+  document.getElementById("cli-volver").addEventListener("click", volverABuscar);
+  cliCablearBotones(cont); // los enlaces a la persona de lealtad de cada visita
+}
+
+// Tabla de visitas compartida. conPersona=true agrega la columna de la
+// persona de lealtad (solo en el perfil de placa; en el de persona es ella).
+function tablaVisitas(lista, conPersona) {
+  if (!lista.length) return '<div class="vacio">Sin visitas registradas.</div>';
+  var html = '<table><tr><th>Fecha</th><th>Entrada</th><th>Salida</th><th>Secó</th>' +
+             (conPersona ? "<th>Cliente</th>" : "") + "</tr>";
+  lista.forEach(function (v) {
+    html += "<tr><td>" + escapar(fechaCorta(v.fecha)) + "</td>" +
+            "<td>" + escapar(hora(v.entrada)) + "</td>" +
+            "<td>" + escapar(hora(v.salida)) + "</td>" +
+            "<td>" + escapar((v.secadores && v.secadores.length) ? v.secadores.join(", ") : "—") + "</td>";
+    if (conPersona) {
+      if (v.persona && v.persona.id) {
+        html += '<td><button class="enlace" data-persona="' + v.persona.id + '">' + escapar(v.persona.nombre) + "</button></td>";
+      } else {
+        html += '<td class="tenue">— sin asignar</td>';
+      }
+    }
+    html += "</tr>";
+  });
+  return html + "</table>";
+}
+
+function fechaCorta(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+}
+function hora(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
+}
 
 cargarCodigo();
 if (!CODIGO) pedirCodigo(false); else arrancar();
