@@ -688,18 +688,25 @@ function pintarHistorial(lista) {
   var html = "";
   lista.forEach(function (v) {
     var fecha = v.fecha ? new Date(v.fecha).toLocaleDateString("es-MX", { day: "2-digit", month: "short" }) : "—";
-    var carro = [v.placa, v.producto, v.variante].filter(Boolean).join(" · ") || "Sin carro ligado";
+    // Todo el vehiculo que tengamos: tipo, color, marca, submarca.
+    var vehiculo = [v.tipo, v.color, v.marca, v.submarca].filter(Boolean).join(" ");
+    // Servicio + la linea donde se seco.
+    var servicio = [[v.producto, v.variante].filter(Boolean).join(" "),
+                    (v.linea ? "Línea " + v.linea : null)].filter(Boolean).join("  ·  ");
     var detalle;
     if (v.enlazado) {
       var secs = (v.secadores && v.secadores.length) ? v.secadores.join(", ") : "—";
-      detalle = '<div class="linea">Entró <b>' + escapar(horaMin(v.entrada)) + '</b> · Salió <b>' + escapar(horaMin(v.salida)) + "</b></div>" +
+      detalle = (servicio ? '<div class="linea">' + escapar(servicio) + "</div>" : "") +
+                '<div class="linea">Entró <b>' + escapar(horaMin(v.entrada)) + '</b> · Salió <b>' + escapar(horaMin(v.salida)) + "</b></div>" +
                 '<div class="linea">Secó: <b>' + escapar(secs) + "</b></div>";
     } else {
-      detalle = '<div class="linea">Registro sin lavado ligado</div>';
+      detalle = (servicio ? '<div class="linea">' + escapar(servicio) + "</div>" : "") +
+                '<div class="linea">Registro sin lavado ligado</div>';
     }
     html += '<div class="hist-item">' +
               '<div class="fecha">' + escapar(fecha) + (v.es_gratis ? ' <span class="gratis-tag">GRATIS</span>' : "") + "</div>" +
-              '<div class="linea">' + escapar(carro) + "</div>" +
+              (v.placa ? '<div class="linea">🚗 <b>' + escapar(v.placa) + "</b></div>" : "") +
+              (vehiculo ? '<div class="linea">' + escapar(vehiculo) + "</div>" : "") +
               detalle +
             "</div>";
   });
