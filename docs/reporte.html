@@ -149,6 +149,12 @@
   }
   .enlace { background:transparent; border:none; color:#58a6ff; font-size:14px; padding:0; cursor:pointer; text-align:left; font-family:inherit; }
   td .tenue, .tenue { color:#6e7681; }
+
+  /* Dueño(s) de lealtad de una placa. Sale en el perfil de la placa, sobre
+     todo cuando la placa no tiene ninguna visita lavada pero sí tiene dueño. */
+  .duenos { margin:10px 0 4px; font-size:15px; color:#c9d1d9; }
+  .duenos .duenos-rot { color:#8b949e; font-size:13px; margin-right:6px; }
+  .duenos .enlace { font-size:16px; font-weight:700; }
 </style>
 
 <img id="logo" src="RUSH-Logo.png" alt="RUSH" onerror="this.style.display='none'">
@@ -653,11 +659,11 @@ function abrirPlaca(placa) {
   var cont = document.getElementById("cli-res");
   cont.innerHTML = '<div class="vacio">Cargando…</div>';
   pedirJSON("/historial?placa=" + encodeURIComponent(placa)).then(function (d) {
-    perfilPlaca(placa, d.historial || []);
+    perfilPlaca(placa, d.historial || [], d.duenos || []);
   }).catch(function (e) { if (e && e.message === "codigo") return; cont.innerHTML = '<div class="vacio">No se pudo cargar.</div>'; });
 }
 
-function perfilPlaca(placa, historial) {
+function perfilPlaca(placa, historial, duenos) {
   var html = '<button class="volver" id="cli-volver">← Volver a la búsqueda</button>';
   html += '<div class="perfil-nom">' + escapar(placa) + "</div>";
   var v0 = historial[0];
@@ -665,13 +671,25 @@ function perfilPlaca(placa, historial) {
     var desc = [v0.marca, v0.submarca, v0.tipo, v0.color].filter(Boolean).join(" ");
     if (desc) html += '<div class="sub">' + escapar(desc) + "</div>";
   }
+
+  // Dueño(s) de lealtad de la placa (persona_placas), clicables. Aquí es donde
+  // sale el cliente cuando la placa no tiene visitas lavadas que llenen la tabla.
+  if (duenos && duenos.length) {
+    html += '<div class="duenos"><span class="duenos-rot">Cliente en lealtad:</span>' +
+            duenos.map(function (dn) {
+              return '<button class="enlace" data-persona="' + dn.id + '">' + escapar(dn.nombre) + "</button>";
+            }).join(", ") + "</div>";
+  } else {
+    html += '<div class="duenos tenue">Sin cliente de lealtad asignado a esta placa.</div>';
+  }
+
   html += '<div class="sub">' + historial.length + (historial.length === 1 ? " visita" : " visitas") + "</div>";
   html += "<h2>Visitas</h2>" + tablaVisitas(historial, true);
 
   var cont = document.getElementById("cli-res");
   cont.innerHTML = html;
   document.getElementById("cli-volver").addEventListener("click", volverABuscar);
-  cliCablearBotones(cont); // los enlaces a la persona de lealtad de cada visita
+  cliCablearBotones(cont); // enlaces al dueño y a la persona de cada visita
 }
 
 // Tabla de visitas compartida. conPersona=true agrega la columna de la

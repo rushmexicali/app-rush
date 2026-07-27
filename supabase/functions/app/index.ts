@@ -1136,9 +1136,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // de cada venta. Por persona: las visitas de esa persona (lo de antes).
     const placa = url.searchParams.get("placa");
     if (placa !== null) {
-      const { data, error } = await db.rpc("historial_de_placa", { p_placa: placa });
-      if (error) { console.error("historial_de_placa:", error); return json({ error: error.message }, 500); }
-      return json({ historial: data ?? [] });
+      // Dos cosas: las visitas lavadas de la placa y sus dueno(s) de lealtad
+      // (persona_placas). Los duenos importan cuando la placa es del CRM y no
+      // tiene ninguna visita lavada (tabla vacia, pero si hay dueno).
+      const [h, d] = await Promise.all([
+        db.rpc("historial_de_placa", { p_placa: placa }),
+        db.rpc("duenos_de_placa", { p_placa: placa }),
+      ]);
+      if (h.error) { console.error("historial_de_placa:", h.error); return json({ error: h.error.message }, 500); }
+      if (d.error) { console.error("duenos_de_placa:", d.error); return json({ error: d.error.message }, 500); }
+      return json({ historial: h.data ?? [], duenos: d.data ?? [] });
     }
     const persona = Number(url.searchParams.get("persona") ?? 0);
     if (!persona) return json({ error: "falta persona o placa" }, 400);
