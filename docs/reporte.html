@@ -650,12 +650,12 @@ function perfilPersona(p, historial) {
   }
   html += "</div>";
 
-  html += "<h2>Visitas</h2>" + tablaVisitas(historial, false);
+  html += "<h2>Visitas</h2>" + tablaVisitas(historial, { conPlaca: true });
 
   var cont = document.getElementById("cli-res");
   cont.innerHTML = html;
   document.getElementById("cli-volver").addEventListener("click", volverABuscar);
-  cliCablearBotones(cont); // los chips de placa abren el perfil de la placa
+  cliCablearBotones(cont); // los chips y las placas de la tabla abren el perfil de la placa
 }
 
 // --- Perfil de una PLACA: todas sus visitas, con la persona de lealtad ---
@@ -688,7 +688,7 @@ function perfilPlaca(placa, historial, duenos) {
   }
 
   html += '<div class="sub">' + historial.length + (historial.length === 1 ? " visita" : " visitas") + "</div>";
-  html += "<h2>Visitas</h2>" + tablaVisitas(historial, true);
+  html += "<h2>Visitas</h2>" + tablaVisitas(historial, { conCliente: true });
 
   var cont = document.getElementById("cli-res");
   cont.innerHTML = html;
@@ -696,23 +696,34 @@ function perfilPlaca(placa, historial, duenos) {
   cliCablearBotones(cont); // enlaces al dueño y a la persona de cada visita
 }
 
-// Tabla de visitas compartida. conPersona=true agrega la columna de la
-// persona de lealtad (solo en el perfil de placa; en el de persona es ella).
-function tablaVisitas(lista, conPersona) {
+// Tabla de visitas compartida por los dos perfiles, con columnas opcionales:
+//   opts.conPlaca   -> columna Placa (clicable, abre el perfil de la placa).
+//                      Solo en el perfil de PERSONA; en el de placa es la misma.
+//   opts.conCliente -> columna Cliente (la persona de lealtad de esa venta,
+//                      clicable). Solo en el perfil de PLACA; en el de persona
+//                      es ella misma.
+function tablaVisitas(lista, opts) {
+  opts = opts || {};
   if (!lista.length) return '<div class="vacio">Sin visitas registradas.</div>';
-  var html = '<table><tr><th>Fecha</th><th>Entrada</th><th>Salida</th><th>Secó</th>' +
-             (conPersona ? "<th>Cliente</th>" : "") + "</tr>";
+  var html = "<table><tr><th>Fecha</th>" +
+             (opts.conPlaca ? "<th>Placa</th>" : "") +
+             "<th>Entrada</th><th>Salida</th><th>Línea</th><th>Secó</th>" +
+             (opts.conCliente ? "<th>Cliente</th>" : "") + "</tr>";
   lista.forEach(function (v) {
-    html += "<tr><td>" + escapar(fechaCorta(v.fecha)) + "</td>" +
-            "<td>" + escapar(hora(v.entrada)) + "</td>" +
+    html += "<tr><td>" + escapar(fechaCorta(v.fecha)) + "</td>";
+    if (opts.conPlaca) {
+      html += v.placa
+        ? '<td><button class="enlace" data-placa="' + escapar(v.placa) + '">' + escapar(v.placa) + "</button></td>"
+        : '<td class="tenue">—</td>';
+    }
+    html += "<td>" + escapar(hora(v.entrada)) + "</td>" +
             "<td>" + escapar(hora(v.salida)) + "</td>" +
+            "<td>" + escapar(v.linea != null ? v.linea : "—") + "</td>" +
             "<td>" + escapar((v.secadores && v.secadores.length) ? v.secadores.join(", ") : "—") + "</td>";
-    if (conPersona) {
-      if (v.persona && v.persona.id) {
-        html += '<td><button class="enlace" data-persona="' + v.persona.id + '">' + escapar(v.persona.nombre) + "</button></td>";
-      } else {
-        html += '<td class="tenue">— sin asignar</td>';
-      }
+    if (opts.conCliente) {
+      html += (v.persona && v.persona.id)
+        ? '<td><button class="enlace" data-persona="' + v.persona.id + '">' + escapar(v.persona.nombre) + "</button></td>"
+        : '<td class="tenue">— sin asignar</td>';
     }
     html += "</tr>";
   });
