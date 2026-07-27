@@ -1016,7 +1016,9 @@ function pintar() {
     // La placa, en su renglon, entre el tipo de carro y el servicio. Solo
     // aparece si se pudo leer: si no, no se pinta nada (ni hueco, ni un
     // "sin placa" que no le sirve de nada al supervisor).
-    if (c.placa) html += '<div class="placa">' + escapar(c.placa) + '</div>';
+    // Se muestra con guiones si la lectura los trajo (placa_display); en la
+    // base la placa vive SIEMPRE sin guiones (para casar caja<->supervisor).
+    if (c.placa) html += '<div class="placa">' + escapar(c.placa_display || c.placa) + '</div>';
     html +=   '<div class="reloj">' + reloj(seg) + '</div>';
     // Los secadores van DENTRO del bloque del servicio, del mismo tamaño,
     // para que el dueño los vea sin abrir el carro. Solo si ya hay: antes
@@ -2103,7 +2105,7 @@ function abrirEntregados(yaAbierta) {
         // La placa va en el pie y no en el titulo: aqui el supervisor
         // BUSCA un carro entre muchos, y la placa es lo unico que no se
         // repite. "AUTO GRIS HONDA" hay cinco; BSJ-411-A hay uno.
-        var placa = c.placa ? '<span class="placa2">' + escapar(c.placa) + '</span>' : "";
+        var placa = c.placa ? '<span class="placa2">' + escapar(c.placa_display || c.placa) + '</span>' : "";
 
         // Se toca la zona de DATOS, no la tarjeta entera: si fuera toda,
         // un dedo que falla el boton de Restaurar abriria el desglose y
@@ -2183,7 +2185,7 @@ function cuerpoDetalle(c, enVivo) {
 
   var h = "";
   h += "<h2>" + describir(c) + "</h2>";
-  if (c.placa) h += '<div class="placa">' + escapar(c.placa) + "</div>";
+  if (c.placa) h += '<div class="placa">' + escapar(c.placa_display || c.placa) + "</div>";
   h += '<div class="sub">' + escapar(servicio) +
        (c.linea ? "  ·  Línea " + escapar(c.linea) : "") + "</div>";
 

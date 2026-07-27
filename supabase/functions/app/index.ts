@@ -349,7 +349,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .from("carros")
       .select(`
         id, estado, linea, es_express, producto, variante, aviso, a_mano,
-        tipo_unidad, color, marca, submarca, cliente, nota, creado_en, foto_path, placa,
+        tipo_unidad, color, marca, submarca, cliente, nota, creado_en, foto_path, placa, placa_display,
         foto_url, foto_url_expira,
         etapas ( etapa, inicio, fin )
       `)
@@ -479,6 +479,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         submarca: c.submarca,
         cliente: c.cliente,
         placa: c.placa,
+        placa_display: c.placa_display,
         etapa_inicio: abierta?.inicio ?? c.creado_en,
         limite,
         // Nombres de los secadores que ya se poncharon, si los hay.
