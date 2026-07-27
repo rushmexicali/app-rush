@@ -118,6 +118,25 @@
   }
   #feed.feed-vivo .feed-ico { display:none; }
 
+  /* Leyendo: se congela el feed y se muestra LA MISMA foto que se subio a
+     Claude, oscurecida, con la leyenda y el spinner encima. */
+  #feed-shot { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:none; }
+  #feed.feed-leyendo #feed-shot { display:block; }
+  #feed.feed-leyendo #feed-video, #feed.feed-leyendo #feed-hint { display:none; }
+  #feed-leyendo {
+    position:absolute; inset:0; display:none;
+    flex-direction:column; align-items:center; justify-content:center; gap:16px;
+    background:rgba(0,0,0,.55); color:#fff;
+    font-size:22px; font-weight:900; letter-spacing:1px; text-align:center;
+  }
+  #feed.feed-leyendo #feed-leyendo { display:flex; }
+  .spin {
+    width:46px; height:46px; border-radius:50%;
+    border:5px solid rgba(255,255,255,.25); border-top-color:#3fb950;
+    animation:girar 1s linear infinite;
+  }
+  @keyframes girar { to { transform:rotate(360deg); } }
+
   /* La placa capturada, en grande y sin guiones. */
   .placa-cap {
     font-size:22px; text-align:center; margin:10px 0;
@@ -194,7 +213,9 @@
        reinicia. -->
   <div id="feed" class="feed-apagado">
     <video id="feed-video" autoplay playsinline muted></video>
+    <img id="feed-shot" alt="">
     <div id="feed-hint"><span class="feed-ico">📷</span><span id="feed-hint-txt">Toca para ver la cámara</span></div>
+    <div id="feed-leyendo"><div class="spin"></div><span>LEYENDO FOTOGRAFÍA…</span></div>
   </div>
 
   <button id="btn-foto" class="grande azul">📸 Tomar foto</button>
@@ -473,6 +494,7 @@ function apagarFeed() {
   if (feedStream) { feedStream.getTracks().forEach(function (t) { t.stop(); }); feedStream = null; }
   var v = document.getElementById("feed-video"); if (v) v.srcObject = null;
   feedVivo = false;
+  quitarLeyendo();
   document.getElementById("feed").className = "feed-apagado";
   document.getElementById("feed-hint-txt").textContent = "Toca para ver la cámara";
 }
@@ -496,23 +518,45 @@ function capturarCuadro() {
   return c.toDataURL("image/jpeg", 0.6);
 }
 
+// Congela el feed y muestra LA MISMA foto que se sube a Claude, oscurecida,
+// con la leyenda "LEYENDO FOTOGRAFIA" mientras dura la lectura.
+function mostrarLeyendo(dataURL) {
+  document.getElementById("feed-shot").src = dataURL;
+  document.getElementById("feed").classList.add("feed-leyendo");
+}
+function quitarLeyendo() {
+  var f = document.getElementById("feed");
+  f.classList.remove("feed-leyendo");
+  document.getElementById("feed-shot").removeAttribute("src");
+}
+
+// Arma el resumen legible de lo que devolvio la foto: placa + marca/submarca.
+// Sirve para que la cajera VEA que la lectura trae mas que el numero.
+function resumenLectura(d) {
+  var partes = [];
+  if (d.marca) partes.push(d.submarca ? d.marca + " " + d.submarca : d.marca);
+  return partes.length ? " · " + partes.join(" ") : "";
+}
+
 // Manda una imagen ya lista (dataURL) a leer la placa. La usan el feed y el
 // respaldo del tablet.
 function procesarImagen(dataURL) {
   var est = document.getElementById("estado-captura");
   est.textContent = "Leyendo la placa…";
+  mostrarLeyendo(dataURL);
   return postJSON("/leer-placa", { imagen: dataURL }).then(function (d) {
+    quitarLeyendo();
     if (!d || d.ok === false) { est.textContent = "No se pudo leer. Captura la placa a mano."; return; }
     var datos = { placa: null, marca: d.marca, submarca: d.submarca, tipo: d.tipo, color: null, foto_path: d.foto_path };
     if (d.placa && fijarPlaca(d.placa, datos)) {
-      est.textContent = "Placa leída: " + captura.placa;
+      est.textContent = "Placa leída: " + captura.placa + resumenLectura(d);
     } else {
       captura = datos;
-      est.textContent = "No se vio la placa. Captúrala a mano.";
+      est.textContent = "No se vio la placa. Captúrala a mano." + resumenLectura(d);
       document.getElementById("manual-box").style.display = "block";
       document.getElementById("in-placa").focus();
     }
-  }).catch(function (e) { if (e && e.message === "codigo") return; est.textContent = "Sin conexión. Intenta otra vez."; });
+  }).catch(function (e) { quitarLeyendo(); if (e && e.message === "codigo") return; est.textContent = "Sin conexión. Intenta otra vez."; });
 }
 
 // "Tomar foto" = del feed en vivo. Si esta apagado, lo prende primero (y la
