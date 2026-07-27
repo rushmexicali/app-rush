@@ -706,7 +706,7 @@ function pintarClientes(personas, destino) {
               '<div class="nom">' + escapar(p.nombre) + "</div>" +
               (p.telefono ? '<div class="tel">' + escapar(p.telefono) + "</div>" : "") +
               '<div class="mini-sello">' + selloTexto(l) + "</div>" +
-              '<button data-elegir="' + p.id + '">Asignar a este cliente</button>' +
+              '<button data-elegir="' + p.id + '">Seleccionar cliente</button>' +
             "</div>";
   });
   cont.innerHTML = html;
