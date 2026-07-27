@@ -104,6 +104,14 @@
   .nombre-grande { font-size:24px; font-weight:800; margin-bottom:2px; }
   .datos-linea { color:#8b949e; font-size:15px; margin:2px 0; }
 
+  /* Placas ya asignadas al cliente, como fichas. */
+  .placas-persona { margin:8px 0 2px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .chip-placa {
+    display:inline-block; font-size:17px; font-weight:800; letter-spacing:1px;
+    background:#161b22; color:#f0f6fc; border:1px solid #2f81f7; border-radius:9px;
+    padding:6px 12px;
+  }
+
   .toggle {
     display:flex; align-items:center; gap:12px; font-size:19px; font-weight:700;
     background:#161b22; border:1px solid #30363d; border-radius:12px;
@@ -560,11 +568,22 @@ function pintarPersona() {
                        '<div class="visitas">para el lavado gratis</div>';
   }
 
+  // Las placas que ya tiene asignadas (para confirmar que es el cliente
+  // correcto y ver sus carros). Una placa puede ligar a varias personas, y
+  // una persona a varias placas.
+  var placas = (p.placas || []).filter(Boolean);
+  var placasHtml = placas.length
+    ? '<div class="placas-persona">🚗 ' + placas.map(function (x) {
+        return '<span class="chip-placa">' + escapar(x) + "</span>";
+      }).join("") + "</div>"
+    : '<div class="datos-linea">🚗 Sin placas registradas todavía</div>';
+
   document.getElementById("datos-persona").innerHTML =
     '<div class="nombre-grande">' + escapar(p.nombre) + "</div>" +
     (p.telefono ? '<div class="datos-linea">📞 ' + escapar(p.telefono) + "</div>" : "") +
     (p.notas ? '<div class="datos-linea">📝 ' + escapar(p.notas) + "</div>" : "") +
-    '<div class="datos-linea">Ha venido ' + vecesTexto(l.visitas_totales || 0) + ' o más</div>';
+    '<div class="datos-linea">Ha venido ' + vecesTexto(l.visitas_totales || 0) + ' o más</div>' +
+    placasHtml;
 
   // El toggle del gratis arranca prendido solo si es elegible; si no, se
   // puede prender igual pero con aviso (raro, por si el dueno lo autoriza).
