@@ -210,10 +210,21 @@
 <!-- ============ Pantalla 3: enlazar a la venta ============ -->
 <div id="p-enlazar" class="pantalla">
   <div class="ok">✓ Visita registrada. Ahora cóbralo en Zettle.</div>
-  <div class="seccion">¿A qué lavado corresponde? <span id="enl-quien" class="nota" style="display:inline"></span></div>
-  <div id="lista-carros"><div class="nota">Buscando el lavado recién pagado…</div></div>
-  <button id="btn-refrescar" class="secundario">Refrescar</button>
-  <button id="btn-sin-venta" class="secundario peligro">No hubo venta / cancelar</button>
+
+  <!-- Antes de elegir: la lista de lavados recién pagados. -->
+  <div id="bloque-picker">
+    <div class="seccion">¿A qué lavado corresponde? <span id="enl-quien" class="nota" style="display:inline"></span></div>
+    <div id="lista-carros"><div class="nota">Buscando el lavado recién pagado…</div></div>
+    <button id="btn-refrescar" class="secundario">Refrescar</button>
+    <button id="btn-sin-venta" class="secundario peligro">No hubo venta / cancelar</button>
+  </div>
+
+  <!-- Ya elegido: se BLOQUEA. Para cambiarla, botón Corregir (deselecciona). -->
+  <div id="bloque-enlazado" style="display:none">
+    <div id="enlazado-txt" class="ok"></div>
+    <button id="btn-corregir" class="secundario">Corregir — elegir otra venta</button>
+  </div>
+
   <button id="btn-listo" class="grande azul">Listo — siguiente cliente</button>
 </div>
 
@@ -588,7 +599,7 @@ document.getElementById("btn-registrar").addEventListener("click", function () {
       visitaActual = d.visita;
       document.getElementById("enl-quien").textContent = "— " + personaActual.nombre;
       mostrar("p-enlazar", true);
-      cargarPendientes();
+      abrirEnlazar();
     });
   });
 });
@@ -616,20 +627,37 @@ document.getElementById("btn-crear").addEventListener("click", function () {
 });
 
 // --- Enlazar a la venta ----------------------------------------------
+var carrosPendientes = [];   // ultimo /pendientes, para conocer los datos del elegido
+
+// Vuelve al modo "elegir" (lista de lavados). Se llama al registrar la visita
+// y al Corregir.
+function abrirEnlazar() {
+  document.getElementById("bloque-picker").style.display = "block";
+  document.getElementById("bloque-enlazado").style.display = "none";
+  cargarPendientes();
+}
+
+function textoCarro(c) {
+  if (!c) return "el lavado";
+  var hora = c.creado_en ? new Date(c.creado_en).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) : "";
+  var precio = (c.monto != null) ? "$" + c.monto : "";
+  return [ [c.producto, c.variante].filter(Boolean).join(" "), hora, precio ].filter(Boolean).join("  ·  ");
+}
+
 function cargarPendientes() {
   var lista = document.getElementById("lista-carros");
   lista.innerHTML = '<div class="nota">Buscando el lavado recién pagado…</div>';
   pedir("/pendientes?minutos=20")
     .then(function (r) { return r.json(); })
     .then(function (d) {
-      var carros = (d && d.carros) || [];
-      if (!carros.length) {
+      carrosPendientes = (d && d.carros) || [];
+      if (!carrosPendientes.length) {
         lista.innerHTML = '<div class="nota aviso">Todavía no aparece el lavado. Cóbralo en Zettle y toca <b>Refrescar</b>. ' +
                           'Si no vas a cobrar, usa <b>No hubo venta</b>.</div>';
         return;
       }
       var html = "";
-      carros.forEach(function (c) {
+      carrosPendientes.forEach(function (c) {
         var hora = c.creado_en ? new Date(c.creado_en).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) : "";
         var precio = (c.monto != null) ? "$" + c.monto : "";
         html += '<button class="carro-op" data-carro="' + c.id + '">' +
@@ -649,13 +677,39 @@ function cargarPendientes() {
 document.getElementById("btn-refrescar").addEventListener("click", cargarPendientes);
 
 function enlazar(carroId) {
+  var carro = carrosPendientes.filter(function (c) { return c.id === carroId; })[0];
   return postJSON("/enlazar", { visita: visitaActual, carro: carroId })
     .then(function (d) {
-      if (d && d.ok === false) { alert(d.error || "No se pudo enlazar"); return; }
-      document.getElementById("lista-carros").innerHTML =
-        '<div class="ok">✓ Lavado enlazado. El carro ya quedó identificado.</div>';
+      if (d && d.ok === false) {
+        // p.ej. "ese lavado ya está asignado a otro cliente": se recarga la
+        // lista para que ese lavado ya no aparezca.
+        alert(d.error || "No se pudo enlazar");
+        cargarPendientes();
+        return;
+      }
+      pintarEnlazado(carro);   // BLOQUEA: ya no se puede elegir otra sin Corregir
     });
 }
+
+// Se selecciono una venta: se bloquea la lista y solo queda Corregir.
+function pintarEnlazado(carro) {
+  document.getElementById("bloque-picker").style.display = "none";
+  document.getElementById("bloque-enlazado").style.display = "block";
+  document.getElementById("enlazado-txt").innerHTML =
+    "✓ Asignado a: <b>" + escapar(textoCarro(carro)) + "</b>";
+}
+
+// Corregir: deselecciona la venta (la suelta y revierte el carro) y vuelve a
+// la lista para elegir la correcta.
+document.getElementById("btn-corregir").addEventListener("click", function () {
+  conCandado(this, "Corrigiendo…", function () {
+    return postJSON("/desenlazar", { visita: visitaActual }).then(function (d) {
+      if (d && d.ok === false) { alert(d.error || "No se pudo corregir"); return; }
+      abrirEnlazar();
+    });
+  });
+});
+
 document.getElementById("btn-sin-venta").addEventListener("click", function () {
   if (!confirm("¿No hubo venta? Se descarta esta visita (no cuenta para la lealtad).")) return;
   conCandado(this, "Cancelando…", function () {
