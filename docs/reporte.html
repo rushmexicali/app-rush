@@ -146,7 +146,9 @@
   .chip {
     background:#0d1117; border:1px solid #30363d; border-radius:8px;
     padding:5px 10px; font-size:14px; font-weight:700; letter-spacing:1px; color:#e6edf3;
+    cursor:pointer; font-family:inherit;
   }
+  .chip:active { background:#21262d; }
   .enlace { background:transparent; border:none; color:#58a6ff; font-size:14px; padding:0; cursor:pointer; text-align:left; font-family:inherit; }
   td .tenue, .tenue { color:#6e7681; }
 
@@ -642,7 +644,8 @@ function perfilPersona(p, historial) {
     : '<div class="tl-msg tenue">Le faltan ' + (l.faltan != null ? l.faltan : "—") + " para el siguiente gratis</div>";
   if (p.placas && p.placas.length) {
     html += '<div class="tl-placas">';
-    p.placas.forEach(function (pl) { html += '<span class="chip">' + escapar(pl) + "</span>"; });
+    // Clicables: llevan al historial de esa placa (su perfil de vehículo).
+    p.placas.forEach(function (pl) { html += '<button class="chip" data-placa="' + escapar(pl) + '">' + escapar(pl) + "</button>"; });
     html += "</div>";
   }
   html += "</div>";
@@ -652,6 +655,7 @@ function perfilPersona(p, historial) {
   var cont = document.getElementById("cli-res");
   cont.innerHTML = html;
   document.getElementById("cli-volver").addEventListener("click", volverABuscar);
+  cliCablearBotones(cont); // los chips de placa abren el perfil de la placa
 }
 
 // --- Perfil de una PLACA: todas sus visitas, con la persona de lealtad ---
