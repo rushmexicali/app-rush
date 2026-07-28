@@ -653,7 +653,7 @@ function perfilPersona(p, historial) {
   }
   html += "</div>";
 
-  html += "<h2>Visitas</h2>" + tablaVisitas(historial, { conPlaca: true, conMonto: true });
+  html += "<h2>Visitas</h2>" + tablaVisitas(historial, { conPlaca: true, conMonto: true, conTicket: true });
 
   var cont = document.getElementById("cli-res");
   cont.innerHTML = html;
@@ -715,7 +715,8 @@ function tablaVisitas(lista, opts) {
              (opts.conPlaca ? "<th>Placa</th>" : "") +
              "<th>Entrada</th><th>Salida</th><th>Línea</th><th>Secó</th>" +
              (opts.conMonto ? '<th class="num">Gastado</th>' : "") +
-             (opts.conCliente ? "<th>Cliente</th>" : "") + "</tr>";
+             (opts.conCliente ? "<th>Cliente</th>" : "") +
+             (opts.conTicket ? "<th>Ticket</th>" : "") + "</tr>";
   lista.forEach(function (v) {
     html += "<tr><td>" + escapar(fechaCorta(v.fecha)) + "</td>";
     if (opts.conPlaca) {
@@ -735,6 +736,9 @@ function tablaVisitas(lista, opts) {
       html += (v.persona && v.persona.id)
         ? '<td><button class="enlace" data-persona="' + v.persona.id + '">' + escapar(v.persona.nombre) + "</button></td>"
         : '<td class="tenue">— sin asignar</td>';
+    }
+    if (opts.conTicket) {
+      html += v.ticket ? "<td>" + escapar(v.ticket) + "</td>" : '<td class="tenue">—</td>';
     }
     html += "</tr>";
   });
