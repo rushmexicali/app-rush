@@ -159,6 +159,15 @@
   .duenos { margin:10px 0 4px; font-size:15px; color:#c9d1d9; }
   .duenos .duenos-rot { color:#8b949e; font-size:13px; margin-right:6px; }
   .duenos .enlace { font-size:16px; font-weight:700; }
+
+  /* Modal del ticket (la venta completa de Zettle). */
+  #ticket-modal { position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:60; display:none; align-items:center; justify-content:center; padding:20px; }
+  #ticket-card { background:#161b22; border:1px solid #30363d; border-radius:16px; padding:20px 22px; max-width:480px; width:100%; max-height:85vh; overflow:auto; }
+  #ticket-card h3 { margin:0 0 2px; font-size:22px; color:#e6edf3; }
+  #ticket-card h2 { margin:16px 0 6px; }
+  #ticket-card .ticket-total { margin-top:14px; font-size:20px; text-align:right; }
+  #ticket-card .ticket-total b { color:#3fb950; }
+  #ticket-cerrar { width:100%; min-height:48px; font-size:17px; font-weight:800; margin-top:16px; background:#21262d; color:#e6edf3; border:1px solid #30363d; border-radius:10px; }
 </style>
 
 <img id="logo" src="RUSH-Logo.png" alt="RUSH" onerror="this.style.display='none'">
@@ -209,6 +218,9 @@
   <div id="malcodigo">Código incorrecto</div>
   <button id="entrar" style="font-size:20px; padding:12px 30px">Entrar</button>
 </div>
+
+<!-- Modal del ticket: la venta completa de Zettle (productos, descuento, cajera). -->
+<div id="ticket-modal"><div id="ticket-card"></div></div>
 
 <script>
 var API = "https://rwoyfvddhlabmmuvkpjx.supabase.co/functions/v1/app";
@@ -613,6 +625,10 @@ function cliCablearBotones(cont) {
   for (var j = 0; j < vs.length; j++) (function (b) {
     b.addEventListener("click", function () { abrirPlaca(b.getAttribute("data-placa")); });
   })(vs[j]);
+  var ts = cont.querySelectorAll("button[data-ticket]");
+  for (var k = 0; k < ts.length; k++) (function (b) {
+    b.addEventListener("click", function () { abrirTicket(b.getAttribute("data-ticket")); });
+  })(ts[k]);
 }
 
 function volverABuscar() { cliBuscar(document.getElementById("cli-q").value.trim()); }
@@ -738,7 +754,9 @@ function tablaVisitas(lista, opts) {
         : '<td class="tenue">— sin asignar</td>';
     }
     if (opts.conTicket) {
-      html += v.ticket ? "<td>" + escapar(v.ticket) + "</td>" : '<td class="tenue">—</td>';
+      html += v.ticket
+        ? '<td><button class="enlace" data-ticket="' + escapar(v.ticket) + '">' + escapar(v.ticket) + "</button></td>"
+        : '<td class="tenue">—</td>';
     }
     html += "</tr>";
   });
@@ -757,6 +775,63 @@ function pesos(n) {
   if (n == null) return "—";
   return "$" + Math.round(Number(n)).toLocaleString("es-MX");
 }
+
+// --- Modal del ticket: la venta completa de Zettle ---
+function pagoTxt(p) {
+  if (!p) return "—";
+  if (p.indexOf("CASH") >= 0) return "Efectivo";
+  if (p.indexOf("CARD") >= 0) return "Tarjeta";
+  return p;
+}
+function abrirTicket(num) {
+  var modal = document.getElementById("ticket-modal");
+  var card = document.getElementById("ticket-card");
+  card.innerHTML = '<div class="vacio">Cargando ticket…</div>';
+  modal.style.display = "flex";
+  pedirJSON("/ticket?num=" + encodeURIComponent(num)).then(function (d) {
+    card.innerHTML = ticketCard(num, d.ticket);
+    document.getElementById("ticket-cerrar").addEventListener("click", cerrarTicket);
+  }).catch(function (e) {
+    if (e && e.message === "codigo") { cerrarTicket(); return; }
+    card.innerHTML = ticketCard(num, null);
+    document.getElementById("ticket-cerrar").addEventListener("click", cerrarTicket);
+  });
+}
+function cerrarTicket() { document.getElementById("ticket-modal").style.display = "none"; }
+function ticketCard(num, t) {
+  if (!t) {
+    return '<h3>Ticket ' + escapar(num) + "</h3>" +
+      '<div class="sub">No se encontró en Zettle (puede ser anterior a sep-2025, o ticket mal anotado).</div>' +
+      '<button id="ticket-cerrar">Cerrar</button>';
+  }
+  var html = '<h3>Ticket ' + escapar(t.ticket) + "</h3>";
+  html += '<div class="sub">' + escapar(fechaCorta(t.hora)) + " · " + escapar(hora(t.hora)) + "</div>";
+  html += '<div class="sub">Cajera: ' + escapar(t.cajero || "—") + " · " + escapar(pagoTxt(t.pago)) + "</div>";
+  html += "<h2>Productos</h2>";
+  if (t.productos && t.productos.length) {
+    html += "<table>";
+    t.productos.forEach(function (p) {
+      html += "<tr><td>" + escapar([p.nombre, p.variante].filter(Boolean).join(" / ")) + "</td>" +
+              '<td class="num">×' + escapar(p.cantidad) + "</td>" +
+              '<td class="num">' + escapar(pesos(p.precio)) + "</td></tr>";
+    });
+    html += "</table>";
+  } else html += '<div class="vacio">—</div>';
+  if (t.descuentos && t.descuentos.length) {
+    html += "<h2>Descuentos</h2><table>";
+    t.descuentos.forEach(function (dc) {
+      html += "<tr><td>" + escapar(dc.nombre || "—") + '</td><td class="num">−' + escapar(pesos(dc.monto)) + "</td></tr>";
+    });
+    html += "</table>";
+  }
+  html += '<div class="ticket-total">Total: <b>' + escapar(pesos(t.monto)) + "</b></div>";
+  html += '<button id="ticket-cerrar">Cerrar</button>';
+  return html;
+}
+// Cerrar tocando el fondo (fuera de la tarjeta).
+document.getElementById("ticket-modal").addEventListener("click", function (ev) {
+  if (ev.target === this) cerrarTicket();
+});
 
 cargarCodigo();
 if (!CODIGO) pedirCodigo(false); else arrancar();

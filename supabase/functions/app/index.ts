@@ -1154,5 +1154,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ historial: data ?? [] });
   }
 
+  // --- Detalle de un ticket (venta de Zettle por purchaseNumber) ------
+  if (ruta === "/ticket") {
+    const num = Number(url.searchParams.get("num") ?? 0);
+    if (!num) return json({ error: "falta num" }, 400);
+    const { data, error } = await db.rpc("ticket_detalle", { p_num: num });
+    if (error) { console.error("ticket_detalle:", error); return json({ error: error.message }, 500); }
+    return json({ ticket: data });
+  }
+
   return json({ error: "ruta desconocida" }, 404);
 });
