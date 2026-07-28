@@ -196,7 +196,43 @@
     background:#161b22; color:#fff; border:1px solid #30363d; border-radius:8px; padding:12px;
   }
   #malcodigo { color:#ff7875; display:none; }
+
+  /* Boton "Ayuda" fijo arriba a la derecha, alcanzable desde cualquier
+     pantalla. Debajo del acceso (z-50), encima del contenido. */
+  #btn-ayuda {
+    position:fixed; top:calc(8px + env(safe-area-inset-top)); right:12px; z-index:45;
+    width:auto; min-height:auto; padding:8px 15px; font-size:15px; font-weight:800;
+    background:#1c2128; border:1px solid #30363d; color:#adbac7; border-radius:22px;
+  }
+
+  /* Panel de ayuda: overlay (NO una pantalla del flujo), para que abrirlo
+     a media captura no pierda al cliente en curso. Se cierra por el boton
+     atras del telefono o el boton Cerrar. */
+  #ayuda {
+    position:fixed; inset:0; z-index:46; background:#0d1117;
+    display:none; flex-direction:column;
+    padding:calc(10px + env(safe-area-inset-top)) 14px calc(20px + env(safe-area-inset-bottom));
+  }
+  #ayuda.abierto { display:flex; }
+  #ayuda-top { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+  #ayuda-top .seccion { margin:0; font-size:19px; color:#e6edf3; }
+  #ayuda-cuerpo { overflow-y:auto; -webkit-overflow-scrolling:touch; }
+
+  .ayuda-bloque {
+    background:#161b22; border:1px solid #30363d; border-radius:12px;
+    padding:14px 16px; margin:12px 0;
+  }
+  .ayuda-bloque h3 { font-size:18px; margin:0 0 8px; color:#e6edf3; }
+  .ayuda-bloque p { font-size:16px; line-height:1.45; color:#c9d1d9; margin:7px 0; }
+  .ayuda-bloque ol, .ayuda-bloque ul { margin:7px 0; padding-left:22px; }
+  .ayuda-bloque li { font-size:16px; line-height:1.5; color:#c9d1d9; margin:5px 0; }
+  .ayuda-bloque b { color:#f0f6fc; }
+  .ayuda-clave { border-left:4px solid #3fb950; }
+  .ayuda-ojo   { border-left:4px solid #d29922; }
+  .ayuda-nota-formato { font-size:20px; letter-spacing:1px; text-align:center; background:#0d1117; border:1px solid #30363d; border-radius:10px; padding:12px; margin:8px 0; }
 </style>
+
+<button id="btn-ayuda" aria-label="Ayuda">❓ Ayuda</button>
 
 <img id="logo" src="RUSH-Logo.png" alt="RUSH" onerror="this.style.display='none'">
 <h1>Caja</h1>
@@ -324,6 +360,81 @@
 
 <input id="camara" type="file" accept="image/*" capture="environment" style="display:none">
 
+<!-- ============ Panel de Ayuda (overlay) ============ -->
+<div id="ayuda">
+  <div id="ayuda-top">
+    <div class="seccion">Ayuda para la caja</div>
+    <button id="btn-cerrar-ayuda" class="volver">✕ Cerrar</button>
+  </div>
+  <div id="ayuda-cuerpo">
+
+    <div class="ayuda-bloque ayuda-clave">
+      <h3>¿Para qué sirve esta app?</h3>
+      <p>Registra las visitas de los clientes para el programa <b>6to lavado gratis</b>.</p>
+      <p>La lealtad es de la <b>PERSONA</b>, no del carro. Aunque el cliente traiga carros distintos, todos sus lavados se le juntan a él.</p>
+    </div>
+
+    <div class="ayuda-bloque">
+      <h3>Los 4 pasos de cada cliente</h3>
+      <ol>
+        <li>Captura la <b>placa</b> (con la cámara o a mano). Si no hay placa, toca <b>Buscar cliente</b>.</li>
+        <li>Elige al <b>cliente</b>. Si no aparece, toca <b>+ Registrar cliente nuevo</b>.</li>
+        <li>En su pantalla ves si tiene <b>lavados gratis</b>. Si va a usar uno, prende <b>Utilizar Lavado GRATIS</b>. Toca <b>Registrar visita</b>.</li>
+        <li>Cóbralo en <b>Zettle</b> y enlázalo al lavado que acaba de pagar. Toca <b>Listo</b>.</li>
+      </ol>
+    </div>
+
+    <div class="ayuda-bloque ayuda-ojo">
+      <h3>🚗 La placa es solo para buscar</h3>
+      <p>Una misma placa puede ser de <b>varias personas</b> (por ejemplo el carro que comparten esposo e hijo).</p>
+      <p>Por eso, al leer una placa, la app te dice de quién es y <b>tú confirmas</b>, o registras a otra persona. La placa <b>ayuda a buscar</b>; no decide el cliente.</p>
+    </div>
+
+    <div class="ayuda-bloque">
+      <h3>El lavado gratis</h3>
+      <p>Cada <b>5 lavados pagados</b> = <b>1 gratis</b>. Se acumulan: un cliente puede traer 2 o 3 guardados.</p>
+      <p>El botón <b>Utilizar Lavado GRATIS</b> <b>no se prende solo</b>. Solo lo prendes cuando el cliente decide usarlo — puede preferir guardarlo y pagar.</p>
+    </div>
+
+    <div class="ayuda-bloque ayuda-ojo">
+      <h3>Cuándo cuenta una visita</h3>
+      <p>Una visita cuenta para la lealtad <b>solo cuando la enlazas a una venta real</b> de Zettle (paso 4).</p>
+      <p>Si tocas <b>No hubo venta / cancelar</b>, esa visita se descarta y <b>no cuenta</b>.</p>
+    </div>
+
+    <div class="ayuda-bloque">
+      <h3>Si te equivocaste</h3>
+      <ul>
+        <li>Elegiste mal la venta → <b>Corregir — elegir otra venta</b>.</li>
+        <li>No hubo venta o se canceló → <b>No hubo venta / cancelar</b>.</li>
+        <li>Nombre o teléfono mal → <b>Editar datos</b>.</li>
+      </ul>
+    </div>
+
+    <div class="ayuda-bloque">
+      <h3>📸 La cámara</h3>
+      <p>Toca el recuadro para <b>prender o apagar</b> la cámara. Apunta a la placa y toca <b>Tomar foto</b>.</p>
+      <p>Si no lee la placa, escríbela <b>a mano</b> — la app <b>nunca inventa</b> una placa. Si la cámara fija no funciona, usa <b>Tomar foto con cámara de Tablet</b>.</p>
+    </div>
+
+    <div class="ayuda-bloque">
+      <h3>La nota en Zettle</h3>
+      <p>Al cobrar en Zettle, escribe la nota así, para que el supervisor sepa qué carro es:</p>
+      <div class="ayuda-nota-formato"><b>CÓDIGO&nbsp; COLOR&nbsp; -&nbsp; NOMBRE</b></div>
+      <p>Ejemplos: <b>AU BLANCO - JUAN PEREZ</b> &nbsp;·&nbsp; <b>CA NEGRA</b></p>
+      <ul>
+        <li><b>PU</b> = pickup</li>
+        <li><b>CA</b> = camioneta</li>
+        <li><b>AU</b> = automóvil</li>
+        <li><b>PA</b> = pasajeros (combi)</li>
+      </ul>
+      <p>El <b>guion (-)</b> separa el color del nombre. El nombre es opcional; ponlo sobre todo en los <b>6to lavado gratis</b>.</p>
+      <p>Escribe el código <b>completo</b>: <b>AU</b>, nunca solo "A".</p>
+    </div>
+
+  </div>
+</div>
+
 <div id="acceso">
   <h2 style="color:#e6edf3">Código de acceso</h2>
   <input id="campo" inputmode="text" autocapitalize="characters" autocomplete="off">
@@ -412,7 +523,30 @@ function mostrar(id, empujar) {
   window.scrollTo(0, 0);
   if (empujar) { try { history.pushState({ caja: id }, ""); } catch (e) {} }
 }
-window.addEventListener("popstate", function () { irInicio(false); });
+window.addEventListener("popstate", function () {
+  // Si la Ayuda esta abierta, el "atras" solo la cierra (no reinicia al
+  // cliente en curso). Si no, regresa al inicio como siempre.
+  if (document.getElementById("ayuda").classList.contains("abierto")) { cerrarAyudaReal(); return; }
+  irInicio(false);
+});
+
+// --- Panel de Ayuda (overlay) ----------------------------------------
+// Se puede abrir desde cualquier pantalla y NO altera al cliente en curso.
+// Mismo patron de "atras" que el resto: abrir empuja un estado, cerrar lo
+// consume con history.back() y el popstate hace el cierre real.
+function abrirAyuda() {
+  if (feedVivo) apagarFeed();                       // se lee la ayuda, no la camara
+  document.getElementById("ayuda").classList.add("abierto");
+  document.getElementById("ayuda-cuerpo").scrollTop = 0;
+  try { history.pushState({ ayuda: true }, ""); } catch (e) {}
+}
+function cerrarAyudaReal() {
+  document.getElementById("ayuda").classList.remove("abierto");
+}
+document.getElementById("btn-ayuda").addEventListener("click", abrirAyuda);
+document.getElementById("btn-cerrar-ayuda").addEventListener("click", function () {
+  try { history.back(); } catch (e) { cerrarAyudaReal(); }
+});
 
 // --- Estado del cliente en curso -------------------------------------
 var personaActual = null;   // {id, nombre, telefono, notas, lealtad}
