@@ -135,9 +135,11 @@
     padding:16px; margin:12px 0 6px;
   }
   .tarjeta-lealtad.gratis { background:#132e1b; border-color:#3fb950; }
-  .tl-fila { display:flex; gap:10px; }
-  .tl-cel { flex:1; text-align:center; }
+  .tl-fila { display:flex; gap:10px; flex-wrap:wrap; }
+  .tl-cel { flex:1; text-align:center; min-width:70px; }
   .tl-num { font-size:30px; font-weight:900; color:#e6edf3; line-height:1; }
+  .tl-num.tl-money { font-size:22px; color:#3fb950; }
+  td.gastado-gratis { color:#3fb950; font-weight:700; }
   .tl-num .tl-de { font-size:15px; font-weight:700; color:#8b949e; }
   .tl-rot { font-size:12px; color:#8b949e; margin-top:5px; }
   .tl-msg { text-align:center; margin-top:12px; font-size:15px; font-weight:700; color:#3fb950; }
@@ -638,6 +640,7 @@ function perfilPersona(p, historial) {
   html +=     '<div class="tl-cel"><div class="tl-num">' + (l.sellos != null ? l.sellos : "—") + '<span class="tl-de">/5</span></div><div class="tl-rot">Sellos</div></div>';
   html +=     '<div class="tl-cel"><div class="tl-num">' + (l.disponibles || 0) + '</div><div class="tl-rot">Lavados gratis</div></div>';
   html +=     '<div class="tl-cel"><div class="tl-num">' + (l.visitas_totales || 0) + '</div><div class="tl-rot">Visitas</div></div>';
+  html +=     '<div class="tl-cel"><div class="tl-num tl-money">' + pesos(p.gastado || 0) + '</div><div class="tl-rot">Gastado</div></div>';
   html +=   "</div>";
   html +=   l.disponibles
     ? '<div class="tl-msg">Tiene ' + l.disponibles + (l.disponibles === 1 ? " lavado gratis" : " lavados gratis") + " por canjear</div>"
@@ -650,7 +653,7 @@ function perfilPersona(p, historial) {
   }
   html += "</div>";
 
-  html += "<h2>Visitas</h2>" + tablaVisitas(historial, { conPlaca: true });
+  html += "<h2>Visitas</h2>" + tablaVisitas(historial, { conPlaca: true, conMonto: true });
 
   var cont = document.getElementById("cli-res");
   cont.innerHTML = html;
@@ -711,6 +714,7 @@ function tablaVisitas(lista, opts) {
   var html = "<table><tr><th>Fecha</th>" +
              (opts.conPlaca ? "<th>Placa</th>" : "") +
              "<th>Entrada</th><th>Salida</th><th>Línea</th><th>Secó</th>" +
+             (opts.conMonto ? '<th class="num">Gastado</th>' : "") +
              (opts.conCliente ? "<th>Cliente</th>" : "") + "</tr>";
   lista.forEach(function (v) {
     html += "<tr><td>" + escapar(fechaCorta(v.fecha)) + "</td>";
@@ -723,6 +727,10 @@ function tablaVisitas(lista, opts) {
             "<td>" + escapar(hora(v.salida)) + "</td>" +
             "<td>" + escapar(v.linea != null ? v.linea : "—") + "</td>" +
             "<td>" + escapar((v.secadores && v.secadores.length) ? v.secadores.join(", ") : "—") + "</td>";
+    if (opts.conMonto) {
+      html += v.es_gratis ? '<td class="gastado-gratis">Gratis</td>'
+            : (v.monto != null ? '<td class="num">' + escapar(pesos(v.monto)) + "</td>" : '<td class="tenue num">—</td>');
+    }
     if (opts.conCliente) {
       html += (v.persona && v.persona.id)
         ? '<td><button class="enlace" data-persona="' + v.persona.id + '">' + escapar(v.persona.nombre) + "</button></td>"
@@ -740,6 +748,10 @@ function fechaCorta(iso) {
 function hora(iso) {
   if (!iso) return "—";
   return new Date(iso).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
+}
+function pesos(n) {
+  if (n == null) return "—";
+  return "$" + Math.round(Number(n)).toLocaleString("es-MX");
 }
 
 cargarCodigo();
