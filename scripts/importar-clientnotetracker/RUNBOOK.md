@@ -155,6 +155,24 @@ los `carros`/`ventas` (historial de operación). El import solo vive en
 
 ---
 
+## 4b. INCREMENTAL — agregar solo los días nuevos (RECOMENDADO en vivo)
+
+En vez del RESET (borrar todo y re-importar), en el flujo en vivo el dueño sube un
+export **de los días nuevos** (o del día, filtrado con Start/End date en el app) y
+solo se agrega lo que falta, **sin duplicar**:
+
+1. Extraer el PDF nuevo → texto (3.1), jalar Zettle (3.2), staging (3.3).
+2. `truncate stg_cnt` y cargar SOLO el export nuevo (3.4).
+3. Correr **`import-incremental.sql`** (NO borra; agrega solo lo que no exista ya).
+   Dedup: una visita ya está si hay un import con **el mismo ticket**, o con la
+   **misma persona + misma hora** (`creado_en`). Cubre notas sin ticket.
+4. Dry-run opcional: `inc_dryrun` (mismo cuerpo + `raise`) dice cuántas agregaría.
+
+Probado (27/jul/2026): la 1a export tenía hoy hasta 18:05; la 2a (solo hoy, hasta
+19:17) traía 105 notas → **96 duplicados detectados, 10 nuevos agregados**, 13,312→
+13,322. Idempotente: re-correr agrega 0. El padrón del export siempre viene completo;
+las notas son las date-filtradas.
+
 ## 5. Números de la 1a corrida (27/jul/2026) — para comparar
 
 - Visitas: **13,312** (913 gratis, $2,936,802, 575 ligadas a carro).
