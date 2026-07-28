@@ -25,6 +25,11 @@ function emit(){ if(!have)return;
   # sin QUITAR los que la cajera SI anoto y Zettle cobro distinto.
   esg = (cntg==1 || (matched && gz[num]==1)) ? 1 : 0
   if(cur=="gabriel rodriguez valdez" && num=="6" && fecha=="2026-04-25") esg=1
+  # Monto: si la visita es gratis pero Zettle NO la tiene como producto "Gratis"
+  # (gz!=1), el numero de ticket esta mal (apunta a una venta pagada ajena). El
+  # lavado fue gratis -> no se le atribuye ese monto (queda sin monto). Los gratis
+  # reales de Zettle (gz=1) conservan su monto ($0 o el extra que sí pagaron).
+  if(esg==1 && !(matched && gz[num]==1)) monto=""
   printf "%s\t%s\t%s\t%d\t%s\t%s\n", cur, disp, dt24, esg, monto, num
   have=0 }
 FNR==NR { amt[$1]=$2; zd[$1]=$3; gz[$1]=$4; next }

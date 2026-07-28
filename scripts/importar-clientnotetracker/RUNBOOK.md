@@ -48,6 +48,9 @@ monto. Rebanada chica.
   ej. `2O969`→20969) y tomar la corrida de dígitos más larga (`grqatis#6134`→6134).
 - **Monto:** el `amount` de Zettle (centavos → pesos), **solo** con match del mismo
   día. Ticket que mapea a fecha lejana = mal escrito → sin monto (no se inventa).
+  Además, si la visita es **gratis** pero Zettle NO la tiene como producto "Gratis"
+  (gz≠1 → el número apunta a una venta pagada ajena) → **sin monto** (el lavado fue
+  gratis; no se le atribuye ese pago). Los gratis reales (gz=1) conservan su $0/extra.
 - **Fecha:** el `Time` es hora local **America/Tijuana**. Se guarda en 24h y en SQL
   se convierte: `dt_local::timestamp at time zone 'America/Tijuana'`.
 - **Personas:** dedup por `normalizar_nombre` (minúsculas + sin acentos). Nombre =
