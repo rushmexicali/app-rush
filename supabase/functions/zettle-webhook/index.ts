@@ -11,7 +11,9 @@
 // porque Zettle no manda (ni puede mandar) un token de Supabase.
 // =====================================================================
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// npm: en vez de esm.sh — el arranque en frio es mas confiable (esm.sh a
+// veces tardaba/fallaba al bootear y eso salia como HTTP 502 hacia Zettle).
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 // Supabase inyecta estas variables solito dentro de la funcion.
 // No hay que configurarlas a mano ni pegarlas aqui.
@@ -166,22 +168,30 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // (lo hace cuando no le respondemos a tiempo), la segunda no crea una
   // fila repetida ni truena. El carro entra a la cola una sola vez.
   // ---------------------------------------------------------------
-  const { error } = await db
-    .from("ventas")
-    .upsert(
-      {
-        purchase_uuid: purchaseUuid,
-        monto: monto,
-        recibido_en: recibidoEn,
-        payload: evento, // el aviso completo, sin tocar
-      },
-      { onConflict: "purchase_uuid", ignoreDuplicates: true },
-    );
+  try {
+    const { error } = await db
+      .from("ventas")
+      .upsert(
+        {
+          purchase_uuid: purchaseUuid,
+          monto: monto,
+          recibido_en: recibidoEn,
+          payload: evento, // el aviso completo, sin tocar
+        },
+        { onConflict: "purchase_uuid", ignoreDuplicates: true },
+      );
 
-  if (error) {
-    // Aqui SI devolvemos 500 a proposito. Ver nota al final.
-    console.error("Fallo al guardar la venta", purchaseUuid, ":", error);
-    return responder({ ok: false, error: error.message }, 500);
+    if (error) {
+      // Aqui SI devolvemos 500 a proposito. Ver nota al final.
+      console.error("Fallo al guardar la venta", purchaseUuid, ":", error);
+      return responder({ ok: false, error: error.message }, 500);
+    }
+  } catch (e) {
+    // Una excepcion de red al hablar con la base (fetch que truena) tumbaba la
+    // funcion con un 502 sin atrapar. Ahora se atrapa y se responde 500, que
+    // es reintentable: Zettle reintenta y la venta se recupera, no se pierde.
+    console.error("Excepcion al guardar la venta", purchaseUuid, ":", e);
+    return responder({ ok: false, error: "excepcion al guardar" }, 500);
   }
 
   console.log("Venta guardada:", purchaseUuid, "| monto:", monto);
