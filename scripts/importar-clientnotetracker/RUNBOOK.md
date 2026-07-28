@@ -4,8 +4,9 @@ Guía completa y **repetible** para migrar el historial del app viejo
 **ClientNoteTracker** al CRM nuevo. Pensada para re-correrse tal cual cuando
 el dueño suba la **base real y definitiva** antes de arrancar en vivo.
 
-Primera corrida: **27/jul/2026** — 13,312 visitas, 4,545 clientes, 898 gratis,
-$2,936,802 conciliados, 256 lavados gratis acumulados a honrar. Todo verificado.
+Primera corrida: **27/jul/2026** — 13,312 visitas, 4,545 clientes, **913 gratis**,
+$2,936,802 conciliados, **243 lavados gratis acumulados en 239 personas** a honrar.
+Todo verificado (regla de gratis = UNIÓN CNT/Zettle, ver §1).
 
 ---
 
@@ -31,15 +32,18 @@ monto. Rebanada chica.
 
 ## 1. Reglas (NO cambiar sin pensarlo — costaron cotejo)
 
-- **es_gratis (ZETTLE MANDA):** si la visita tiene match del mismo día (±3) con una
-  compra de Zettle → es_gratis = (el producto de Zettle se llama **"Gratis"**,
-  variante "6to Lavado", $0). Sin match (viejas / ticket ilegible) → detección de
-  **texto** de la nota: contiene "gratis" **o** un typo a distancia de edición ≤2
-  (grqatis, gtratis, grstis…). **"pendiente" NO cuenta** como usado (se le guarda al
-  cliente, queda disponible).
-  - Cotejo de la 1a corrida: **99.7% de acuerdo** CNT vs Zettle. El cruce corrige
-    solo: gratis que la cajera olvidó anotar (Zettle sí los tiene) y "gratis" que en
-    realidad se cobraron.
+- **es_gratis (UNIÓN — CNT O Zettle):** `es_gratis = 1` si la **nota de CNT** lo dice
+  (contiene "gratis" o un typo a distancia de edición ≤2: grqatis, gtratis, grstis…;
+  **"pendiente" NO cuenta**, se le guarda al cliente) **O** si la visita tiene match del
+  mismo día (±3) con una compra de Zettle cuyo **producto se llama "Gratis"** (variante
+  "6to Lavado", $0).
+  - 🔴 **Por qué UNIÓN y no "Zettle manda":** la primera corrida usó "Zettle manda"
+    (Zettle sobrescribe a CNT). ERROR: quitaba redenciones que la cajera SÍ anotó pero
+    Zettle registró distinto (los 15 casos de "$50–$400"). Lo cachó el dueño con **Mario
+    Torres** (ticket 25011, 25-jul: CNT="GRATIS", Zettle=$50 → se le quitó el canje y le
+    sobró 1 gratis). La UNIÓN **agrega** los que la cajera olvidó (Zettle) **sin quitar**
+    los que la cajera anotó (CNT). Cotejo CNT vs Zettle: 99.7% de acuerdo; los ~40
+    desacuerdos se resuelven a favor del que diga "gratis".
 - **Número de ticket:** normalizar **O → 0** (la cajera teclea la letra O por el 0,
   ej. `2O969`→20969) y tomar la corrida de dígitos más larga (`grqatis#6134`→6134).
 - **Monto:** el `amount` de Zettle (centavos → pesos), **solo** con match del mismo
@@ -150,8 +154,8 @@ los `carros`/`ventas` (historial de operación). El import solo vive en
 
 ## 5. Números de la 1a corrida (27/jul/2026) — para comparar
 
-- Visitas: **13,312** (898 gratis, $2,936,802, 575 ligadas a carro).
+- Visitas: **13,312** (913 gratis, $2,936,802, 575 ligadas a carro).
 - Personas: **4,545** import (+ 1 caja de prueba = 4,546).
-- Lealtad acumulada a honrar: **256 gratis en 248 personas**.
+- Lealtad acumulada a honrar: **243 gratis en 239 personas**.
 - Top gasto: Felipe Castañeda $23,395 (77 visitas). Cuadra.
 - ~5.5% de visitas sin monto (tickets ilegibles / pre-Zettle) — piso, no total.

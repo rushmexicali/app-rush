@@ -20,7 +20,10 @@ function norm(s){ s=tolower(s); gsub(/[[:space:]]+/," ",s); gsub(/^ | $/,"",s); 
 function diasdiff(a,b,  ta,tb){ ta=mktime(substr(a,1,4)" "substr(a,6,2)" "substr(a,9,2)" 12 0 0"); tb=mktime(substr(b,1,4)" "substr(b,6,2)" "substr(b,9,2)" 12 0 0"); if(ta<0||tb<0)return 999; return (ta>tb?ta-tb:tb-ta)/86400 }
 function to24(s,  fe,hp,hh,mm,ap){ fe=substr(s,1,10); hp=substr(s,12); split(hp,p," "); split(p[1],hm,":"); hh=hm[1]+0; mm=hm[2]; ap=p[2]; if(ap=="PM"&&hh<12)hh+=12; if(ap=="AM"&&hh==12)hh=0; return fe" "sprintf("%02d:%s:00",hh,mm) }
 function emit(){ if(!have)return;
-  esg = matched ? gz[num] : cntg
+  # UNION: gratis si la nota de CNT lo dice O si Zettle tiene producto "Gratis"
+  # (con match del mismo dia). Asi se AGREGAN los que la cajera olvido (Zettle)
+  # sin QUITAR los que la cajera SI anoto y Zettle cobro distinto.
+  esg = (cntg==1 || (matched && gz[num]==1)) ? 1 : 0
   if(cur=="gabriel rodriguez valdez" && num=="6" && fecha=="2026-04-25") esg=1
   printf "%s\t%s\t%s\t%d\t%s\t%s\n", cur, disp, dt24, esg, monto, num
   have=0 }
