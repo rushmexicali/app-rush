@@ -1769,6 +1769,8 @@ document.addEventListener("DOMContentLoaded", function () {
     // imagen porque cerrarPantalla() pone asig en null.
     var fotoPendiente = (asig.modo === "asignar") ? asig.fotoDataURL : null;
     var carroDeFoto = asig.carro;
+    // Para el aviso si la foto no se logra guardar (tras el reintento).
+    var etiquetaFoto = [asig.tipo, asig.color].filter(Boolean).join(" ");
 
     // La misma pantalla llama a dos rutas distintas segun el modo. Se
     // ramifica aqui y no se duplica la barra: #confirmar y #cancelar
@@ -1823,7 +1825,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (d && d.ok === false) { alert(d.error || "No se pudo"); pintarAsignacion(); return; }
         // Ya asignado: ahora si se sube la foto, en background. La lectura de
         // placa/marca aparece sola en la tarjeta con el siguiente consultar().
-        if (fotoPendiente) enviarFotoGuardada(fotoPendiente, carroDeFoto);
+        if (fotoPendiente) enviarFotoGuardada(fotoPendiente, carroDeFoto, etiquetaFoto);
         cerrarPantalla();
       })
       .catch(function () { alert("Sin conexión. Intenta otra vez."); })
@@ -2419,26 +2421,53 @@ function tomarFotoAsignar(archivo) {
     });
 }
 
+function esperar(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
 // Sube una foto ya achicada, en BACKGROUND, despues de asignar el carro. No
 // bloquea nada: la pantalla ya se cerro. La lectura de placa/marca ocurre en
 // el servidor y aparece sola en la tarjeta con el siguiente consultar().
-function enviarFotoGuardada(dataURL, id) {
+//
+// El wifi del taller es flojo y una subida se cae sin que nadie se entere
+// (asi el carro 881 quedo secando sin foto el 28/jul). Por eso: si falla, se
+// REINTENTA UNA sola vez tras una pausa corta; si el reintento tampoco pega,
+// se le AVISA al supervisor para que la vuelva a tomar desde la tarjeta —
+// deja de perderse en silencio. "Falla" = la red truena, o /foto no responde
+// ok:true (que es lo unico que garantiza que la foto quedo guardada).
+function enviarFotoGuardada(dataURL, id, etiqueta) {
   if (!dataURL || !id) return;
   var boton = document.querySelector('[data-foto="' + id + '"]');
   if (boton) boton.classList.add("subiendo");
-  pedir("/foto", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ carro: id, imagen: dataURL })
-  })
-    .then(function (r) { return r.json(); })
-    .then(function (d) {
-      if (d && d.ok === false) console.error("No se pudo guardar la foto:", d.error);
-      consultar();   // trae la placa/marca ya leidas y la miniatura
+
+  function intentar() {
+    return pedir("/foto", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ carro: id, imagen: dataURL })
     })
-    .catch(function () {
-      // Si falla, el carro sigue sin foto; se puede tomar desde la tarjeta.
-      if (boton) boton.classList.remove("subiendo");
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        // ok:true = la foto SI se guardo (la lectura de placa puede fallar
+        // aparte y aun asi devuelve ok:true; eso no es falla de subida).
+        if (!d || d.ok !== true) throw new Error(d && d.error ? d.error : "no se guardo");
+      });
+  }
+  function terminar() { if (boton) boton.classList.remove("subiendo"); }
+
+  intentar()
+    .then(function () { terminar(); consultar(); })   // pego a la primera
+    .catch(function (e1) {
+      if (e1 && e1.message === "codigo") { terminar(); return; }   // 401: no es la foto
+      // Un reintento, tras una pausa por si el wifi apenas parpadeo.
+      return esperar(1500).then(intentar)
+        .then(function () { terminar(); consultar(); })            // pego en el reintento
+        .catch(function (e2) {
+          terminar();
+          if (e2 && e2.message === "codigo") return;
+          console.error("Foto no guardada tras 2 intentos, carro", id, ":", e2 && e2.message);
+          consultar();   // la tarjeta refleja el estado real (sin foto)
+          alert("No se pudo guardar la foto" + (etiqueta ? " del " + etiqueta : "") +
+                ". Tómala otra vez desde su tarjeta.");
+        });
     });
 }
 
