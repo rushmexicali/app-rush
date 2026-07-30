@@ -248,6 +248,54 @@ el cronómetro de secado **no se reinicia** — esa es la diferencia con Regresa
 reinicia. Regla: un carro secando no puede quedarse sin ningún secador (borraría todas sus
 asignaciones), y el botón Guardar lo impide.
 
+### "Borrar unidad" — sacar de la cola la información basura (29/jul/2026)
+
+Arriba del contador de tiempo, en la esquina de cada tarjeta, hay un botón rojo **"Borrar
+unidad"**. Saca de la cola un carro que el supervisor ya no va a trabajar (se fue el cliente,
+se canceló, o de plano lo olvidó). Existe porque esos carros olvidados ensucian los promedios
+y el conteo — es basura que entra por el lado del supervisor.
+
+**Qué hace, textual del dueño:** *"se borra de la lista y no se consideran los tiempos de
+secado. Toda la demás información se debe grabar... solo la hora de entrada, mas no la de
+salida."*
+
+- **No borra la fila.** Reusa `cancelado_en` —el MISMO campo que ya saca un carro de `/cola` y
+  del reporte (filtro `cancelado_en is null`, ya probado)— así que **no se crea una segunda
+  regla de exclusión** (el error que este proyecto ya cometió varias veces). Conserva
+  producto, monto, nota, foto, hora de entrada; **`entregado_en` nunca se toca** (sin hora de
+  salida); las etapas y asignaciones quedan intactas (quién lo secaba sigue registrado). Es
+  **reversible** (`cancelado_en = null`).
+- **Se separa de las devoluciones** con `carros.cancelado_motivo = 'borrado_supervisor'`
+  (columna nueva, migración `083`). El reporte agrega el campo **`borrados`** (subconjunto de
+  `cancelados`) y la página del dueño lo muestra cuando no es cero. Verificado byte a byte: el
+  resto del reporte quedó idéntico en 6 días.
+
+**Cuándo aparece y cuándo se habilita** — pensado para que el supervisor (de la tercera edad)
+no borre por accidente una unidad que iba bien:
+
+  | Estado del carro | El botón aparece | Se habilita a los |
+  |---|---|---|
+  | **Sin asignar** (prelavado) | sí | **30 min** sin asignar |
+  | **Secando** | sí | **2 h** secando (un carro 2 h "secando" es un olvido, nadie tarda eso) |
+  | Cualquier otro | no | — |
+
+  Antes de cumplir el tiempo el botón **se ve apagado, no desaparece** (mismo patrón que la
+  cámara: un botón que aparece solo confunde). El umbral vive en `BORRAR_UMBRAL` (front) y se
+  aplica por estado. Como la firma de `pintar()` no incluye el tiempo, quien prende el botón al
+  cruzar el umbral es `actualizarRelojes()` (cada segundo), no un rebuild.
+
+- **Los candados de verdad viven en la base** (`borrar_unidad`, migraciones `083`+`084`): solo
+  `prelavado` con 30+ min, o `secando` con 2h+ desde el inicio de la etapa de secado abierta.
+  Así una llamada suelta no puede borrar un carro bueno aunque el front falle. El "2 h secando"
+  se mide desde la etapa `secando` con `fin is null` — el mismo dato que cuenta el reloj.
+- **Confirma antes de borrar** (es una acción que quita el carro de la lista). Es idempotente:
+  borrarlo dos veces no truena.
+
+Probado con `do $$ ... raise` (secando 3h borra, 1h rechaza, prelavado 40min borra, recién
+entrado rechaza; `entregado_en`/etapas/`creado_en` intactos) y contra la API real
+(no destructivo). El front se verificó por **geometría** en el navegador: el botón queda
+arriba del reloj sin encimarlo, y una tarjeta sin botón se ve idéntica a antes.
+
 **Los secadores asignados salen en la tarjeta** (20/jul/2026), debajo del servicio y del mismo
 tamaño, para que el dueño los vea sin abrir el carro. Vienen de la cola (`/cola` ya los daba).
 
