@@ -708,26 +708,20 @@ document.getElementById("cli-q").addEventListener("input", function () {
   cliTimer = setTimeout(function () { cliBuscar(q); }, 250);
 });
 
-// Antes de escribir (o al borrar): dos listas, una debajo de la otra.
-//   1. "Últimas visitas" — las 10 personas del CRM de lealtad con visita
-//      más reciente (libro de `visitas`: caja en vivo o ClientNoteTracker).
-//   2. "Últimos lavados" — los 10 carros más recientes de la OPERACIÓN
-//      (tabla `carros`), que se actualiza sola con cada lavado. Nombre →
-//      placa → (si no hay ninguno, el backend ya lo omite).
+// Antes de escribir (o al borrar): UNA tabla con los últimos 20 lavados que
+// van entrando (tabla `carros`), la misma info que el Historial por placa
+// pero SIN la columna de visitas y CON el ticket al final. Se llena sola:
+// al cobrar sale la descripción de la cajera + ticket; al tomar la foto pasa
+// a modelo + placa; si la placa liga a lealtad, aparece el nombre del cliente.
 function cliRecientes() {
   var cont = document.getElementById("cli-res");
   cont.innerHTML = '<div class="vacio">Cargando…</div>';
-  Promise.all([
-    pedirJSON("/personas?recientes=10").catch(function (e) { if (e && e.message === "codigo") throw e; return { personas: [] }; }),
-    pedirJSON("/carros-recientes?n=10").catch(function (e) { if (e && e.message === "codigo") throw e; return { carros: [] }; })
-  ]).then(function (res) {
+  pedirJSON("/carros-recientes?n=20").then(function (d) {
     // Si el dueño ya empezó a escribir, esta respuesta ya no aplica.
     if (document.getElementById("cli-q").value.trim().length >= 2) return;
-    var personas = res[0].personas || [];
-    var carros = res[1].carros || [];
-    var html = cliResultadosHTML(personas, [], "Últimas visitas") + lavadosHTML(carros);
-    if (!html) { cont.innerHTML = '<div class="vacio">Todavía no hay visitas registradas.</div>'; return; }
-    cont.innerHTML = html;
+    var carros = d.carros || [];
+    if (!carros.length) { cont.innerHTML = '<div class="vacio">Todavía no hay lavados registrados.</div>'; return; }
+    cont.innerHTML = '<h2>Últimos lavados</h2>' + tablaLavados(carros);
     cliCablearBotones(cont);
   }).catch(function (e) {
     if (e && e.message === "codigo") return;
@@ -735,35 +729,45 @@ function cliRecientes() {
   });
 }
 
-// "Últimos lavados": una tarjeta por carro. El nombre manda; si no hay
-// nombre, la placa. Clicable al perfil que corresponda:
-//   dueño de lealtad -> su perfil (data-persona)
-//   sin dueño pero con placa -> perfil de la placa (data-placa)
-//   nombre de caja sin placa -> no es una persona del CRM, no lleva a nada
-function lavadosHTML(carros) {
-  if (!carros || !carros.length) return "";
-  var html = '<h2>Últimos lavados</h2><div class="lista">';
+// La tabla de "Últimos lavados": una fila por carro. Columnas como el
+// Historial por placa (Operación) menos Visitas, más Ticket al final. Todos
+// los enlaces (placa, cliente, secador, ticket) los cablea cliCablearBotones.
+function tablaLavados(carros) {
+  var html = '<table><tr><th>Carro</th><th>Placa</th><th>Cliente</th>' +
+             '<th>Última vez</th><th>Hora de llegada</th><th>Secó</th><th>Ticket</th></tr>';
   carros.forEach(function (c) {
-    var lealtad = c.cliente_lealtad || {};
+    // Con modelo (la foto reconoció submarca): marca + submarca + color
+    // ("MG RX5 Blanca"). Sin él: lo que puso la cajera, tipo + color
+    // ("Camioneta Blanca"). Igual que la regla de la tarjeta del supervisor.
+    var desc = c.submarca
+      ? [c.marca, c.submarca, c.color].filter(Boolean).join(" ")
+      : [c.tipo_unidad, c.color, c.marca].filter(Boolean).join(" ");
     var placaTxt = c.placa_como_se_lee || c.placa || "";
-    var nombre = lealtad.nombre ? titulo(lealtad.nombre) : (c.cliente ? titulo(c.cliente) : "");
-    var etiqueta = nombre || placaTxt;
-    if (!etiqueta) return; // sin nombre ni placa: no aparece (el backend ya filtra)
-    var desc = [c.tipo_unidad, c.color, c.marca, c.submarca].filter(Boolean).join(" ");
-    var sub = [];
-    if (nombre && placaTxt) sub.push(escapar(placaTxt)); // si el título es el nombre, la placa va abajo
-    if (desc) sub.push(escapar(titulo(desc)));
-    if (c.creado_en) sub.push(escapar(hora(c.creado_en)));
-    var attr = lealtad.id ? ' data-persona="' + escapar(lealtad.id) + '"'
-             : (placaTxt ? ' data-placa="' + escapar(placaTxt) + '"' : "");
-    var tag = attr ? "button" : "div";
-    html += "<" + tag + ' class="item"' + attr + ">" +
-            '<div class="item-nom">' + escapar(etiqueta) + "</div>" +
-            (sub.length ? '<div class="item-sub">' + sub.join(" · ") + "</div>" : "") +
-            "</" + tag + ">";
+    html += "<tr><td>" + (desc ? escapar(titulo(desc)) : '<span class="tenue">—</span>') + "</td>" +
+            "<td>" + (placaTxt
+              ? '<button class="enlace" data-placa="' + escapar(placaTxt) + '"><b>' + escapar(placaTxt) + "</b></button>"
+              : '<span class="tenue">—</span>') + "</td>" +
+            "<td>" + clienteLavadoCel(c) + "</td>" +
+            "<td>" + (c.creado_en ? escapar(fechaCorta(c.creado_en)) : "—") + "</td>" +
+            "<td>" + (c.creado_en ? escapar(hora(c.creado_en)) : "—") + "</td>" +
+            "<td>" + secadoresCel(c.secadores) + "</td>" +
+            "<td>" + (c.ticket
+              ? '<button class="enlace" data-ticket="' + escapar(c.ticket) + '">' + escapar(c.ticket) + "</button>"
+              : '<span class="tenue">—</span>') + "</td></tr>";
   });
-  html += "</div>";
-  return html;
+  return html + "</table>";
+}
+
+// La celda Cliente de "Últimos lavados": si la placa liga a un cliente de
+// lealtad, su nombre clicable a su perfil (data-persona); si no, el texto de
+// la nota de caja (sin liga, no es persona del CRM); si no hay nada, una raya.
+function clienteLavadoCel(c) {
+  if (c.cliente_lealtad && c.cliente_lealtad.id) {
+    return '<button class="enlace" data-persona="' + escapar(c.cliente_lealtad.id) + '">' +
+           escapar(titulo(c.cliente_lealtad.nombre)) + "</button>";
+  }
+  if (c.cliente) return escapar(titulo(c.cliente));
+  return '<span class="tenue">—</span>';
 }
 
 function cliBuscar(q) {
@@ -826,7 +830,7 @@ function cliResultadosHTML(personas, placas, encabezado) {
   return html;
 }
 
-// Cablea los botones data-persona / data-placa de un contenedor.
+// Cablea los botones data-persona / data-placa / data-ticket / data-trab.
 function cliCablearBotones(cont) {
   var ps = cont.querySelectorAll("button[data-persona]");
   for (var i = 0; i < ps.length; i++) (function (b) {
@@ -840,6 +844,11 @@ function cliCablearBotones(cont) {
   for (var k = 0; k < ts.length; k++) (function (b) {
     b.addEventListener("click", function () { abrirTicket(b.getAttribute("data-ticket")); });
   })(ts[k]);
+  // Secadores de "Últimos lavados": al perfil del trabajador (otra vista).
+  var trs = cont.querySelectorAll("button[data-trab]");
+  for (var m = 0; m < trs.length; m++) (function (b) {
+    b.addEventListener("click", function () { irATrabajador(b.getAttribute("data-trab")); });
+  })(trs[m]);
 }
 
 function volverABuscar() { cliBuscar(document.getElementById("cli-q").value.trim()); }

@@ -1046,7 +1046,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // de lealtad por placa con clientes_de_placas — la MISMA fuente que el
   // Historial por placa, para no tener dos reglas de "quien es el dueno".
   if (ruta === "/carros-recientes") {
-    const n = Math.min(Math.max(Number(url.searchParams.get("n")) || 10, 1), 50);
+    const n = Math.min(Math.max(Number(url.searchParams.get("n")) || 20, 1), 50);
     const { data, error } = await db.rpc("carros_recientes", { p_limite: n });
     if (error) { console.error("carros_recientes:", error); return json({ error: error.message }, 500); }
     const lista = (data ?? []) as any[];
