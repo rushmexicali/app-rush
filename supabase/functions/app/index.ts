@@ -1066,6 +1066,24 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: "usa GET o POST" }, 405);
   }
 
+  // --- Confirmar / descartar una placa SUGERIDA de una persona ---------
+  // Las placas que salen de la foto entran como "por confirmar". Aqui un
+  // humano (cajera o dueno) las vuelve seguras, o las quita si estan mal.
+  if (ruta === "/placa-confirmar" || ruta === "/placa-descartar") {
+    if (req.method !== "POST") return json({ error: "usa POST" }, 405);
+    let cuerpo: any;
+    try { cuerpo = await req.json(); } catch { return json({ ok: false, error: "cuerpo invalido" }, 400); }
+    const persona = Number(cuerpo?.persona);
+    const placa = String(cuerpo?.placa ?? "");
+    if (!persona || !Number.isFinite(persona) || !placa) {
+      return json({ ok: false, error: "falta persona o placa" }, 400);
+    }
+    const fn = ruta === "/placa-confirmar" ? "confirmar_placa_de_persona" : "descartar_placa_de_persona";
+    const { data, error } = await db.rpc(fn, { p_persona: persona, p_placa: placa });
+    if (error) { console.error(fn, ":", error); return json({ ok: false, error: error.message }, 500); }
+    return json(data);
+  }
+
   // --- Leer la placa de una foto (sin tocar ningun carro) --------------
   // Igual que /foto pero la lectura es para la caja: sube la foto a
   // capturas/ y devuelve lo que leyo. El amarre al carro se hace despues,

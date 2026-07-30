@@ -154,6 +154,23 @@
   .enlace { background:transparent; border:none; color:#58a6ff; font-size:14px; padding:0; cursor:pointer; text-align:left; font-family:inherit; }
   td .tenue, .tenue { color:#6e7681; }
 
+  /* Placas por confirmar (salieron de las fotos). Se ven distintas de las
+     confirmadas —borde punteado ámbar— para que quede claro que aún no son
+     seguras, y traen los botones de confirmar / quitar. */
+  .sugeridas { margin:12px 0 4px; }
+  .sug-rot { font-size:13px; color:#8b949e; margin-bottom:8px; }
+  .sug-nota { color:#6e7681; }
+  .sug-fila { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+  .sug-placa {
+    border:1px dashed #d29922; color:#e6edf3; background:#1a1408;
+    border-radius:8px; padding:5px 10px; font-size:14px; font-weight:700; letter-spacing:1px;
+  }
+  .sug-ok, .sug-no { border:none; border-radius:8px; padding:6px 12px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .sug-ok { background:#238636; color:#fff; }
+  .sug-no { background:transparent; color:#8b949e; border:1px solid #30363d; }
+  .sug-ok:active { filter:brightness(.85); }
+  .sug-no:active { background:#21262d; }
+
   /* Dueño(s) de lealtad de una placa. Sale en el perfil de la placa, sobre
      todo cuando la placa no tiene ninguna visita lavada pero sí tiene dueño. */
   .duenos { margin:10px 0 4px; font-size:15px; color:#c9d1d9; }
@@ -240,8 +257,11 @@ function cargarCodigo() {
   try { CODIGO = localStorage.getItem("rush_codigo") || ""; } catch (e) { CODIGO = ""; }
 }
 
-function pedir(ruta) {
-  return fetch(API + ruta, { headers: { "x-codigo": CODIGO }, cache: "no-store" });
+function pedir(ruta, opts) {
+  opts = opts || {};
+  opts.headers = Object.assign({ "x-codigo": CODIGO }, opts.headers || {});
+  opts.cache = "no-store";
+  return fetch(API + ruta, opts);
 }
 
 function pedirCodigo(fallo) {
@@ -713,12 +733,48 @@ function perfilPersona(p, historial) {
   }
   html += "</div>";
 
+  // Placas POR CONFIRMAR: salieron de las fotos del supervisor. No se dan por
+  // suyas todavía; aquí el dueño confirma con un toque o las quita si están mal.
+  if (p.placas_por_confirmar && p.placas_por_confirmar.length) {
+    html += '<div class="sugeridas">';
+    html += '<div class="sug-rot">Placas por confirmar <span class="sug-nota">(salieron de las fotos; confirma que sea suya)</span></div>';
+    p.placas_por_confirmar.forEach(function (pl) {
+      html += '<div class="sug-fila">' +
+                '<span class="sug-placa">' + escapar(pl) + '</span>' +
+                '<button class="sug-ok" data-confirmar="' + escapar(pl) + '">Sí es suya</button>' +
+                '<button class="sug-no" data-descartar="' + escapar(pl) + '">No</button>' +
+              '</div>';
+    });
+    html += '</div>';
+  }
+
   html += "<h2>Visitas</h2>" + tablaVisitas(historial, { conPlaca: true, conMonto: true, conTicket: true });
 
   var cont = document.getElementById("cli-res");
   cont.innerHTML = html;
   document.getElementById("cli-volver").addEventListener("click", volverABuscar);
   cliCablearBotones(cont); // los chips y las placas de la tabla abren el perfil de la placa
+
+  // Confirmar / quitar una placa sugerida, y recargar el perfil.
+  cont.querySelectorAll("button[data-confirmar]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      placaAccion("/placa-confirmar", p.id, b.getAttribute("data-confirmar"));
+    });
+  });
+  cont.querySelectorAll("button[data-descartar]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      if (!confirm("¿Quitar la placa " + b.getAttribute("data-descartar") + " de " + (titulo(p.nombre) || "este cliente") + "?")) return;
+      placaAccion("/placa-descartar", p.id, b.getAttribute("data-descartar"));
+    });
+  });
+}
+
+// Confirma o quita una placa sugerida de una persona, y reabre su perfil.
+function placaAccion(ruta, persona, placa) {
+  pedir(ruta, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ persona: persona, placa: placa }) })
+    .then(function (r) { if (r.status === 401) { pedirCodigo(true); throw new Error("codigo"); } return r.json(); })
+    .then(function (d) { if (d && d.ok === false) { alert(d.error || "No se pudo"); return; } abrirPersona(persona); })
+    .catch(function (e) { if (e && e.message === "codigo") return; alert("No se pudo. Intenta otra vez."); });
 }
 
 // --- Perfil de una PLACA: todas sus visitas, con la persona de lealtad ---
@@ -747,7 +803,9 @@ function perfilPlaca(placa, historial, duenos) {
     var rotulo = duenos.length > 1 ? "Clientes en lealtad:" : "Cliente en lealtad:";
     html += '<div class="duenos"><span class="duenos-rot">' + rotulo + "</span>" +
             duenos.map(function (dn) {
-              return '<button class="enlace" data-persona="' + dn.id + '">' + escapar(titulo(dn.nombre)) + "</button>";
+              // Si el enlace aún no está confirmado (salió de la foto), se marca.
+              var marca = dn.confirmada === false ? ' <span class="tenue">(por confirmar)</span>' : "";
+              return '<button class="enlace" data-persona="' + dn.id + '">' + escapar(titulo(dn.nombre)) + "</button>" + marca;
             }).join(", ") + "</div>";
   } else {
     html += '<div class="duenos tenue">Sin cliente de lealtad asignado a esta placa.</div>';

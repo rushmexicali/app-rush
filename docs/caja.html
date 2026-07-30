@@ -165,6 +165,23 @@
     padding:6px 12px;
   }
 
+  /* Placas por confirmar (de la foto del supervisor). Botones grandes: la
+     cajera decide con el cliente enfrente. Ámbar punteado = aún no es segura. */
+  .sugeridas-caja { margin:10px 0 2px; }
+  .sug-rot-caja { font-size:15px; color:#8b949e; font-weight:700; margin-bottom:8px; }
+  .sug-fila-caja { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
+  .sug-placa-caja {
+    font-size:19px; font-weight:800; letter-spacing:1px; color:#f0f6fc;
+    background:#1a1408; border:1px dashed #d29922; border-radius:9px; padding:6px 12px;
+  }
+  .sug-ok-caja, .sug-no-caja {
+    font-size:17px; font-weight:800; border:none; border-radius:10px;
+    padding:10px 18px; cursor:pointer; font-family:inherit;
+  }
+  .sug-ok-caja { background:#238636; color:#fff; }
+  .sug-no-caja { background:#161b22; color:#8b949e; border:1px solid #30363d; }
+  .sug-ok-caja:active, .sug-no-caja:active { filter:brightness(.85); }
+
   .toggle {
     display:flex; align-items:center; gap:12px; font-size:19px; font-weight:700;
     background:#161b22; border:1px solid #30363d; border-radius:12px;
@@ -889,12 +906,39 @@ function pintarPersona() {
       }).join("") + "</div>"
     : '<div class="datos-linea">🚗 Sin placas registradas todavía</div>';
 
+  // Placas POR CONFIRMAR: salieron de la foto del supervisor. Aquí la cajera,
+  // con el cliente enfrente, dice si es suya (queda confirmada) o no (se quita).
+  // Es el mejor momento para volverlas seguras.
+  var porConf = (p.placas_por_confirmar || []).filter(Boolean);
+  var sugeridasHtml = porConf.length
+    ? '<div class="sugeridas-caja"><div class="sug-rot-caja">¿Es su placa? (la leyó la cámara del supervisor)</div>' +
+      porConf.map(function (x) {
+        return '<div class="sug-fila-caja">' +
+                 '<span class="sug-placa-caja">' + escapar(x) + '</span>' +
+                 '<button class="sug-ok-caja" data-confirmar="' + escapar(x) + '">Sí es suya</button>' +
+                 '<button class="sug-no-caja" data-descartar="' + escapar(x) + '">No</button>' +
+               '</div>';
+      }).join("") + "</div>"
+    : "";
+
   document.getElementById("datos-persona").innerHTML =
     '<div class="nombre-grande">' + escapar(p.nombre) + "</div>" +
     (p.telefono ? '<div class="datos-linea">📞 ' + escapar(p.telefono) + "</div>" : "") +
     (p.notas ? '<div class="datos-linea">📝 ' + escapar(p.notas) + "</div>" : "") +
     '<div class="datos-linea">Ha venido ' + vecesTexto(l.visitas_totales || 0) + ' o más</div>' +
-    placasHtml;
+    placasHtml + sugeridasHtml;
+
+  // Botones de confirmar / quitar de las placas sugeridas.
+  var dp = document.getElementById("datos-persona");
+  dp.querySelectorAll("button[data-confirmar]").forEach(function (b) {
+    b.addEventListener("click", function () { placaAccionCaja("/placa-confirmar", p.id, b.getAttribute("data-confirmar")); });
+  });
+  dp.querySelectorAll("button[data-descartar]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      if (!confirm("¿Quitar la placa " + b.getAttribute("data-descartar") + " de este cliente?")) return;
+      placaAccionCaja("/placa-descartar", p.id, b.getAttribute("data-descartar"));
+    });
+  });
 
   // "Utilizar Lavado GRATIS" solo aparece si tiene lavados gratis; y NO se
   // prende solo: la cajera lo prende cuando el cliente decide usarlo (puede
@@ -911,6 +955,15 @@ function pintarPersona() {
 
   document.getElementById("form-editar").style.display = "none";
 }
+// Confirma o quita una placa sugerida y repinta al cliente con lo que diga
+// la base (el RPC devuelve la persona ya actualizada).
+function placaAccionCaja(ruta, persona, placa) {
+  postJSON(ruta, { persona: persona, placa: placa }).then(function (d) {
+    if (d && d.ok === false) { alert(d.error || "No se pudo"); return; }
+    if (d && d.persona) { personaActual = d.persona; pintarPersona(); }
+  }).catch(function (e) { if (e && e.message === "codigo") return; alert("No se pudo. Intenta otra vez."); });
+}
+
 function pintarToggleGratis() {
   document.getElementById("lbl-gratis").classList.toggle("on", document.getElementById("chk-gratis").checked);
 }
