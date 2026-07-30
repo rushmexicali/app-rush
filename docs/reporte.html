@@ -708,21 +708,62 @@ document.getElementById("cli-q").addEventListener("input", function () {
   cliTimer = setTimeout(function () { cliBuscar(q); }, 250);
 });
 
-// Antes de escribir (o al borrar): los perfiles de las ultimas 10 personas
-// con visita registrada. Reusa el mismo formato de tarjeta que la busqueda.
+// Antes de escribir (o al borrar): dos listas, una debajo de la otra.
+//   1. "Últimas visitas" — las 10 personas del CRM de lealtad con visita
+//      más reciente (libro de `visitas`: caja en vivo o ClientNoteTracker).
+//   2. "Últimos lavados" — los 10 carros más recientes de la OPERACIÓN
+//      (tabla `carros`), que se actualiza sola con cada lavado. Nombre →
+//      placa → (si no hay ninguno, el backend ya lo omite).
 function cliRecientes() {
   var cont = document.getElementById("cli-res");
   cont.innerHTML = '<div class="vacio">Cargando…</div>';
-  pedirJSON("/personas?recientes=10").then(function (d) {
+  Promise.all([
+    pedirJSON("/personas?recientes=10").catch(function (e) { if (e && e.message === "codigo") throw e; return { personas: [] }; }),
+    pedirJSON("/carros-recientes?n=10").catch(function (e) { if (e && e.message === "codigo") throw e; return { carros: [] }; })
+  ]).then(function (res) {
     // Si el dueño ya empezó a escribir, esta respuesta ya no aplica.
     if (document.getElementById("cli-q").value.trim().length >= 2) return;
-    var personas = d.personas || [];
-    if (!personas.length) { cont.innerHTML = '<div class="vacio">Todavía no hay visitas registradas.</div>'; return; }
-    cliResultados(personas, [], "Últimas visitas");
+    var personas = res[0].personas || [];
+    var carros = res[1].carros || [];
+    var html = cliResultadosHTML(personas, [], "Últimas visitas") + lavadosHTML(carros);
+    if (!html) { cont.innerHTML = '<div class="vacio">Todavía no hay visitas registradas.</div>'; return; }
+    cont.innerHTML = html;
+    cliCablearBotones(cont);
   }).catch(function (e) {
     if (e && e.message === "codigo") return;
     cont.innerHTML = '<div class="vacio">No se pudo cargar.</div>';
   });
+}
+
+// "Últimos lavados": una tarjeta por carro. El nombre manda; si no hay
+// nombre, la placa. Clicable al perfil que corresponda:
+//   dueño de lealtad -> su perfil (data-persona)
+//   sin dueño pero con placa -> perfil de la placa (data-placa)
+//   nombre de caja sin placa -> no es una persona del CRM, no lleva a nada
+function lavadosHTML(carros) {
+  if (!carros || !carros.length) return "";
+  var html = '<h2>Últimos lavados</h2><div class="lista">';
+  carros.forEach(function (c) {
+    var lealtad = c.cliente_lealtad || {};
+    var placaTxt = c.placa_como_se_lee || c.placa || "";
+    var nombre = lealtad.nombre ? titulo(lealtad.nombre) : (c.cliente ? titulo(c.cliente) : "");
+    var etiqueta = nombre || placaTxt;
+    if (!etiqueta) return; // sin nombre ni placa: no aparece (el backend ya filtra)
+    var desc = [c.tipo_unidad, c.color, c.marca, c.submarca].filter(Boolean).join(" ");
+    var sub = [];
+    if (nombre && placaTxt) sub.push(escapar(placaTxt)); // si el título es el nombre, la placa va abajo
+    if (desc) sub.push(escapar(titulo(desc)));
+    if (c.creado_en) sub.push(escapar(hora(c.creado_en)));
+    var attr = lealtad.id ? ' data-persona="' + escapar(lealtad.id) + '"'
+             : (placaTxt ? ' data-placa="' + escapar(placaTxt) + '"' : "");
+    var tag = attr ? "button" : "div";
+    html += "<" + tag + ' class="item"' + attr + ">" +
+            '<div class="item-nom">' + escapar(etiqueta) + "</div>" +
+            (sub.length ? '<div class="item-sub">' + sub.join(" · ") + "</div>" : "") +
+            "</" + tag + ">";
+  });
+  html += "</div>";
+  return html;
 }
 
 function cliBuscar(q) {
@@ -742,8 +783,16 @@ function cliBuscar(q) {
 }
 
 function cliResultados(personas, placas, encabezado) {
+  var cont = document.getElementById("cli-res");
+  var html = cliResultadosHTML(personas, placas, encabezado);
+  cont.innerHTML = html || '<div class="vacio">Nada encontrado.</div>';
+  cliCablearBotones(cont);
+}
+
+// Igual que cliResultados pero devuelve el HTML (sin escribir), para poder
+// concatenar la sección de personas con la de "Últimos lavados".
+function cliResultadosHTML(personas, placas, encabezado) {
   var html = "";
-  if (!personas.length && !placas.length) html = '<div class="vacio">Nada encontrado.</div>';
 
   if (personas.length) {
     html += '<h2>' + escapar(encabezado || "Clientes") + '</h2><div class="lista">';
@@ -774,9 +823,7 @@ function cliResultados(personas, placas, encabezado) {
     html += "</div>";
   }
 
-  var cont = document.getElementById("cli-res");
-  cont.innerHTML = html;
-  cliCablearBotones(cont);
+  return html;
 }
 
 // Cablea los botones data-persona / data-placa de un contenedor.

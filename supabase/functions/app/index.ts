@@ -1037,6 +1037,30 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ placas: await enriquecer(data ?? []) });
   }
 
+  // --- Ultimos lavados (reporte, seccion Clientes) --------------------
+  // Segunda lista, aparte de la de lealtad: los ultimos carros que pasaron
+  // por el lavado (tabla carros), que SI se actualiza sola con la operacion
+  // del dia (la de lealtad depende de la caja o del ClientNoteTracker). Regla
+  // del dueno: se muestra el nombre; si no hay, la placa; si no hay placa,
+  // no aparece (eso ya lo filtra carros_recientes). Aqui se agrega el dueno
+  // de lealtad por placa con clientes_de_placas — la MISMA fuente que el
+  // Historial por placa, para no tener dos reglas de "quien es el dueno".
+  if (ruta === "/carros-recientes") {
+    const n = Math.min(Math.max(Number(url.searchParams.get("n")) || 10, 1), 50);
+    const { data, error } = await db.rpc("carros_recientes", { p_limite: n });
+    if (error) { console.error("carros_recientes:", error); return json({ error: error.message }, 500); }
+    const lista = (data ?? []) as any[];
+    const claves = lista.map((c) => c.placa).filter(Boolean);
+    let mc: Record<string, any> = {};
+    if (claves.length) {
+      const { data: clis, error: e2 } = await db.rpc("clientes_de_placas", { p_placas: claves });
+      if (e2) console.error("clientes_de_placas:", e2);
+      else mc = (clis ?? {}) as Record<string, any>;
+    }
+    const carros = lista.map((c) => ({ ...c, cliente_lealtad: c.placa ? (mc[c.placa] ?? null) : null }));
+    return json({ carros });
+  }
+
   // --- Trabajadores: lista y perfil de secado -------------------------
   // La lista incluye a TODOS los empleados (activos, en descanso y fuera):
   // el dueno quiere poder abrir el perfil de alguien que hoy descansa y no
