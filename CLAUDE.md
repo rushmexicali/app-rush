@@ -1008,32 +1008,42 @@ Corte automático a las **8:30 PM hora de Mexicali**, guardado para siempre.
 **Qué trae:** vehículos lavados, autos y tiempo promedio de secado por equipo, espera
 promedio por carro, desglose con/sin aspirado, y cuántas placas se alcanzaron a leer.
 
-### Sección Clientes: DOS listas de fuentes distintas (30/jul/2026)
+### Sección Clientes: la tabla "Últimos lavados" (30/jul/2026)
 
-La pestaña **Clientes** muestra, antes de escribir, dos listas — se ven parecidas pero se
-alimentan de tablas distintas, y confundirlas fue justo el reporte del dueño (*"la lista de
-las 10 últimas visitas no se actualiza"*):
+La pestaña **Clientes**, antes de escribir, muestra **UNA sola tabla**: los últimos 20 lavados
+que van entrando. Sirve para "ver los lavados entrando" y **se actualiza sola** con cada carro.
 
-| Lista | Fuente | Cuándo crece |
-|---|---|---|
-| **Últimas visitas** | tabla `visitas` (libro de lealtad), vía `personas_recientes` (085) — **solo personas del CRM** (`persona_id is not null`) | La cajera registra a un cliente en vivo, **o** se sube el concentrado del ClientNoteTracker |
-| **Últimos lavados** | tabla `carros` (webhook de Zettle), vía `carros_recientes` (**093**) | **Sola, con cada lavado del día** |
+> ⚠️ **Historia, para no repetir el bucle.** Primero se intentó reusar el libro de lealtad
+> (`visitas` → `personas_recientes`, 085), pero ése **solo crece con la caja en vivo o el import
+> del ClientNoteTracker**, no con la operación — el dueño reportó *"la lista de las 10 últimas
+> visitas no se actualiza"*. Se agregó `carros_recientes` (093) como segunda lista, y al final el
+> dueño pidió **quitar la de lealtad y dejar una sola tabla** (094). La distinción sigue
+> importando: **`visitas` = lealtad (caja/CNT); `carros` = operación (webhook).** No volver a
+> alimentar esta tabla de `visitas`.
 
-- **El error de percepción:** "Últimas visitas" NO refleja la operación diaria. Un carro que
-  pasó por el lavado no crea una `visita`, así que sin caja en vivo ni import del CNT, esa
-  lista no se mueve. Por eso se agregó **"Últimos lavados"** como lista aparte (no reemplaza
-  a la de lealtad; el dueño pidió las dos).
-- **Regla de identidad de "Últimos lavados"** (textual del dueño): *"Si el cliente no se
-  identifica con nombre, debería de salir la placa, si la placa no se identifica, entonces no
-  aparece."* → **nombre → placa → se omite.** El nombre puede venir del dueño de lealtad (si la
-  placa liga a un cliente del CRM, clicable a su perfil) o de la nota de caja (texto, sin liga).
-  El filtro "sin nombre ni placa no aparece" vive en `carros_recientes`.
+- **Fuente:** `carros_recientes(20)` (**migración 094**) sobre la tabla `carros`. Fila **por
+  carro** (no agregada por placa), orden por `creado_en desc`. Solo excluye prueba y cancelados.
+- **Columnas = las del Historial por placa (Operación) MENOS Visitas, MÁS Ticket al final:**
+  Carro · Placa · Cliente · Última vez · Hora de llegada · Secó · **Ticket**.
+- **Se llena sola conforme entra la info** (esto es el punto, no un adorno):
+  1. **Al cobrar:** descripción de la cajera (tipo+color, "Camioneta Blanca") + **ticket**
+     clicable (abre la venta de Zettle vía `ticket_detalle`, que ya lee `ventas.payload` en vivo
+     — 088 —, así que los lavados de HOY sí traen ticket aunque no estén en `zettle_compras`).
+  2. **Al tomar la foto:** la descripción pasa a marca+submarca+color ("MG RX5 Blanca") y aparece
+     la **placa** clicable a su perfil.
+  3. **Si la placa liga a lealtad:** el **nombre del cliente** clicable a su perfil.
+  4. Los **secadores del carro**, clicables a su perfil.
 - **El dueño de lealtad sale de `clientes_de_placas`** — la MISMA fuente que el Historial por
-  placa, para no tener dos reglas de "quién es el dueño de esta placa". Lo agrega el Edge
-  Function (`/carros-recientes`), no la RPC.
-- Verificado en vivo (30/jul): F-150 `ZKH-805-B` cuya placa se leyó de la foto resolvió a
-  "Jesus Murillo" del CRM y salió con su nombre clicable — el enlace placa→cliente de la
-  operación diaria ya jala aquí.
+  placa, para no tener dos reglas de "quién es el dueño de esta placa". Lo agrega el Edge Function
+  (`/carros-recientes`), no la RPC. Los secadores y el ticket sí los da la RPC (por `carro_id` y
+  desde `ventas.payload`, respectivamente).
+- **Enlaces:** `cliCablearBotones` cablea `data-placa`→perfil de placa, `data-persona`→perfil de
+  cliente, `data-ticket`→modal de ticket, `data-trab`→perfil del secador (este último se agregó
+  aquí; antes solo lo cableaba la Operación).
+- Verificado en vivo (30/jul): el carro 1092 pasó de "Camioneta Blanca" (recién cobrado) a
+  "Audi Q5 Blanca + placa 9XUX799 + secador" cuando el supervisor tomó la foto — la fila se
+  completó sola. `carros_recientes` era `093` (dos listas, nombre→placa→omitir); **094** la rehízo
+  a esta tabla (default 20, sin exigir nombre/placa, + ticket + secadores).
 
 ### Lo que quedó abierto se cierra solo (20/jul/2026)
 
