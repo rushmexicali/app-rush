@@ -178,6 +178,20 @@
   .duenos .duenos-rot { color:#8b949e; font-size:13px; margin-right:6px; }
   .duenos .enlace { font-size:16px; font-weight:700; }
 
+  /* Galería de fotos de la placa. Rejilla de miniaturas, de la más nueva a
+     la más vieja, con la fecha y hora en que se tomó cada una. */
+  .galeria-btn {
+    background:#21262d; color:#e6edf3; border:1px solid #30363d; border-radius:10px;
+    padding:10px 16px; font-size:15px; font-weight:700; margin:10px 0 2px; cursor:pointer;
+    font-family:inherit;
+  }
+  .galeria-btn:active { background:#30363d; }
+  .galeria-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px,1fr)); gap:12px; margin:12px 0; }
+  .foto { margin:0; background:#161b22; border:1px solid #30363d; border-radius:12px; overflow:hidden; }
+  .foto img { width:100%; height:150px; object-fit:cover; display:block; background:#0d1117; }
+  .foto figcaption { padding:7px 9px; font-size:13px; color:#8b949e; text-align:center; }
+  .foto-sinurl { height:150px; display:flex; align-items:center; justify-content:center; color:#6e7681; font-size:13px; }
+
   /* Modal del ticket (la venta completa de Zettle). */
   #ticket-modal { position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:60; display:none; align-items:center; justify-content:center; padding:20px; }
   #ticket-card { background:#161b22; border:1px solid #30363d; border-radius:16px; padding:20px 22px; max-width:480px; width:100%; max-height:85vh; overflow:auto; }
@@ -459,12 +473,25 @@ function tablaPlacas(placas) {
     html += '<tr><td><button class="enlace" data-placa="' + escapar(placaTxt) + '"><b>' + escapar(placaTxt) + "</b></button></td>" +
             '<td class="num">' + p.visitas + "</td>" +
             "<td>" + escapar(carro || "—") + "</td>" +
-            "<td>" + (p.cliente ? escapar(titulo(p.cliente)) : '<span class="tenue">—</span>') + "</td>" +
+            "<td>" + clienteCel(p) + "</td>" +
             "<td>" + (p.ultima_visita ? escapar(fechaCorta(p.ultima_visita)) : "—") + "</td>" +
             "<td>" + (p.ultima_visita ? escapar(hora(p.ultima_visita)) : "—") + "</td>" +
             "<td>" + secadoresCel(p.secadores) + "</td></tr>";
   }
   return html + "</table>";
+}
+
+// La columna "Cliente": el dueño de lealtad (clicable, lleva a su perfil).
+// Si la placa no tiene dueño de lealtad, se cae al texto de la nota de caja
+// (sin liga, porque ese texto no es una persona del CRM). Y si no hay nada,
+// una raya.
+function clienteCel(p) {
+  if (p.cliente_lealtad && p.cliente_lealtad.id) {
+    return '<button class="enlace" data-cliente="' + escapar(p.cliente_lealtad.id) + '">' +
+           escapar(titulo(p.cliente_lealtad.nombre)) + "</button>";
+  }
+  if (p.cliente) return escapar(titulo(p.cliente));
+  return '<span class="tenue">—</span>';
 }
 
 // La columna "Secó": el/los secador(es) de la última visita. Cada uno es
@@ -494,6 +521,10 @@ function cargarPlacas(q) {
       cont.querySelectorAll("button[data-trab]").forEach(function (b) {
         b.addEventListener("click", function () { irATrabajador(b.getAttribute("data-trab")); });
       });
+      // Cada cliente lleva a su perfil (en la vista Clientes).
+      cont.querySelectorAll("button[data-cliente]").forEach(function (b) {
+        b.addEventListener("click", function () { irACliente(b.getAttribute("data-cliente")); });
+      });
     })
     .catch(function () {
       document.getElementById("tablaplacas").innerHTML = '<div class="vacio">No se pudo cargar.</div>';
@@ -513,6 +544,13 @@ function irAPlaca(placa) {
 function irATrabajador(id) {
   mostrarVista("trab");
   abrirTrabajador(id);
+}
+
+// Igual, pero al perfil de un cliente (vista Clientes). mostrarVista no
+// carga las recientes, así que abrirPersona no queda pisado.
+function irACliente(id) {
+  mostrarVista("cli");
+  abrirPersona(id);
 }
 
 function cargarDia(fecha) { cargarReporte("/reporte?fecha=" + fecha); }
@@ -874,12 +912,49 @@ function perfilPlaca(placa, historial, duenos) {
   }
 
   html += '<div class="sub">' + historial.length + (historial.length === 1 ? " visita" : " visitas") + "</div>";
+
+  // Galería: las fotos de esta placa, de la más nueva a la más vieja, con la
+  // fecha y hora en que se tomó cada una. Se cargan al tocar el botón (no de
+  // entrada) porque cada foto es una imagen que pesa.
+  html += '<button class="galeria-btn" id="galeria-btn">📷 Ver galería de fotos</button>';
+  html += '<div id="galeria"></div>';
+
   html += "<h2>Visitas</h2>" + tablaVisitas(historial, { conCliente: true });
 
   var cont = document.getElementById("cli-res");
   cont.innerHTML = html;
   document.getElementById("cli-volver").addEventListener("click", volverABuscar);
+  var gbtn = document.getElementById("galeria-btn");
+  if (gbtn) gbtn.addEventListener("click", function () { cargarGaleria(placa); });
   cliCablearBotones(cont); // enlaces al dueño y a la persona de cada visita
+}
+
+// Carga y pinta la galería de fotos de una placa. El botón se esconde al
+// abrirla (no tiene caso volver a pedirla).
+function cargarGaleria(placa) {
+  var cont = document.getElementById("galeria");
+  var btn = document.getElementById("galeria-btn");
+  if (btn) btn.style.display = "none";
+  cont.innerHTML = '<div class="vacio">Cargando fotos…</div>';
+  pedirJSON("/fotos-placa?placa=" + encodeURIComponent(placa)).then(function (d) {
+    var fotos = d.fotos || [];
+    if (!fotos.length) { cont.innerHTML = '<div class="vacio">Esta placa no tiene fotos guardadas.</div>'; return; }
+    var html = '<div class="galeria-grid">';
+    fotos.forEach(function (f) {
+      var cuando = f.tomada_en ? (fechaCorta(f.tomada_en) + " · " + hora(f.tomada_en)) : "—";
+      html += '<figure class="foto">';
+      html += f.url
+        ? '<a href="' + escapar(f.url) + '" target="_blank" rel="noopener"><img src="' + escapar(f.url) + '" loading="lazy" alt="foto de la placa"></a>'
+        : '<div class="foto-sinurl">No disponible</div>';
+      html += '<figcaption>' + escapar(cuando) + "</figcaption>";
+      html += "</figure>";
+    });
+    html += "</div>";
+    cont.innerHTML = html;
+  }).catch(function (e) {
+    if (e && e.message === "codigo") return;
+    cont.innerHTML = '<div class="vacio">No se pudieron cargar las fotos.</div>';
+  });
 }
 
 // Tabla de visitas compartida por los dos perfiles, con columnas opcionales:

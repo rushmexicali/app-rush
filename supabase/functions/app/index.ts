@@ -990,22 +990,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // --- Historial por placa --------------------------------------------
   // Sin ?q= devuelve las que mas han venido. Con ?q= busca.
   if (ruta === "/placas") {
-    // A cada placa se le agrega la tripulacion de su ULTIMA visita (nombre
-    // + empleado_id, para ligar al perfil del secador). Una sola RPC para
-    // las dos fuentes (busqueda o top), asi no hay dos reglas.
-    const conSecadores = async (placas: any[]): Promise<any[]> => {
+    // A cada placa se le agregan dos cosas de su ULTIMA visita, para las
+    // columnas clicables del Historial por placa:
+    //   secadores       -> tripulacion (nombre + empleado_id) -> perfil del secador
+    //   cliente_lealtad  -> dueno de lealtad (id + nombre)     -> perfil del cliente
+    // Una RPC por cosa, en paralelo, para las DOS fuentes (busqueda o top),
+    // asi no hay dos reglas. cliente_lealtad NO pisa 'cliente' (el texto de
+    // la nota): el front usa el de lealtad si existe, y si no el texto.
+    const enriquecer = async (placas: any[]): Promise<any[]> => {
       const lista = placas ?? [];
       const claves = lista.map((p: any) => p.placa).filter(Boolean);
       if (!claves.length) return lista;
-      const { data: mapa, error } = await db.rpc("secadores_de_placas", { p_placas: claves });
-      if (error) {
-        // Si falla, se devuelven las placas sin secadores: la columna sale
-        // vacia pero la tabla no se cae.
-        console.error("secadores_de_placas:", error);
-        return lista;
-      }
-      const m = (mapa ?? {}) as Record<string, any[]>;
-      return lista.map((p: any) => ({ ...p, secadores: m[p.placa] ?? [] }));
+      const [secs, clis] = await Promise.all([
+        db.rpc("secadores_de_placas", { p_placas: claves }),
+        db.rpc("clientes_de_placas", { p_placas: claves }),
+      ]);
+      // Si alguna falla, esa columna sale vacia pero la tabla no se cae.
+      if (secs.error) console.error("secadores_de_placas:", secs.error);
+      if (clis.error) console.error("clientes_de_placas:", clis.error);
+      const ms = (secs.data ?? {}) as Record<string, any[]>;
+      const mc = (clis.data ?? {}) as Record<string, any>;
+      return lista.map((p: any) => ({
+        ...p,
+        secadores: ms[p.placa] ?? [],
+        cliente_lealtad: mc[p.placa] ?? null,
+      }));
     };
 
     // Con q: busca por placa, marca o submarca (RPC que normaliza acentos y
@@ -1014,7 +1023,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (q) {
       const { data, error } = await db.rpc("buscar_vehiculos", { p_q: q });
       if (error) { console.error("buscar_vehiculos:", error); return json({ error: error.message }, 500); }
-      return json({ placas: await conSecadores(data ?? []) });
+      return json({ placas: await enriquecer(data ?? []) });
     }
     const { data, error } = await db
       .from("historial_placas")
@@ -1025,7 +1034,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       console.error("Fallo al buscar placas:", error);
       return json({ error: error.message }, 500);
     }
-    return json({ placas: await conSecadores(data ?? []) });
+    return json({ placas: await enriquecer(data ?? []) });
   }
 
   // --- Trabajadores: lista y perfil de secado -------------------------
@@ -1047,6 +1056,28 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (error) { console.error("perfil_de_secador:", error); return json({ error: error.message }, 500); }
     if (!data) return json({ error: "Ese trabajador no existe" }, 404);
     return json({ trabajador: data });
+  }
+
+  // --- Galeria de fotos de una placa ----------------------------------
+  // Una foto por visita que tuvo foto, de la mas nueva a la mas vieja, con
+  // la hora en que se tomo. El bucket es privado (se ven placas), asi que
+  // cada path se firma al vuelo. Se abre desde el boton "Galeria" del perfil
+  // de la placa, de tanto en tanto, no cada 3s: no hace falta cachear.
+  if (ruta === "/fotos-placa") {
+    const placa = (url.searchParams.get("placa") ?? "").trim();
+    if (!placa) return json({ error: "falta placa" }, 400);
+    const { data, error } = await db.rpc("fotos_de_placa", { p_placa: placa });
+    if (error) { console.error("fotos_de_placa:", error); return json({ error: error.message }, 500); }
+    const fotos: any[] = [];
+    for (const f of (data ?? []) as any[]) {
+      let signed: string | null = null;
+      if (f.foto_path) {
+        const { data: s } = await db.storage.from("fotos").createSignedUrl(f.foto_path, 3600);
+        signed = s?.signedUrl ?? null;
+      }
+      fotos.push({ carro_id: f.carro_id, tomada_en: f.tomada_en, url: signed });
+    }
+    return json({ fotos });
   }
 
   // ===================================================================
