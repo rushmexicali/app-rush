@@ -1010,6 +1010,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ placas: data ?? [] });
   }
 
+  // --- Trabajadores: lista y perfil de secado -------------------------
+  // La lista incluye a TODOS los empleados (activos, en descanso y fuera):
+  // el dueno quiere poder abrir el perfil de alguien que hoy descansa y no
+  // sale en la grilla de asignar. La logica vive en la base (089).
+  if (ruta === "/trabajadores") {
+    const { data, error } = await db.rpc("trabajadores");
+    if (error) { console.error("trabajadores:", error); return json({ error: error.message }, 500); }
+    return json({ trabajadores: data ?? [] });
+  }
+
+  // Perfil de UNA persona: su historial de secado (cada carro con placa,
+  // inicio/fin de secado, minutos y motivos de rechazo).
+  if (ruta === "/trabajador") {
+    const id = (url.searchParams.get("id") ?? "").trim();
+    if (!id) return json({ error: "falta id" }, 400);
+    const { data, error } = await db.rpc("perfil_de_secador", { p_empleado: id });
+    if (error) { console.error("perfil_de_secador:", error); return json({ error: error.message }, 500); }
+    if (!data) return json({ error: "Ese trabajador no existe" }, 404);
+    return json({ trabajador: data });
+  }
+
   // ===================================================================
   // CRM / Lealtad de la cajera (067). Todas detras del codigo de acceso.
   // Modelo persona-centrico: la lealtad es de la PERSONA; la placa solo

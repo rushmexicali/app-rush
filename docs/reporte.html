@@ -106,8 +106,9 @@
   /* --- Switch Operación | Clientes --- */
   .switch { display:flex; gap:8px; margin-bottom:18px; }
   .switch button {
-    flex:1; font-size:16px; font-weight:700; padding:11px 12px;
+    flex:1; font-size:15px; font-weight:700; padding:11px 6px;
     background:#161b22; color:#8b949e; border:1px solid #30363d; border-radius:10px;
+    white-space:nowrap;
   }
   .switch button.on { background:#1f6feb; color:#fff; border-color:#1f6feb; }
 
@@ -197,6 +198,7 @@
 <div class="switch">
   <button id="tab-op" class="on">Operación</button>
   <button id="tab-cli">Clientes</button>
+  <button id="tab-trab">Trabajadores</button>
 </div>
 
 <div id="vista-op">
@@ -227,6 +229,13 @@
            autocomplete="off" autocapitalize="none" style="flex:1; min-width:200px">
   </div>
   <div id="cli-res"><div class="vacio">Escribe un nombre, una placa, o una marca/modelo.</div></div>
+</div>
+
+<!-- Trabajadores: la lista de todos los empleados (incluye a quien hoy
+     descansa y no sale en la grilla de asignar), con nombres clicables que
+     abren su historial de secado. Misma audiencia (el dueno, sentado). -->
+<div id="vista-trab" style="display:none">
+  <div id="trab-res"><div class="vacio">Cargando…</div></div>
 </div>
 
 <div id="acceso">
@@ -438,14 +447,21 @@ function pintarPlacas(lista) {
 
 function tablaPlacas(placas) {
   if (!placas.length) return '<div class="vacio">Todavía no hay placas leídas.</div>';
-  var html = '<table><tr><th>Placa</th><th class="num">Visitas</th><th>Carro</th><th>Última vez</th></tr>';
+  // La placa es clicable: abre su perfil (el mismo de la vista Clientes).
+  // Cliente y Hora de llegada salen de datos que /placas ya devuelve:
+  // 'cliente' y 'ultima_visita' (que trae fecha Y hora de la ultima venta).
+  var html = '<table><tr><th>Placa</th><th class="num">Visitas</th><th>Carro</th>' +
+             '<th>Cliente</th><th>Última vez</th><th>Hora de llegada</th></tr>';
   for (var i = 0; i < placas.length; i++) {
     var p = placas[i];
     var carro = [p.tipo_unidad, p.color, p.marca].filter(Boolean).join(" ");
-    html += "<tr><td><b>" + escapar(p.placa_como_se_lee || p.placa) + "</b></td>" +
+    var placaTxt = p.placa_como_se_lee || p.placa;
+    html += '<tr><td><button class="enlace" data-placa="' + escapar(placaTxt) + '"><b>' + escapar(placaTxt) + "</b></button></td>" +
             '<td class="num">' + p.visitas + "</td>" +
             "<td>" + escapar(carro || "—") + "</td>" +
-            "<td>" + (p.ultima_visita ? escapar(new Date(p.ultima_visita).toLocaleDateString("es-MX")) : "—") + "</td></tr>";
+            "<td>" + (p.cliente ? escapar(titulo(p.cliente)) : '<span class="tenue">—</span>') + "</td>" +
+            "<td>" + (p.ultima_visita ? escapar(fechaCorta(p.ultima_visita)) : "—") + "</td>" +
+            "<td>" + (p.ultima_visita ? escapar(hora(p.ultima_visita)) : "—") + "</td></tr>";
   }
   return html + "</table>";
 }
@@ -454,11 +470,24 @@ function cargarPlacas(q) {
   pedir("/placas" + (q ? "?q=" + encodeURIComponent(q) : ""))
     .then(function (r) { return r.json(); })
     .then(function (d) {
-      document.getElementById("tablaplacas").innerHTML = tablaPlacas(d.placas || []);
+      var cont = document.getElementById("tablaplacas");
+      cont.innerHTML = tablaPlacas(d.placas || []);
+      // Cada placa lleva al perfil de la placa (en la vista Clientes).
+      cont.querySelectorAll("button[data-placa]").forEach(function (b) {
+        b.addEventListener("click", function () { irAPlaca(b.getAttribute("data-placa")); });
+      });
     })
     .catch(function () {
       document.getElementById("tablaplacas").innerHTML = '<div class="vacio">No se pudo cargar.</div>';
     });
+}
+
+// Desde la vista Operación, abrir el perfil de una placa: cambia a la
+// vista Clientes (donde vive el perfil) y lo abre. Se llama a mostrarVista
+// ANTES para no dejar a cliRecientes pisando el perfil con las recientes.
+function irAPlaca(placa) {
+  mostrarVista("cli");
+  abrirPlaca(placa);
 }
 
 function cargarDia(fecha) { cargarReporte("/reporte?fecha=" + fecha); }
@@ -584,21 +613,29 @@ function pedirJSON(ruta) {
   });
 }
 
-// --- Switch entre las dos vistas ---
+// --- Switch entre las tres vistas ---
+// Solo prende/apaga vistas y tabs. La carga de cada vista (recientes,
+// trabajadores) va en el handler del tab, NO aqui: asi irAPlaca puede
+// cambiar a Clientes y abrir un perfil sin que las recientes lo pisen.
+var VISTAS = { op: "vista-op", cli: "vista-cli", trab: "vista-trab" };
+var TABS   = { op: "tab-op",   cli: "tab-cli",   trab: "tab-trab" };
 function mostrarVista(cual) {
-  var op = cual === "op";
-  document.getElementById("vista-op").style.display = op ? "" : "none";
-  document.getElementById("vista-cli").style.display = op ? "none" : "";
-  document.getElementById("tab-op").className = op ? "on" : "";
-  document.getElementById("tab-cli").className = op ? "" : "on";
-  if (!op) {
-    document.getElementById("cli-q").focus();
-    // Al entrar a Clientes sin nada escrito, mostrar las ultimas visitas.
-    if (document.getElementById("cli-q").value.trim().length < 2) cliRecientes();
-  }
+  Object.keys(VISTAS).forEach(function (k) {
+    document.getElementById(VISTAS[k]).style.display = (k === cual) ? "" : "none";
+    document.getElementById(TABS[k]).className = (k === cual) ? "on" : "";
+  });
+  if (cual === "cli") document.getElementById("cli-q").focus();
 }
 document.getElementById("tab-op").addEventListener("click", function () { mostrarVista("op"); });
-document.getElementById("tab-cli").addEventListener("click", function () { mostrarVista("cli"); });
+document.getElementById("tab-cli").addEventListener("click", function () {
+  mostrarVista("cli");
+  // Al entrar a Clientes sin nada escrito, mostrar las ultimas visitas.
+  if (document.getElementById("cli-q").value.trim().length < 2) cliRecientes();
+});
+document.getElementById("tab-trab").addEventListener("click", function () {
+  mostrarVista("trab");
+  cargarTrabajadores();
+});
 
 // --- Buscar: nombre/placa -> personas; placa/marca/submarca -> vehículos ---
 var cliTimer = null;
@@ -934,6 +971,115 @@ function ticketCard(num, t) {
 document.getElementById("ticket-modal").addEventListener("click", function (ev) {
   if (ev.target === this) cerrarTicket();
 });
+
+// =====================================================================
+// Sección TRABAJADORES — lista de empleados + perfil de secado por persona.
+// Incluye a quien hoy descansa o está fuera (no filtra por estado), para
+// poder abrir su historial aunque no salga en la grilla de asignar.
+// =====================================================================
+
+function estadoTxt(e) {
+  if (e === "activo")   return "Activo ahora";
+  if (e === "descanso") return "En descanso";
+  return "No checó hoy";
+}
+
+function cargarTrabajadores() {
+  var cont = document.getElementById("trab-res");
+  cont.innerHTML = '<div class="vacio">Cargando…</div>';
+  pedirJSON("/trabajadores").then(function (d) {
+    var t = d.trabajadores || [];
+    if (!t.length) { cont.innerHTML = '<div class="vacio">No hay trabajadores registrados.</div>'; return; }
+    var html = '<div class="lista">';
+    t.forEach(function (w) {
+      var sub = [titulo(w.rol)];
+      sub.push(w.lavados + (w.lavados === 1 ? " lavado" : " lavados"));
+      if (w.rechazos) sub.push(w.rechazos + (w.rechazos === 1 ? " rechazo" : " rechazos"));
+      html += '<button class="item" data-trab="' + escapar(w.id) + '">' +
+              '<div class="item-nom">' + escapar(titulo(w.nombre_completo || w.nombre)) + "</div>" +
+              '<div class="item-sub">' + escapar(sub.join(" · ")) + "</div>" +
+              (w.estado === "activo" ? '<div class="item-badge">Activo</div>' : "") +
+              "</button>";
+    });
+    html += "</div>";
+    cont.innerHTML = html;
+    cont.querySelectorAll("button[data-trab]").forEach(function (b) {
+      b.addEventListener("click", function () { abrirTrabajador(b.getAttribute("data-trab")); });
+    });
+  }).catch(function (e) {
+    if (e && e.message === "codigo") return;
+    cont.innerHTML = '<div class="vacio">No se pudo cargar.</div>';
+  });
+}
+
+function abrirTrabajador(id) {
+  var cont = document.getElementById("trab-res");
+  cont.innerHTML = '<div class="vacio">Cargando…</div>';
+  pedirJSON("/trabajador?id=" + encodeURIComponent(id)).then(function (d) {
+    perfilTrabajador(d.trabajador);
+  }).catch(function (e) {
+    if (e && e.message === "codigo") return;
+    cont.innerHTML = '<div class="vacio">No se pudo cargar el perfil.</div>';
+  });
+}
+
+function perfilTrabajador(w) {
+  var cont = document.getElementById("trab-res");
+  if (!w) {
+    cont.innerHTML = '<button class="volver" id="trab-volver">← Volver a la lista</button>' +
+                     '<div class="vacio">No se encontró el trabajador.</div>';
+    document.getElementById("trab-volver").addEventListener("click", cargarTrabajadores);
+    return;
+  }
+  var html = '<button class="volver" id="trab-volver">← Volver a la lista</button>';
+  html += '<div class="perfil-nom">' + escapar(titulo(w.nombre_completo || w.nombre)) + "</div>";
+  html += '<div class="sub">' + escapar(titulo(w.rol)) + " · " + escapar(estadoTxt(w.estado)) + "</div>";
+
+  html += '<div class="tarjeta-lealtad"><div class="tl-fila">';
+  html +=   '<div class="tl-cel"><div class="tl-num">' + (w.lavados || 0) + '</div><div class="tl-rot">Lavados</div></div>';
+  html +=   '<div class="tl-cel"><div class="tl-num">' + (w.rechazos || 0) + '</div><div class="tl-rot">Rechazos</div></div>';
+  html += "</div></div>";
+
+  html += "<h2>Historial de secado</h2>" + tablaSecados(w.historial || []);
+
+  cont.innerHTML = html;
+  document.getElementById("trab-volver").addEventListener("click", cargarTrabajadores);
+  // Las placas del historial llevan al perfil de la placa (vista Clientes).
+  cont.querySelectorAll("button[data-placa]").forEach(function (b) {
+    b.addEventListener("click", function () { irAPlaca(b.getAttribute("data-placa")); });
+  });
+}
+
+// Cada renglón es un carro que esta persona secó: placa (clicable), tipo
+// de carro, inicio y fin del secado, minutos totales, y los motivos de
+// rechazo que le tocaron en ese carro (si los hubo).
+function tablaSecados(lista) {
+  if (!lista.length) return '<div class="vacio">Sin lavados registrados.</div>';
+  var html = "<table><tr><th>Fecha</th><th>Placa</th><th>Carro</th>" +
+             '<th>Inicio</th><th>Fin</th><th class="num">Minutos</th><th>Rechazos</th></tr>';
+  lista.forEach(function (v) {
+    var carro = [v.marca, v.submarca, v.tipo, v.color].filter(Boolean).join(" ");
+    var placaCel = v.placa
+      ? '<button class="enlace" data-placa="' + escapar(v.placa) + '">' + escapar(v.placa) + "</button>"
+      : '<span class="tenue">—</span>';
+    // secado_seg es nulo mientras la etapa de secado siga abierta (el carro
+    // no se ha entregado): se muestra "en curso" en vez de un número falso.
+    var minCel = v.secado_seg != null
+      ? Math.round(v.secado_seg / 60)
+      : (v.entregado ? "—" : '<span class="tenue">en curso</span>');
+    var rech = (v.rechazos && v.rechazos.length)
+      ? '<span style="color:#ff7b72">' + escapar(v.rechazos.join(", ")) + "</span>"
+      : '<span class="tenue">—</span>';
+    html += "<tr><td>" + escapar(fechaCorta(v.fecha)) + "</td>" +
+            "<td>" + placaCel + "</td>" +
+            "<td>" + escapar(carro || "—") + "</td>" +
+            "<td>" + escapar(v.secado_inicio ? hora(v.secado_inicio) : "—") + "</td>" +
+            "<td>" + escapar(v.secado_fin ? hora(v.secado_fin) : "—") + "</td>" +
+            '<td class="num">' + minCel + "</td>" +
+            "<td>" + rech + "</td></tr>";
+  });
+  return html + "</table>";
+}
 
 cargarCodigo();
 if (!CODIGO) pedirCodigo(false); else arrancar();
