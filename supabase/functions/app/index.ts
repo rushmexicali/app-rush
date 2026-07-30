@@ -1027,6 +1027,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
         if (error) { console.error("persona_json:", error); return json({ error: error.message }, 500); }
         return json({ persona: data });
       }
+      // Antes de escribir, el buscador de clientes muestra las ultimas N
+      // personas con visita registrada. Reusa persona_json, asi que la
+      // pantalla las pinta igual que un resultado de busqueda.
+      const recientes = url.searchParams.get("recientes");
+      if (recientes !== null) {
+        const n = Math.min(Math.max(Number(recientes) || 10, 1), 50);
+        const { data, error } = await db.rpc("personas_recientes", { p_limite: n });
+        if (error) { console.error("personas_recientes:", error); return json({ error: error.message }, 500); }
+        return json({ personas: data ?? [] });
+      }
       const placa = url.searchParams.get("placa");
       const q = url.searchParams.get("q");
       if (placa !== null) {

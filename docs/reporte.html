@@ -256,6 +256,19 @@ function escapar(t) {
   });
 }
 
+// Los nombres se registran de mil formas: MAYUSCULAS, minusculas, mixto.
+// Aqui se muestran siempre con la primera letra de cada palabra en mayuscula
+// y el resto en minuscula ("Luis Gonzalez"), sin importar como se guardaron.
+// Es SOLO de presentacion: el dato guardado no se toca (por eso va en el
+// front y no en persona_json, que la app de caja reusa para editar). Corta
+// tambien despues de espacio, apostrofo, guion o punto ("o'brien"->"O'Brien").
+function titulo(s) {
+  if (s == null) return s;
+  return String(s).toLowerCase().replace(/(^|[\s'.\-])([a-záéíóúüñ])/g, function (_, sep, ch) {
+    return sep + ch.toUpperCase();
+  });
+}
+
 // Los segundos crudos no le dicen nada a nadie. "34 min" si.
 function duracion(seg) {
   if (seg == null) return "—";
@@ -558,7 +571,11 @@ function mostrarVista(cual) {
   document.getElementById("vista-cli").style.display = op ? "none" : "";
   document.getElementById("tab-op").className = op ? "on" : "";
   document.getElementById("tab-cli").className = op ? "" : "on";
-  if (!op) document.getElementById("cli-q").focus();
+  if (!op) {
+    document.getElementById("cli-q").focus();
+    // Al entrar a Clientes sin nada escrito, mostrar las ultimas visitas.
+    if (document.getElementById("cli-q").value.trim().length < 2) cliRecientes();
+  }
 }
 document.getElementById("tab-op").addEventListener("click", function () { mostrarVista("op"); });
 document.getElementById("tab-cli").addEventListener("click", function () { mostrarVista("cli"); });
@@ -571,9 +588,28 @@ document.getElementById("cli-q").addEventListener("input", function () {
   cliTimer = setTimeout(function () { cliBuscar(q); }, 250);
 });
 
+// Antes de escribir (o al borrar): los perfiles de las ultimas 10 personas
+// con visita registrada. Reusa el mismo formato de tarjeta que la busqueda.
+function cliRecientes() {
+  var cont = document.getElementById("cli-res");
+  cont.innerHTML = '<div class="vacio">Cargando…</div>';
+  pedirJSON("/personas?recientes=10").then(function (d) {
+    // Si el dueño ya empezó a escribir, esta respuesta ya no aplica.
+    if (document.getElementById("cli-q").value.trim().length >= 2) return;
+    var personas = d.personas || [];
+    if (!personas.length) { cont.innerHTML = '<div class="vacio">Todavía no hay visitas registradas.</div>'; return; }
+    cliResultados(personas, [], "Últimas visitas");
+  }).catch(function (e) {
+    if (e && e.message === "codigo") return;
+    cont.innerHTML = '<div class="vacio">No se pudo cargar.</div>';
+  });
+}
+
 function cliBuscar(q) {
   var cont = document.getElementById("cli-res");
-  if (q.length < 2) { cont.innerHTML = '<div class="vacio">Escribe al menos 2 letras.</div>'; return; }
+  // Menos de 2 letras (o vacio): en vez de una pantalla vacia, las ultimas
+  // visitas. Asi el dueño siempre ve algo util al entrar y al borrar.
+  if (q.length < 2) { cliRecientes(); return; }
   cont.innerHTML = '<div class="vacio">Buscando…</div>';
   Promise.all([
     pedirJSON("/personas?q=" + encodeURIComponent(q)).catch(function (e) { if (e && e.message === "codigo") throw e; return { personas: [] }; }),
@@ -585,19 +621,19 @@ function cliBuscar(q) {
   }).catch(function (e) { if (e && e.message === "codigo") return; cont.innerHTML = '<div class="vacio">No se pudo buscar.</div>'; });
 }
 
-function cliResultados(personas, placas) {
+function cliResultados(personas, placas, encabezado) {
   var html = "";
   if (!personas.length && !placas.length) html = '<div class="vacio">Nada encontrado.</div>';
 
   if (personas.length) {
-    html += '<h2>Clientes</h2><div class="lista">';
+    html += '<h2>' + escapar(encabezado || "Clientes") + '</h2><div class="lista">';
     personas.forEach(function (p) {
       var l = p.lealtad || {};
       var sub = [];
       if (p.telefono) sub.push(escapar(p.telefono));
       if (p.placas && p.placas.length) sub.push(escapar(p.placas.join(" · ")));
       html += '<button class="item" data-persona="' + p.id + '">' +
-              '<div class="item-nom">' + escapar(p.nombre || "(sin nombre)") + "</div>" +
+              '<div class="item-nom">' + escapar(titulo(p.nombre) || "(sin nombre)") + "</div>" +
               (sub.length ? '<div class="item-sub">' + sub.join(" · ") + "</div>" : "") +
               (l.disponibles ? '<div class="item-badge">' + l.disponibles + " gratis</div>" : "") +
               "</button>";
@@ -609,7 +645,7 @@ function cliResultados(personas, placas) {
     html += '<h2>Vehículos</h2><div class="lista">';
     placas.forEach(function (v) {
       var desc = [v.marca, v.submarca, v.tipo_unidad, v.color].filter(Boolean).join(" ");
-      var meta = v.visitas + (v.visitas === 1 ? " visita" : " visitas") + (v.cliente ? " · " + escapar(v.cliente) : "");
+      var meta = v.visitas + (v.visitas === 1 ? " visita" : " visitas") + (v.cliente ? " · " + escapar(titulo(v.cliente)) : "");
       html += '<button class="item" data-placa="' + escapar(v.placa_como_se_lee || v.placa) + '">' +
               '<div class="item-nom">' + escapar(v.placa_como_se_lee || v.placa) + "</div>" +
               '<div class="item-sub">' + (desc ? escapar(desc) + " · " : "") + meta + "</div>" +
@@ -656,7 +692,7 @@ function abrirPersona(id) {
 function perfilPersona(p, historial) {
   var l = p.lealtad || {};
   var html = '<button class="volver" id="cli-volver">← Volver a la búsqueda</button>';
-  html += '<div class="perfil-nom">' + escapar(p.nombre || "(sin nombre)") + "</div>";
+  html += '<div class="perfil-nom">' + escapar(titulo(p.nombre) || "(sin nombre)") + "</div>";
   if (p.telefono) html += '<div class="sub">' + escapar(p.telefono) + "</div>";
 
   html += '<div class="tarjeta-lealtad' + (l.disponibles ? " gratis" : "") + '">';
@@ -711,7 +747,7 @@ function perfilPlaca(placa, historial, duenos) {
     var rotulo = duenos.length > 1 ? "Clientes en lealtad:" : "Cliente en lealtad:";
     html += '<div class="duenos"><span class="duenos-rot">' + rotulo + "</span>" +
             duenos.map(function (dn) {
-              return '<button class="enlace" data-persona="' + dn.id + '">' + escapar(dn.nombre) + "</button>";
+              return '<button class="enlace" data-persona="' + dn.id + '">' + escapar(titulo(dn.nombre)) + "</button>";
             }).join(", ") + "</div>";
   } else {
     html += '<div class="duenos tenue">Sin cliente de lealtad asignado a esta placa.</div>';
@@ -758,7 +794,7 @@ function tablaVisitas(lista, opts) {
     }
     if (opts.conCliente) {
       html += (v.persona && v.persona.id)
-        ? '<td><button class="enlace" data-persona="' + v.persona.id + '">' + escapar(v.persona.nombre) + "</button></td>"
+        ? '<td><button class="enlace" data-persona="' + v.persona.id + '">' + escapar(titulo(v.persona.nombre)) + "</button></td>"
         : '<td class="tenue">— sin asignar</td>';
     }
     if (opts.conTicket) {
