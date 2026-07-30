@@ -294,6 +294,14 @@ function pintarReporte(r) {
     html += tarjeta(r.secados_descartados, "Secados muy cortos",
               "Menos de 3 min de secado (imposible): olvidos entregados tarde. No cuentan en el promedio de secado");
   }
+  // Igual: solo si no es cero. Unidades que el supervisor BORRO de la cola
+  // porque ya no se iban a lavar (se fue el cliente, se olvido). No cuentan
+  // como lavado ni en los promedios. Si un dia salen muchas, vale la pena
+  // preguntar por que se estan quedando carros sin trabajar.
+  if (r.borrados) {
+    html += tarjeta(r.borrados, "Unidades borradas",
+              "El supervisor las sacó de la cola sin lavar. No cuentan en ningún promedio");
+  }
   html +=   tarjeta(duracion(r.espera_promedio_seg), "Espera promedio por carro",
               "De que paga a que se lo entregan");
   html +=   tarjeta(duracion(r.secado_promedio_seg), "Secado promedio", "General, todos los equipos");

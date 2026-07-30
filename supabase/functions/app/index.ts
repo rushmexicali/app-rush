@@ -693,6 +693,35 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json(data);
   }
 
+  // --- Borrar una unidad sin asignar (informacion basura) -------------
+  // Saca de la cola un carro que el supervisor nunca va a trabajar (se fue
+  // el cliente, se olvido). No borra la fila: pone cancelado_en, que lo
+  // excluye de /cola y del reporte, conservando la hora de entrada y sin
+  // fabricar hora de salida. Los candados (sin asignar + 30 min) viven en
+  // la base (borrar_unidad), asi que una llamada suelta no puede borrar un
+  // carro bueno aunque el front falle.
+  if (ruta === "/borrar") {
+    if (req.method !== "POST") return json({ error: "usa POST" }, 405);
+
+    let carro: number | null = null;
+    try {
+      const cuerpo = await req.json();
+      carro = Number(cuerpo?.carro);
+    } catch {
+      return json({ error: "cuerpo invalido" }, 400);
+    }
+    if (!carro || !Number.isFinite(carro)) {
+      return json({ error: "falta el numero de carro" }, 400);
+    }
+
+    const { data, error } = await db.rpc("borrar_unidad", { p_carro: carro });
+    if (error) {
+      console.error("Fallo al borrar la unidad", carro, ":", error);
+      return json({ ok: false, error: error.message }, 500);
+    }
+    return json(data);
+  }
+
   // --- Rechazar una entrega -------------------------------------------
   // El carro NO cambia de estado: sigue secando con los mismos secadores.
   // Lo unico que pasa es que queda el registro, ligado a cada persona.

@@ -81,9 +81,19 @@
     margin-top: 4px; line-height: 1.3;
   }
 
-  .reloj {
+  /* La columna derecha: el contador y, ENCIMA de el, el boton de borrar
+     (solo en carros sin asignar). Se apilan y se centran como grupo, asi
+     que una tarjeta sin boton (secando) se ve exactamente igual que antes:
+     solo el reloj, centrado. El boton queda "arriba del contador", que es
+     donde el dueno pidio ese espacio. */
+  .medidor {
     grid-column: 2; grid-row: 1 / span 3;
-    align-self: center;
+    align-self: center; justify-self: end;
+    display: flex; flex-direction: column;
+    align-items: flex-end; justify-content: center;
+    gap: 10px;
+  }
+  .reloj {
     font-size: 38px; font-weight: 800;
     font-variant-numeric: tabular-nums;
     text-align: right;
@@ -91,6 +101,27 @@
     white-space: nowrap;
   }
   .demorado .reloj { color:#ff7875; }
+
+  /* "Borrar unidad": saca de la cola un carro sin asignar que quedo de
+     basura (se fue el cliente, se olvido). Se ve claramente distinto del
+     boton de accion: borde rojo, chico, arriba del reloj. Solo aparece en
+     carros SIN asignar. Apagado hasta que el carro lleve 30 min sin
+     asignar, para que un toque por accidente no borre uno que iba bien.
+     Mismo patron "se ve apagado, no desaparece" que la camara. */
+  .borrar {
+    min-height: 46px; padding: 0 14px;
+    font-size: 16px; font-weight: 800;
+    color:#ff7875; background: transparent;
+    border: 2px solid #ff4d4f; border-radius: 12px;
+    cursor: pointer; white-space: nowrap;
+  }
+  .borrar:active { background:#3d1418; }
+  /* Antes de los 30 min: apagado y sin toque. El texto lo dice para que el
+     supervisor sepa por que no se puede todavia. */
+  .borrar[disabled] { opacity:.3; cursor:default; }
+  /* En una tarjeta ya demorada (toda roja) el borde rojo se perderia: se
+     pasa a blanco para que siga saltando. */
+  .demorado .borrar { color:#fff; border-color:#fff; }
 
   /* Ocupa SOLO la primera columna. Antes se extendia a todo el ancho
      (1 / -1) en la misma fila del boton de la foto, y aunque no se veia,
@@ -834,6 +865,12 @@ var ACCIONES = {
   secando:     "ENTREGAR"
 };
 
+// El boton "Borrar unidad" solo se habilita cuando el carro lleva 30 min
+// SIN ASIGNAR. Antes de eso se ve apagado. Es en segundos porque asi cuenta
+// el reloj de la tarjeta. El candado de verdad esta en la base
+// (borrar_unidad); esto solo evita que el boton se pueda picar por error.
+var BORRAR_MIN = 30 * 60;
+
 // Los colores más vistos en la operación real. Un solo botón por color:
 // BLANCA y BLANCO son el mismo color y contarlos aparte ensucia el
 // reporte y el historial por placa.
@@ -1019,7 +1056,20 @@ function pintar() {
     // Se muestra con guiones si la lectura los trajo (placa_display); en la
     // base la placa vive SIEMPRE sin guiones (para casar caja<->supervisor).
     if (c.placa) html += '<div class="placa">' + escapar(c.placa_display || c.placa) + '</div>';
-    html +=   '<div class="reloj">' + reloj(seg) + '</div>';
+    // Columna derecha: el reloj SIEMPRE, y ENCIMA de el el boton de borrar,
+    // solo en carros sin asignar (prelavado). El boton se apaga hasta los 30
+    // min sin asignar. En carros que ya secan no hay boton: el .medidor
+    // queda con solo el reloj y se ve identico a antes.
+    html +=   '<div class="medidor">';
+    if (c.estado === "prelavado") {
+      var borrable = seg >= BORRAR_MIN;
+      html += '<button class="borrar" data-borrar="' + c.id + '"' +
+              (borrable ? ' title="Sacar de la cola sin contar sus tiempos"'
+                        : ' disabled title="Se habilita a los 30 min sin asignar"') +
+              '>Borrar unidad</button>';
+    }
+    html +=     '<div class="reloj">' + reloj(seg) + '</div>';
+    html +=   '</div>';
     // Los secadores van DENTRO del bloque del servicio, del mismo tamaño,
     // para que el dueño los vea sin abrir el carro. Solo si ya hay: antes
     // de asignar la lista viene vacia y no se pinta nada.
@@ -1138,6 +1188,12 @@ function actualizarRelojes() {
     // El rojo de demora se maneja con la clase en la tarjeta: togglearla
     // NO recrea el boton, asi que los guiones siguen corriendo.
     el.classList.toggle("demorado", demorado);
+    // El boton de borrar se habilita solo al cruzar los 30 min sin asignar.
+    // Se hace AQUI y no en pintar() porque pintar() no se corre cada segundo
+    // (la firma no incluye el tiempo): si esperara a un rebuild, el boton no
+    // se prenderia hasta que cambiara algun dato del carro.
+    var btnBorrar = el.querySelector(".borrar");
+    if (btnBorrar) btnBorrar.disabled = seg < BORRAR_MIN;
   }
 }
 
@@ -2577,6 +2633,29 @@ document.getElementById("lista").addEventListener("click", function (ev) {
   if (editar) {
     var paraEditar = buscarCarro(editar.dataset.editar);
     if (paraEditar) abrirPantalla(paraEditar, "corregir");
+    return;
+  }
+
+  // Borrar unidad: saca de la cola un carro sin asignar que quedo de basura.
+  // El boton llega apagado antes de los 30 min, pero se confirma igual: es
+  // una accion que quita el carro de la lista, y el CLAUDE.md pide que nunca
+  // haya un paso asi por accidente. Toda la info se conserva (es reversible).
+  var borrar = ev.target.closest("button[data-borrar]");
+  if (borrar) {
+    if (borrar.disabled || ocupado) return;
+    if (!confirm("¿Borrar esta unidad de la cola?\n\nSe usa para carros que ya no se van a lavar. No se contarán sus tiempos. La demás información se conserva.")) return;
+    ocupado = true;
+    borrar.disabled = true;
+    if (navigator.vibrate) navigator.vibrate(30);
+    pedir("/borrar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ carro: Number(borrar.dataset.borrar) })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d && d.ok === false) alert(d.error || "No se pudo borrar"); })
+      .catch(function () { alert("Sin conexión. Intenta otra vez."); })
+      .then(function () { ocupado = false; consultar(); });
     return;
   }
 
