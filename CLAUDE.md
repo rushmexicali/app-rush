@@ -1008,6 +1008,33 @@ Corte automático a las **8:30 PM hora de Mexicali**, guardado para siempre.
 **Qué trae:** vehículos lavados, autos y tiempo promedio de secado por equipo, espera
 promedio por carro, desglose con/sin aspirado, y cuántas placas se alcanzaron a leer.
 
+### Sección Clientes: DOS listas de fuentes distintas (30/jul/2026)
+
+La pestaña **Clientes** muestra, antes de escribir, dos listas — se ven parecidas pero se
+alimentan de tablas distintas, y confundirlas fue justo el reporte del dueño (*"la lista de
+las 10 últimas visitas no se actualiza"*):
+
+| Lista | Fuente | Cuándo crece |
+|---|---|---|
+| **Últimas visitas** | tabla `visitas` (libro de lealtad), vía `personas_recientes` (085) — **solo personas del CRM** (`persona_id is not null`) | La cajera registra a un cliente en vivo, **o** se sube el concentrado del ClientNoteTracker |
+| **Últimos lavados** | tabla `carros` (webhook de Zettle), vía `carros_recientes` (**093**) | **Sola, con cada lavado del día** |
+
+- **El error de percepción:** "Últimas visitas" NO refleja la operación diaria. Un carro que
+  pasó por el lavado no crea una `visita`, así que sin caja en vivo ni import del CNT, esa
+  lista no se mueve. Por eso se agregó **"Últimos lavados"** como lista aparte (no reemplaza
+  a la de lealtad; el dueño pidió las dos).
+- **Regla de identidad de "Últimos lavados"** (textual del dueño): *"Si el cliente no se
+  identifica con nombre, debería de salir la placa, si la placa no se identifica, entonces no
+  aparece."* → **nombre → placa → se omite.** El nombre puede venir del dueño de lealtad (si la
+  placa liga a un cliente del CRM, clicable a su perfil) o de la nota de caja (texto, sin liga).
+  El filtro "sin nombre ni placa no aparece" vive en `carros_recientes`.
+- **El dueño de lealtad sale de `clientes_de_placas`** — la MISMA fuente que el Historial por
+  placa, para no tener dos reglas de "quién es el dueño de esta placa". Lo agrega el Edge
+  Function (`/carros-recientes`), no la RPC.
+- Verificado en vivo (30/jul): F-150 `ZKH-805-B` cuya placa se leyó de la foto resolvió a
+  "Jesus Murillo" del CRM y salió con su nombre clicable — el enlace placa→cliente de la
+  operación diaria ya jala aquí.
+
 ### Lo que quedó abierto se cierra solo (20/jul/2026)
 
 El autolavado cierra a las 8 PM. A las **8:30**, justo antes de congelar, `cerrar_pendientes()`
