@@ -173,6 +173,25 @@ Probado (27/jul/2026): la 1a export tenía hoy hasta 18:05; la 2a (solo hoy, has
 13,322. Idempotente: re-correr agrega 0. El padrón del export siempre viene completo;
 las notas son las date-filtradas.
 
+**Dry-run:** correr `import-incremental-dryrun.sql` (mismo cuerpo + `raise`, revierte)
+para ver `visitas +N / personas +N / ligadas` antes de escribir. Luego el real.
+
+5. **Propagar placas al CRM (migración `086`).** Las visitas nuevas que quedaron
+   ligadas a un carro con placa de foto deben alimentar `persona_placas` (si no, la
+   placa se queda en el carro y no llega a caja/búsqueda). El import inserta visitas
+   directo (no pasa por `enlazar_visita_a_carro`), así que hay que correr el helper a
+   mano — es idempotente (solo agrega sugeridas nuevas y auto-confirma repetidas):
+   ```sql
+   do $$ declare r record; begin
+     for r in select v.persona_id, coalesce(c.placa_display, c.placa) as p
+                from public.visitas v join public.carros c on c.id=v.carro_id
+               where v.estado='activa' and c.placa is not null and v.persona_id is not null
+     loop perform public.ligar_placa_a_persona(r.persona_id, r.p, 'foto', false); end loop;
+   end $$;
+   ```
+   Probado 29/jul: +131 enlaces placa↔cliente de los carros nuevos. Ver la memoria
+   `placa-de-foto-al-cliente-sugerida`.
+
 ## 5. Números de la 1a corrida (27/jul/2026) — para comparar
 
 - Visitas: **13,312** (913 gratis, $2,936,802, 575 ligadas a carro).
