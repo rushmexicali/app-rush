@@ -451,7 +451,7 @@ function tablaPlacas(placas) {
   // Cliente y Hora de llegada salen de datos que /placas ya devuelve:
   // 'cliente' y 'ultima_visita' (que trae fecha Y hora de la ultima venta).
   var html = '<table><tr><th>Placa</th><th class="num">Visitas</th><th>Carro</th>' +
-             '<th>Cliente</th><th>Última vez</th><th>Hora de llegada</th></tr>';
+             '<th>Cliente</th><th>Última vez</th><th>Hora de llegada</th><th>Secó</th></tr>';
   for (var i = 0; i < placas.length; i++) {
     var p = placas[i];
     var carro = [p.tipo_unidad, p.color, p.marca].filter(Boolean).join(" ");
@@ -461,9 +461,23 @@ function tablaPlacas(placas) {
             "<td>" + escapar(carro || "—") + "</td>" +
             "<td>" + (p.cliente ? escapar(titulo(p.cliente)) : '<span class="tenue">—</span>') + "</td>" +
             "<td>" + (p.ultima_visita ? escapar(fechaCorta(p.ultima_visita)) : "—") + "</td>" +
-            "<td>" + (p.ultima_visita ? escapar(hora(p.ultima_visita)) : "—") + "</td></tr>";
+            "<td>" + (p.ultima_visita ? escapar(hora(p.ultima_visita)) : "—") + "</td>" +
+            "<td>" + secadoresCel(p.secadores) + "</td></tr>";
   }
   return html + "</table>";
+}
+
+// La columna "Secó": el/los secador(es) de la última visita. Cada uno es
+// clicable si tiene id (lleva a su perfil); sin id (filas viejas sin
+// empleado_id) sale como texto. Los nombres van con data-trab.
+function secadoresCel(secs) {
+  if (!secs || !secs.length) return '<span class="tenue">—</span>';
+  return secs.map(function (s) {
+    var nom = titulo(s.nombre || "");
+    return s.id
+      ? '<button class="enlace" data-trab="' + escapar(s.id) + '">' + escapar(nom) + "</button>"
+      : escapar(nom);
+  }).join(", ");
 }
 
 function cargarPlacas(q) {
@@ -475,6 +489,10 @@ function cargarPlacas(q) {
       // Cada placa lleva al perfil de la placa (en la vista Clientes).
       cont.querySelectorAll("button[data-placa]").forEach(function (b) {
         b.addEventListener("click", function () { irAPlaca(b.getAttribute("data-placa")); });
+      });
+      // Cada secador lleva a su perfil (en la vista Trabajadores).
+      cont.querySelectorAll("button[data-trab]").forEach(function (b) {
+        b.addEventListener("click", function () { irATrabajador(b.getAttribute("data-trab")); });
       });
     })
     .catch(function () {
@@ -488,6 +506,13 @@ function cargarPlacas(q) {
 function irAPlaca(placa) {
   mostrarVista("cli");
   abrirPlaca(placa);
+}
+
+// Igual, pero al perfil de un secador (vista Trabajadores). mostrarVista
+// no carga la lista, así que abrirTrabajador no queda pisado.
+function irATrabajador(id) {
+  mostrarVista("trab");
+  abrirTrabajador(id);
 }
 
 function cargarDia(fecha) { cargarReporte("/reporte?fecha=" + fecha); }

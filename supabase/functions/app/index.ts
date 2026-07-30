@@ -990,13 +990,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // --- Historial por placa --------------------------------------------
   // Sin ?q= devuelve las que mas han venido. Con ?q= busca.
   if (ruta === "/placas") {
+    // A cada placa se le agrega la tripulacion de su ULTIMA visita (nombre
+    // + empleado_id, para ligar al perfil del secador). Una sola RPC para
+    // las dos fuentes (busqueda o top), asi no hay dos reglas.
+    const conSecadores = async (placas: any[]): Promise<any[]> => {
+      const lista = placas ?? [];
+      const claves = lista.map((p: any) => p.placa).filter(Boolean);
+      if (!claves.length) return lista;
+      const { data: mapa, error } = await db.rpc("secadores_de_placas", { p_placas: claves });
+      if (error) {
+        // Si falla, se devuelven las placas sin secadores: la columna sale
+        // vacia pero la tabla no se cae.
+        console.error("secadores_de_placas:", error);
+        return lista;
+      }
+      const m = (mapa ?? {}) as Record<string, any[]>;
+      return lista.map((p: any) => ({ ...p, secadores: m[p.placa] ?? [] }));
+    };
+
     // Con q: busca por placa, marca o submarca (RPC que normaliza acentos y
     // mayusculas). Sin q: top 50 por visitas, directo de la vista.
     const q = (url.searchParams.get("q") ?? "").trim();
     if (q) {
       const { data, error } = await db.rpc("buscar_vehiculos", { p_q: q });
       if (error) { console.error("buscar_vehiculos:", error); return json({ error: error.message }, 500); }
-      return json({ placas: data ?? [] });
+      return json({ placas: await conSecadores(data ?? []) });
     }
     const { data, error } = await db
       .from("historial_placas")
@@ -1007,7 +1025,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       console.error("Fallo al buscar placas:", error);
       return json({ error: error.message }, 500);
     }
-    return json({ placas: data ?? [] });
+    return json({ placas: await conSecadores(data ?? []) });
   }
 
   // --- Trabajadores: lista y perfil de secado -------------------------
