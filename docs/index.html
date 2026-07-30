@@ -1893,7 +1893,10 @@ document.addEventListener("DOMContentLoaded", function () {
         if (fotoPendiente) enviarFotoGuardada(fotoPendiente, carroDeFoto, etiquetaFoto);
         cerrarPantalla();
       })
-      .catch(function () { alert("Sin conexión. Intenta otra vez."); })
+      // Si falló por red, la pantalla de Asignar sigue abierta: hay que volver
+      // a habilitar el botón (pintarAsignacion lo recalcula) para que el
+      // supervisor pueda reintentar sin Cancelar. Sin esto quedaba muerto.
+      .catch(function () { alert("Sin conexión. Intenta otra vez."); if (asig) pintarAsignacion(); })
       .then(function () { ocupado = false; consultar(); });
   });
 });

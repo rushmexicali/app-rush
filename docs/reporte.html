@@ -445,7 +445,7 @@ function tablaPlacas(placas) {
     html += "<tr><td><b>" + escapar(p.placa_como_se_lee || p.placa) + "</b></td>" +
             '<td class="num">' + p.visitas + "</td>" +
             "<td>" + escapar(carro || "—") + "</td>" +
-            "<td>" + escapar(new Date(p.ultima_visita).toLocaleDateString("es-MX")) + "</td></tr>";
+            "<td>" + (p.ultima_visita ? escapar(new Date(p.ultima_visita).toLocaleDateString("es-MX")) : "—") + "</td></tr>";
   }
   return html + "</table>";
 }

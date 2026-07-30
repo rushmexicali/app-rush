@@ -415,8 +415,8 @@
 
     <div class="ayuda-bloque ayuda-ojo">
       <h3>Cuándo cuenta una visita</h3>
-      <p>Una visita cuenta para la lealtad <b>solo cuando la enlazas a una venta real</b> de Zettle (paso 4).</p>
-      <p>Si tocas <b>No hubo venta / cancelar</b>, esa visita se descarta y <b>no cuenta</b>.</p>
+      <p>Una visita cuenta para la lealtad <b>desde que la registras</b>, aunque todavía no la enlaces a la venta.</p>
+      <p>Para que <b>NO cuente</b> (por ejemplo, si al final no hubo venta), toca <b>No hubo venta / cancelar</b>: eso la descarta.</p>
     </div>
 
     <div class="ayuda-bloque">
@@ -876,7 +876,11 @@ function elegirPersona(p) {
 }
 
 // --- Pantalla persona + lealtad --------------------------------------
-function pintarPersona() {
+// conservarGratis: al REPINTAR la misma persona (confirmar/descartar placa,
+// guardar datos) NO se debe apagar el toggle "Utilizar Lavado GRATIS" que la
+// cajera ya prendió — si se apaga sin que se dé cuenta, cobra un gratis. Solo
+// se reinicia al cargar una persona NUEVA (elegirPersona, sin el flag).
+function pintarPersona(conservarGratis) {
   var p = personaActual, l = (p && p.lealtad) || {};
 
   // Los lavados gratis se ACUMULAN: cada 5 pagados suma uno. Si tiene, el
@@ -944,7 +948,7 @@ function pintarPersona() {
   // prende solo: la cajera lo prende cuando el cliente decide usarlo (puede
   // preferir guardarlo y pagar un express).
   var chk = document.getElementById("chk-gratis");
-  chk.checked = false;
+  if (!conservarGratis) chk.checked = false;
   document.getElementById("lbl-gratis").style.display = disp > 0 ? "flex" : "none";
   pintarToggleGratis();
 
@@ -960,7 +964,7 @@ function pintarPersona() {
 function placaAccionCaja(ruta, persona, placa) {
   postJSON(ruta, { persona: persona, placa: placa }).then(function (d) {
     if (d && d.ok === false) { alert(d.error || "No se pudo"); return; }
-    if (d && d.persona) { personaActual = d.persona; pintarPersona(); }
+    if (d && d.persona) { personaActual = d.persona; pintarPersona(true); }
   }).catch(function (e) { if (e && e.message === "codigo") return; alert("No se pudo. Intenta otra vez."); });
 }
 
@@ -989,7 +993,7 @@ document.getElementById("btn-guardar-datos").addEventListener("click", function 
     }).then(function (d) {
       if (d && d.ok === false) { alert(d.error || "No se pudo guardar"); return; }
       personaActual = d.persona;
-      pintarPersona();
+      pintarPersona(true);
     });
   });
 });
