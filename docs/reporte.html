@@ -597,9 +597,12 @@ function avisoRepetidasHTML(reps) {
              'Abre la placa para ver sus fotos y comparar; el carro con distinto color o tipo suele ser el mal etiquetado.';
   reps.forEach(function (g) {
     var carros = g.carros || [];
+    // g.dia viene como "YYYY-MM-DD" (solo fecha). new Date de un date-only se
+    // parsea como UTC y en Mexicali (UTC-7) retrocede un día; con "T12:00:00"
+    // (sin zona) se parsea como hora LOCAL y la fecha sale bien.
     html += '<div class="rep"><div class="rep-placa">' +
             '<button class="enlace" data-placa="' + escapar(g.placa) + '"><b>' + escapar(g.placa) + "</b></button>" +
-            " · " + escapar(fechaCorta(g.dia)) + " · " + carros.length + " carros</div>";
+            " · " + escapar(fechaCorta(g.dia + "T12:00:00")) + " · " + carros.length + " carros</div>";
     carros.forEach(function (c) {
       var desc = c.submarca
         ? [c.marca, c.submarca, c.color].filter(Boolean).join(" ")
