@@ -1061,6 +1061,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ carros });
   }
 
+  // --- Aviso: placas repetidas el mismo dia (foto mal pegada) ---------
+  // Dos o mas carros del mismo dia local con la misma placa: senal de que la
+  // foto se pego al carro equivocado. El reporte lo muestra como alerta para
+  // el rango/dia consultado. Solo lectura, aparte del reporte congelado.
+  if (ruta === "/placas-repetidas") {
+    const desde = url.searchParams.get("desde");
+    const hasta = url.searchParams.get("hasta") ?? desde;
+    if (!desde) return json({ error: "falta desde" }, 400);
+    const { data, error } = await db.rpc("placas_repetidas_del_rango", { p_desde: desde, p_hasta: hasta });
+    if (error) { console.error("placas_repetidas_del_rango:", error); return json({ error: error.message }, 500); }
+    return json({ repetidas: data ?? [] });
+  }
+
   // --- Trabajadores: lista y perfil de secado -------------------------
   // La lista incluye a TODOS los empleados (activos, en descanso y fuera):
   // el dueno quiere poder abrir el perfil de alguien que hoy descansa y no

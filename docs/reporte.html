@@ -79,6 +79,12 @@
     padding:11px 13px; margin:14px 0; font-size:14px; color:#c9d1d9; line-height:1.45;
   }
   .aviso b { color:#e6edf3; }
+  /* Alerta (algo que hay que ir a revisar), más fuerte que el aviso amarillo. */
+  .aviso.alerta { border-left-color:#f85149; }
+  .aviso.alerta .rep { margin-top:8px; padding-top:8px; border-top:1px solid #21262d; }
+  .aviso.alerta .rep-placa { font-weight:800; color:#e6edf3; font-size:15px; }
+  .aviso.alerta .rep-carro { color:#8b949e; font-size:13px; margin-top:2px; }
+  .aviso.alerta .enlace { font-size:13px; }
 
   /* Cada tipo de servicio es su propia seccion. Mas chico que h2 para
      que se lea como subdivision de "Por equipo" y no como tema nuevo. */
@@ -324,7 +330,9 @@ function duracion(seg) {
 function pintarReporte(r) {
   var placas = r.placas || {};
   var asp = r.aspirado || {};
-  var html = "";
+  // Aviso de placas repetidas el mismo día: se llena aparte (pedirRepetidas),
+  // va hasta arriba porque es algo que hay que ir a revisar.
+  var html = '<div id="repetidas"></div>';
 
   html += '<div class="numeros">';
   html +=   tarjeta(r.vehiculos_lavados, "Vehículos lavados",
@@ -553,6 +561,60 @@ function irACliente(id) {
   abrirPersona(id);
 }
 
+// El aviso de placas repetidas el mismo día (foto pegada al carro
+// equivocado). Se pide aparte del reporte y se pinta en #repetidas. Si no
+// hay ninguna, no deja nada: un cero permanente en pantalla se vuelve
+// invisible, y este aviso importa justo el día que NO es cero.
+function pedirRepetidas(desde, hasta) {
+  if (!desde) return;
+  pedir("/placas-repetidas?desde=" + desde + "&hasta=" + hasta)
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var cont = document.getElementById("repetidas");
+      if (!cont) return;
+      var reps = (d && d.repetidas) || [];
+      if (!reps.length) { cont.innerHTML = ""; return; }
+      cont.innerHTML = avisoRepetidasHTML(reps);
+      // Como en la tabla de Operación: la placa cambia a la vista Clientes
+      // (donde vive el perfil con la galería); el ticket abre el modal.
+      cont.querySelectorAll("button[data-placa]").forEach(function (b) {
+        b.addEventListener("click", function () { irAPlaca(b.getAttribute("data-placa")); });
+      });
+      cont.querySelectorAll("button[data-ticket]").forEach(function (b) {
+        b.addEventListener("click", function () { abrirTicket(b.getAttribute("data-ticket")); });
+      });
+    })
+    .catch(function () { /* es un extra: si falla, el reporte no se cae */ });
+}
+
+// Cada grupo: una placa que salió en 2+ carros el mismo día. Los colores o
+// tipos casi siempre difieren en un pegado, así que se muestra la descripción
+// de cada carro para cachar cuál es el intruso.
+function avisoRepetidasHTML(reps) {
+  var n = reps.length;
+  var html = '<div class="aviso alerta"><b>⚠ ' + n + (n === 1 ? " placa repetida" : " placas repetidas") +
+             ' el mismo día</b> — probable foto pegada al carro equivocado. ' +
+             'Abre la placa para ver sus fotos y comparar; el carro con distinto color o tipo suele ser el mal etiquetado.';
+  reps.forEach(function (g) {
+    var carros = g.carros || [];
+    html += '<div class="rep"><div class="rep-placa">' +
+            '<button class="enlace" data-placa="' + escapar(g.placa) + '"><b>' + escapar(g.placa) + "</b></button>" +
+            " · " + escapar(fechaCorta(g.dia)) + " · " + carros.length + " carros</div>";
+    carros.forEach(function (c) {
+      var desc = c.submarca
+        ? [c.marca, c.submarca, c.color].filter(Boolean).join(" ")
+        : [c.tipo_unidad, c.color, c.marca].filter(Boolean).join(" ");
+      var linea = escapar(hora(c.hora)) + " — " + (desc ? escapar(titulo(desc)) : "sin datos") +
+                  (c.cliente ? " · " + escapar(titulo(c.cliente)) : "");
+      if (c.ticket) linea += ' · <button class="enlace" data-ticket="' + escapar(c.ticket) + '">ticket ' + escapar(c.ticket) + "</button>";
+      html += '<div class="rep-carro">' + linea + "</div>";
+    });
+    html += "</div>";
+  });
+  html += "</div>";
+  return html;
+}
+
 function cargarDia(fecha) { cargarReporte("/reporte?fecha=" + fecha); }
 
 // Un rango NUNCA sale de las filas congeladas: esas son por dia, y los
@@ -583,6 +645,7 @@ function cargarReporte(ruta) {
               : "Día en curso — todavía puede cambiar");
       document.getElementById("contenido").innerHTML = pintarReporte(r) + pintarPlacas();
       cargarPlacas("");
+      pedirRepetidas(r.desde, r.hasta || r.desde);
       var b = document.getElementById("buscar");
       if (b) b.addEventListener("input", function () { cargarPlacas(b.value.trim()); });
     })
