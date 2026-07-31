@@ -1291,6 +1291,16 @@ si no, "vino 3 veces" se lee como total y lleva a conclusiones falsas.
 > Esto no tiene arreglo en código todavía: nada impide fotografiar el carro equivocado. Lo
 > barato sería avisar cuando dos carros del mismo día comparten placa — es una señal casi
 > segura de foto mal pegada.
+>
+> ✅ **El aviso ya existe (30/jul/2026, migración `095`).** El reporte muestra hasta arriba de
+> Operación una **alerta roja** cuando dos+ carros del mismo día local comparten placa, con los
+> carros de cada grupo (hora, descripción y ticket clicable) y la placa clicable a su perfil
+> —para comparar fotos y cachar el pegado—. Vive en `placas_repetidas_del_rango(desde,hasta)` +
+> endpoint `/placas-repetidas`, **aparte del reporte congelado** (solo lectura, funciona para
+> cualquier día/rango). NO impide el pegado —eso lo resolverá la cámara fija—, solo lo hace
+> visible. El 30/jul cachó 4 casos, incluido `BF-8884-A` pegada a **3 tickets** (25488/25494/
+> 25496) y **dos clientes distintos** (Parka Moreno y Petro Gonzales Avila). Cierra el pendiente
+> §12 punto 3.
 
 **Solo los Paquetes crean carro** (arreglado el 19/jul/2026). Una venta de puro `Pinito`
 (categoría `Aroma`) creaba un carro fantasma en la cola e inflaba el conteo. Ahora se busca en
@@ -1351,9 +1361,11 @@ quiénes eran en realidad"*. Se borraron **68 asignaciones** (13 personas) y **2
    campos. La página del dueño muestra "Le entraron encimados: N (X%)" junto a cada equipo, con la
    nota de que un secado alto con muchos encimados es saturación, no lentitud. Ej. real (20/jul):
    Jesús Gil 7 de 14 (50%).
-3. **Avisar cuando dos carros del mismo día comparten placa.** Ya van dos veces (19/jul carros
-   69/71, 21/jul carros 269/272). Es la señal barata de la foto pegada al carro equivocado, y
-   hoy nadie se entera. Ver §12.1.
+3. ~~**Avisar cuando dos carros del mismo día comparten placa.**~~ **HECHO (30/jul/2026,
+   migración `095`).** Alerta roja en el reporte (Operación) con los carros de cada grupo y la
+   placa clicable para comparar fotos. El 30/jul cachó 4 casos (uno pegado a 3 tickets y 2
+   clientes). Ver §12.1. Sigue subiendo con el volumen (~2-3/día esta semana); la cámara fija
+   trasera lo atacaría de raíz.
 4. **Ver por qué el 22/jul faltaron fotos de 13:00 a 13:59** (4 carros, 0 fotos) y por qué la
    nota de caja bajó a 92% con 5 huecos en la mañana temprano. Los dos huelen a turno, no a
    bug: se confirma preguntando, no consultando.
