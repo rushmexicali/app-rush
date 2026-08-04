@@ -771,6 +771,77 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 11.80 Cierre del 1–3/ago/2026 — fin de semana de alto volumen, y la foto arreglada
+
+Tres días seguidos limpios en lo operativo: **0 rechazos, 0 cancelados, 0 borrados, 0
+devoluciones**, y solo 1 tiempo imposible descartado (el lunes). Lo que hay que leer es la
+**carga** y la **calidad de datos**, no la maquinaria.
+
+**Volumen (patrón de fin de semana):**
+
+| Día | | Lavados | Con aspirado | Express/sin | Encerado |
+|---|---|---|---|---|---|
+| 1/ago | Sábado | **127** | 86 | 40 | 1 |
+| 2/ago | Domingo | 81 | 60 | 20 | 1 |
+| 3/ago | Lunes | ~95 | 60 | 35 | 0 |
+
+El **sábado 1 es el día más grande registrado** (127, contra el récord previo de ~90).
+
+**Tiempos, y la lectura correcta (saturación, no lentitud):**
+
+| Día | Espera (pago→entrega) | Secado (mezcla) | Encimados | % de completos |
+|---|---|---|---|---|
+| 1/ago | 52.4 min | 39.6 min | 65 | **76%** |
+| 2/ago | 46.6 min | 34.6 min | 38 | 63% |
+| 3/ago | 46.3 min | 34.9 min | 44 | 73% |
+
+Tres de cada cuatro completos arrancan con el secador **ya ocupado**. Los secados individuales
+altos son cola, no lentitud (el contexto que la migración `065` existe para dar). Ejemplo del
+sábado: Saul Ramirez sale con 67 min (el más alto), pero con 7 de 10 encimados. El dato limpio
+es **Edgar Reyes**: 8 completos a 35 min con solo 2 encimados. **Jorge Luna trae 100% de
+encimados los dos días** (8/8 el sábado, 10/10 el lunes): revisar su posición o cómo se le
+asigna. Express: **Walter Rodríguez** sostiene la línea 1 (16 a 14.6 min el sábado, 19 a 13.5 el
+lunes).
+
+**Calidad de datos — la nota aguanta, la FOTO se cayó el lunes:**
+
+| Día | Nota de caja | Foto | Placa leída |
+|---|---|---|---|
+| 1/ago | 125/127 (98%) | 123/127 (**97%**) | 117 (92%) |
+| 2/ago | 79/81 (98%) | 78/81 (96%) | 72 (89%) |
+| 3/ago | 92/96 (96%) | 85/96 (**88%**) | 76 (79%) |
+
+El lunes la foto cayó a 88% (11 sin foto), el peor de los tres. Dos de esos 11 son los carros
+1539 y 1540, cuya subida se cayó por wifi. **Ese hueco se cerró el mismo 3/ago** con la cola
+durable de subida (outbox en IndexedDB), commit `3995f0d` — ver la memoria
+`foto-al-asignar-gate-solo-del-front`. Advertencia honesta: los 11 sin foto están repartidos por
+todo el día, no solo en un bache de wifi; el outbox rescata a los que **sí se tomaron y no
+subieron**, no a los que nunca se tomaron (el 1548 de las 19:48 entró sin nota, sin foto y con
+tipo/color en null). Parte de la cobertura del lunes es hábito, no bug.
+
+**Placas repetidas (foto mal pegada) — la alerta `095` ya las está cachando:** 4 casos en el
+rango (2 el sábado, 2 el domingo, **0 el lunes**). El más claro es `AZF-710-A`: una camioneta
+blanca (carro 1356) y un Sentra rojo (1357) con la misma placa — imposible en dos carros reales,
+así que a uno se le pegó la foto del otro. Como el color viene de la nota y la placa de la foto,
+el desfase se ve solo. Seguirá hasta que la cámara fija trasera lo ataque de raíz.
+
+**Los olvidos, patrón que sigue vivo:**
+
+| Día | Secados descartados (<3 min, olvido entregado de golpe) | Cerrado automático |
+|---|---|---|
+| 1/ago | 0 | 1 |
+| 2/ago | 1 | 0 |
+| 3/ago | **5** | 0 |
+
+El lunes tuvo 5 secados de segundos (mismo patrón del 21/22 jul). No distorsionan los promedios
+(la `064` los excluye del secado), pero 5 en un día indican que el supervisor pierde la huella
+del carro tras asignar — el mismo hilo que motiva la cámara fija. Se relaciona con la foto
+faltante: carro olvidado = carro sin foto.
+
+**Qué atender (por valor):** (1) foto del lunes al 88% — confirmar con el supervisor si el bache
+es wifi o descuido, sobre todo el 1548 sin nada; (2) los 5 olvidos del lunes; (3) Jorge Luna,
+100% de encimados los dos días. Nada urgente en rechazos/cancelados/devoluciones.
+
 ## 11.85 Cierre del 24/jul/2026 — marca/modelo de la foto, review adversarial, y analítica calibrada
 
 Sesión grande. Todo shippeado, verificado y en producción (migraciones `061`–`065`). El estado
