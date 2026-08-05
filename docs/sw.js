@@ -20,7 +20,9 @@
 //   v5 (26/jul/2026) — entra la app de la caja (CRM/lealtad).
 //   v6 (4/ago/2026) — la caja usa el feed de la Reolink (go2rtc/Tailscale),
 //                     con respaldo a la camara del dispositivo si falla.
-var CACHE = "rush-v6";
+//   v7 (4/ago/2026) — elegir camara Exterior/Tablet + boton Regresar; se quita
+//                     el boton de la camara nativa de Android.
+var CACHE = "rush-v7";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest",

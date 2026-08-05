@@ -65,6 +65,11 @@
   .fila-botones { display:flex; gap:8px; margin:8px 0; }
   .fila-botones .secundario { flex:1; margin:0; }
 
+  /* Elegir la camara del feed (Exterior / Tablet), dos botones lado a lado. */
+  .fila-camaras { display:flex; gap:8px; margin:8px 0; }
+  .cam-btn { flex:1; min-height:62px; font-size:18px; font-weight:800; padding:10px 8px; line-height:1.15; }
+  .cam-btn.activa { background:#2f81f7; border-color:#2f81f7; color:#fff; }
+
   /* Filas del historial del cliente. */
   .hist-item { background:#161b22; border:1px solid #30363d; border-radius:12px; padding:12px 14px; margin:10px 0; }
   .hist-item .fecha { font-size:16px; font-weight:800; color:#e6edf3; }
@@ -259,20 +264,25 @@
 <div id="p-placa" class="pantalla activa">
   <div class="seccion">Captura la placa</div>
 
-  <!-- Feed en vivo de la camara. PRODUCCION: la Reolink fija (via go2rtc,
-       WebRTC). AHORA: stand-in con la camara del dispositivo (getUserMedia)
-       para probar toda la UI. Se prende/apaga TOCANDOLO — ahorra bateria del
-       tablet y, si el feed se congela al cambiar el foco a Zettle, un toque lo
-       reinicia. -->
+  <!-- Elegir la fuente del feed en vivo: la Reolink fija del carwash (Camara
+       Exterior) o la camara del propio tablet (Camara Tablet). Las DOS se ven
+       DENTRO de la app (WebRTC / getUserMedia en el mismo recuadro), no la
+       camara nativa de Android: asi ambas tienen boton Regresar y no tapan
+       Zettle en split-screen. Se apaga al perder el foco (visibilitychange). -->
+  <div class="fila-camaras">
+    <button id="btn-cam-ext" class="cam-btn">Cámara Exterior</button>
+    <button id="btn-cam-tab" class="cam-btn">Cámara Tablet</button>
+  </div>
+
   <div id="feed" class="feed-apagado">
     <video id="feed-video" autoplay playsinline muted></video>
     <img id="feed-shot" alt="">
-    <div id="feed-hint"><span class="feed-ico">📷</span><span id="feed-hint-txt">Toca para ver la cámara</span></div>
+    <div id="feed-hint"><span class="feed-ico">📷</span><span id="feed-hint-txt">Elige una cámara arriba</span></div>
     <div id="feed-leyendo"><div class="spin"></div><span>LEYENDO FOTOGRAFÍA…</span></div>
   </div>
 
   <button id="btn-foto" class="grande azul">📸 Tomar foto</button>
-  <button id="btn-foto-tablet" class="grande">📱 Tomar foto con cámara de Tablet</button>
+  <button id="btn-regresar" class="grande" style="display:none">↩ Regresar</button>
   <button id="btn-manual" class="secundario">&#9000; Capturar placa manualmente</button>
 
   <div id="manual-box" style="display:none">
@@ -626,7 +636,7 @@ function fijarPlaca(placaCruda, datosFoto) {
 // MediaStream en ambos casos, asi que prenderFeed/capturarCuadro/apagarFeed no
 // cambian. go2rtc lleva api.origin:"*" para aceptar el WS cross-origin, y espera
 // la OFERTA como objeto {type,sdp} (no como string).
-var feedStream = null, feedVivo = false, feedPC = null, feedWS = null;
+var feedStream = null, feedVivo = false, feedPC = null, feedWS = null, feedFuente = "reolink";
 
 var GO2RTC_HOST = "rushserver.tail267016.ts.net";
 var GO2RTC_SRC  = "reolink_sub";
@@ -676,8 +686,12 @@ function obtenerStreamDispositivo() {
   return navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
 }
 
+// Despacha segun la camara elegida. La Exterior (Reolink) NO cae al respaldo
+// sola: el boton dice exactamente que hace, y si falla la cajera toca "Camara
+// Tablet". Asi la eleccion siempre es explicita.
 function obtenerStream() {
-  return obtenerStreamReolink().catch(function () { return obtenerStreamDispositivo(); });
+  if (feedFuente === "tablet") return obtenerStreamDispositivo();
+  return obtenerStreamReolink();
 }
 function prenderFeed() {
   if (feedVivo) return Promise.resolve();
@@ -686,9 +700,13 @@ function prenderFeed() {
     document.getElementById("feed-video").srcObject = s;
     feedVivo = true;
     document.getElementById("feed").className = "feed-vivo";
-    document.getElementById("feed-hint-txt").textContent = "Toca para apagar";
+    document.getElementById("feed-hint-txt").textContent = (feedFuente === "tablet") ? "Cámara Tablet" : "Cámara Exterior";
+    actualizarCamaraUI();
   }).catch(function (e) {
-    document.getElementById("feed-hint-txt").textContent = "No se pudo abrir la cámara. Usa el botón del tablet.";
+    document.getElementById("feed-hint-txt").textContent = (feedFuente === "reolink")
+      ? "No se pudo abrir la Cámara Exterior. Prueba Cámara Tablet."
+      : "No se pudo abrir la cámara del tablet.";
+    actualizarCamaraUI();
     throw e;
   });
 }
@@ -700,13 +718,37 @@ function apagarFeed() {
   feedVivo = false;
   quitarLeyendo();
   document.getElementById("feed").className = "feed-apagado";
-  document.getElementById("feed-hint-txt").textContent = "Toca para ver la cámara";
+  document.getElementById("feed-hint-txt").textContent = "Elige una cámara arriba";
+  actualizarCamaraUI();
 }
+
+// Resalta el boton de la camara activa y muestra "Regresar" solo cuando hay
+// una camara encendida.
+function actualizarCamaraUI() {
+  document.getElementById("btn-cam-ext").classList.toggle("activa", feedVivo && feedFuente === "reolink");
+  document.getElementById("btn-cam-tab").classList.toggle("activa", feedVivo && feedFuente === "tablet");
+  document.getElementById("btn-regresar").style.display = feedVivo ? "" : "none";
+}
+
+// Elegir camara: si ya es esa, no hace nada; si hay otra encendida, la cambia.
+function usarCamara(fuente) {
+  if (feedVivo && feedFuente === fuente) return;
+  if (feedVivo) apagarFeed();
+  feedFuente = fuente;
+  prenderFeed().catch(function () {});
+}
+
+document.getElementById("btn-cam-ext").addEventListener("click", function () { usarCamara("reolink"); });
+document.getElementById("btn-cam-tab").addEventListener("click", function () { usarCamara("tablet"); });
+document.getElementById("btn-regresar").addEventListener("click", function () { apagarFeed(); });
+
+// Tocar el recuadro del video lo apaga (otra salida). Prender es SOLO con los
+// botones de arriba, para que la fuente sea siempre una eleccion explicita.
 document.getElementById("feed").addEventListener("click", function () {
-  if (feedVivo) apagarFeed(); else prenderFeed().catch(function () {});
+  if (feedVivo) apagarFeed();
 });
 // Al perder el foco (p.ej. tocar Zettle en split) se apaga: ahorra bateria y
-// evita el cuadro congelado. Al volver, la cajera lo re-toca.
+// evita el cuadro congelado. Al volver, la cajera re-elige.
 document.addEventListener("visibilitychange", function () {
   if (document.hidden && feedVivo) apagarFeed();
 });
@@ -767,9 +809,7 @@ function procesarImagen(dataURL) {
 // cajera apunta y vuelve a tocar), para no capturar un cuadro negro/borroso.
 document.getElementById("btn-foto").addEventListener("click", function () {
   if (!feedVivo) {
-    prenderFeed().then(function () {
-      document.getElementById("estado-captura").textContent = "Cámara lista. Apunta a la placa y vuelve a tocar Tomar foto.";
-    }).catch(function () {});
+    document.getElementById("estado-captura").textContent = "Elige una cámara arriba (Exterior o Tablet) primero.";
     return;
   }
   var img = capturarCuadro();
@@ -777,10 +817,10 @@ document.getElementById("btn-foto").addEventListener("click", function () {
   procesarImagen(img);
 });
 
-// Respaldo: la camara del propio tablet (handoff a la app del sistema).
-document.getElementById("btn-foto-tablet").addEventListener("click", function () {
-  document.getElementById("camara").click();
-});
+// El boton "Tomar foto con camara de Tablet" (camara NATIVA de Android) se quito
+// el 4/ago: la camara del tablet ahora se ve DENTRO de la app con "Camara Tablet"
+// (y su boton Regresar), que ademas no tapa Zettle en split-screen. El input
+// #camara y su handler de abajo quedan intactos por si se reactiva el handoff.
 document.getElementById("camara").addEventListener("change", function (ev) {
   var archivo = ev.target.files && ev.target.files[0];
   ev.target.value = "";
