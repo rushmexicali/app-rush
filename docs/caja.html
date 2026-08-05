@@ -617,16 +617,67 @@ function fijarPlaca(placaCruda, datosFoto) {
 }
 
 // --- Feed en vivo de la camara ---------------------------------------
-// PRODUCCION: WebRTC de la Reolink (via go2rtc). AHORA (stand-in): la camara
-// del dispositivo por getUserMedia, para probar toda la UI. Lo UNICO que
-// cambia cuando entre la Reolink es obtenerStream().
-var feedStream = null, feedVivo = false;
+// PRODUCCION: feed WebRTC de la Reolink (via go2rtc), servido por Tailscale con
+// HTTPS para que esta pagina https pueda usar wss (sin choque de contenido
+// mixto). Solo funciona en dispositivos dentro del tailnet (el tablet de la caja
+// lo esta). Si el feed de la Reolink falla —dispositivo fuera del tailnet, o
+// relay/camara caidos— cae al RESPALDO: la camara del propio dispositivo
+// (getUserMedia), que es lo que habia antes. obtenerStream() devuelve un
+// MediaStream en ambos casos, asi que prenderFeed/capturarCuadro/apagarFeed no
+// cambian. go2rtc lleva api.origin:"*" para aceptar el WS cross-origin, y espera
+// la OFERTA como objeto {type,sdp} (no como string).
+var feedStream = null, feedVivo = false, feedPC = null, feedWS = null;
 
-function obtenerStream() {
-  // TODO Reolink: reemplazar por la conexion WebRTC a go2rtc.
+var GO2RTC_HOST = "rushserver.tail267016.ts.net";
+var GO2RTC_SRC  = "reolink_sub";
+
+function obtenerStreamReolink() {
+  return new Promise(function (resolve, reject) {
+    var pc = new RTCPeerConnection({ iceServers: [] });
+    var ms = new MediaStream();
+    var ws = new WebSocket("wss://" + GO2RTC_HOST + "/api/ws?src=" + GO2RTC_SRC);
+    feedPC = pc; feedWS = ws;
+    var listo = false;
+    function fallar(e) {
+      if (listo) return; listo = true;
+      try { ws.close(); } catch (x) {}
+      try { pc.close(); } catch (x) {}
+      reject(e || new Error("feed"));
+    }
+    pc.addTransceiver("video", { direction: "recvonly" });
+    pc.onicecandidate = function (ev) {
+      if (ev.candidate && ws.readyState === 1)
+        ws.send(JSON.stringify({ type: "webrtc/candidate", value: ev.candidate.candidate }));
+    };
+    pc.ontrack = function (ev) {
+      ms.addTrack(ev.track);
+      if (!listo) { listo = true; resolve(ms); }
+    };
+    ws.onopen = function () {
+      pc.createOffer().then(function (o) { return pc.setLocalDescription(o); })
+        .then(function () {
+          ws.send(JSON.stringify({ type: "webrtc", value: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } }));
+        })
+        .catch(fallar);
+    };
+    ws.onmessage = function (ev) {
+      var m; try { m = JSON.parse(ev.data); } catch (x) { return; }
+      if (m.type === "webrtc") pc.setRemoteDescription(m.value).catch(fallar);
+      else if (m.type === "webrtc/candidate" && m.value) pc.addIceCandidate({ candidate: m.value, sdpMid: "0" }).catch(function () {});
+    };
+    ws.onerror = function () { fallar(new Error("ws")); };
+    setTimeout(function () { fallar(new Error("timeout")); }, 12000);
+  });
+}
+
+function obtenerStreamDispositivo() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
     return Promise.reject(new Error("sin camara"));
   return navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+}
+
+function obtenerStream() {
+  return obtenerStreamReolink().catch(function () { return obtenerStreamDispositivo(); });
 }
 function prenderFeed() {
   if (feedVivo) return Promise.resolve();
@@ -642,6 +693,8 @@ function prenderFeed() {
   });
 }
 function apagarFeed() {
+  if (feedWS) { try { feedWS.close(); } catch (x) {} feedWS = null; }
+  if (feedPC) { try { feedPC.close(); } catch (x) {} feedPC = null; }
   if (feedStream) { feedStream.getTracks().forEach(function (t) { t.stop(); }); feedStream = null; }
   var v = document.getElementById("feed-video"); if (v) v.srcObject = null;
   feedVivo = false;

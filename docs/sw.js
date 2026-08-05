@@ -18,7 +18,9 @@
 //   v3 (19/jul/2026) — confirmar entrega, rechazos y lista de entregados.
 //   v4 (19/jul/2026) — el boton de volver, fijo arriba de los entregados.
 //   v5 (26/jul/2026) — entra la app de la caja (CRM/lealtad).
-var CACHE = "rush-v5";
+//   v6 (4/ago/2026) — la caja usa el feed de la Reolink (go2rtc/Tailscale),
+//                     con respaldo a la camara del dispositivo si falla.
+var CACHE = "rush-v6";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest",
