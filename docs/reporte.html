@@ -1105,6 +1105,26 @@ function abrirPlaca(placa) {
   }).catch(function (e) { if (e && e.message === "codigo") return; cont.innerHTML = '<div class="vacio">No se pudo cargar.</div>'; });
 }
 
+// ¿La placa se ve sospechosa de foto-mal-pegada? Señales físicamente imposibles
+// para un solo carro: colores que no coinciden, o 2+ visitas el mismo día local.
+// (Clientes distintos a lo largo del tiempo NO cuenta: un carro se comparte en
+// familia legítimamente.)
+function placaSospechosa(historial) {
+  if (!historial || historial.length < 2) return false;
+  var colores = {};
+  for (var i = 0; i < historial.length; i++) {
+    if (historial[i].color) colores[String(historial[i].color).toUpperCase()] = 1;
+  }
+  if (Object.keys(colores).length > 1) return true;
+  var dias = {};
+  for (var j = 0; j < historial.length; j++) {
+    var d = fechaCorta(historial[j].fecha);
+    dias[d] = (dias[d] || 0) + 1;
+    if (dias[d] >= 2) return true;
+  }
+  return false;
+}
+
 function perfilPlaca(placa, historial, duenos) {
   var html = '<button class="volver" id="cli-volver">← Volver a la búsqueda</button>';
   html += '<div class="perfil-nom">' + escapar(placa) + "</div>";
@@ -1112,6 +1132,12 @@ function perfilPlaca(placa, historial, duenos) {
   if (v0) {
     var desc = [v0.marca, v0.submarca, v0.tipo, v0.color].filter(Boolean).join(" ");
     if (desc) html += '<div class="sub">' + escapar(desc) + "</div>";
+  }
+  if (placaSospechosa(historial)) {
+    html += '<div class="aviso alerta">⚠ Ojo: esta placa aparece en carros que parecen ' +
+            '<b>distintos</b> (colores que no coinciden, o varios el mismo día). Casi seguro es una ' +
+            '<b>foto mal pegada o placa mal leída</b>: las visitas de abajo pueden ser de vehículos ' +
+            'diferentes, no del mismo carro.</div>';
   }
 
   // Dueño(s) de lealtad de la placa (persona_placas), clicables. Aquí es donde
