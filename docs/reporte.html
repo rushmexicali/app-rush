@@ -219,6 +219,7 @@
   <button id="tab-op" class="on">Operación</button>
   <button id="tab-cli">Clientes</button>
   <button id="tab-trab">Trabajadores</button>
+  <button id="tab-tik">Tickets</button>
 </div>
 
 <div id="vista-op">
@@ -256,6 +257,17 @@
      abren su historial de secado. Misma audiencia (el dueno, sentado). -->
 <div id="vista-trab" style="display:none">
   <div id="trab-res"><div class="vacio">Cargando…</div></div>
+</div>
+
+<!-- Tickets: teclear un numero de ticket y ver la venta completa de Zettle
+     (el MISMO modal que abre un ticket clicable en cualquier tabla). -->
+<div id="vista-tik" style="display:none">
+  <div class="barra">
+    <input id="tik-q" inputmode="numeric" autocomplete="off" autocapitalize="off"
+           placeholder="Número de ticket…" style="flex:1; min-width:200px">
+    <button id="tik-ver">Ver ticket</button>
+  </div>
+  <div id="tik-hint" class="vacio">Escribe un número de ticket y toca “Ver ticket”.</div>
 </div>
 
 <div id="acceso">
@@ -746,14 +758,15 @@ function pedirJSON(ruta) {
 // Solo prende/apaga vistas y tabs. La carga de cada vista (recientes,
 // trabajadores) va en el handler del tab, NO aqui: asi irAPlaca puede
 // cambiar a Clientes y abrir un perfil sin que las recientes lo pisen.
-var VISTAS = { op: "vista-op", cli: "vista-cli", trab: "vista-trab" };
-var TABS   = { op: "tab-op",   cli: "tab-cli",   trab: "tab-trab" };
+var VISTAS = { op: "vista-op", cli: "vista-cli", trab: "vista-trab", tik: "vista-tik" };
+var TABS   = { op: "tab-op",   cli: "tab-cli",   trab: "tab-trab",  tik: "tab-tik" };
 function mostrarVista(cual) {
   Object.keys(VISTAS).forEach(function (k) {
     document.getElementById(VISTAS[k]).style.display = (k === cual) ? "" : "none";
     document.getElementById(TABS[k]).className = (k === cual) ? "on" : "";
   });
   if (cual === "cli") document.getElementById("cli-q").focus();
+  if (cual === "tik") document.getElementById("tik-q").focus();
 }
 document.getElementById("tab-op").addEventListener("click", function () { mostrarVista("op"); });
 document.getElementById("tab-cli").addEventListener("click", function () {
@@ -764,6 +777,17 @@ document.getElementById("tab-cli").addEventListener("click", function () {
 document.getElementById("tab-trab").addEventListener("click", function () {
   mostrarVista("trab");
   cargarTrabajadores();
+});
+document.getElementById("tab-tik").addEventListener("click", function () { mostrarVista("tik"); });
+
+// Tickets: teclear un numero y abrir el modal de siempre (abrirTicket -> /ticket).
+function verTicketEscrito() {
+  var num = document.getElementById("tik-q").value.trim();
+  if (num) abrirTicket(num);
+}
+document.getElementById("tik-ver").addEventListener("click", verTicketEscrito);
+document.getElementById("tik-q").addEventListener("keydown", function (ev) {
+  if (ev.key === "Enter") verTicketEscrito();
 });
 
 // --- Buscar: nombre/placa -> personas; placa/marca/submarca -> vehículos ---
