@@ -155,6 +155,59 @@ los `carros`/`ventas` (historial de operación). El import solo vive en
 
 ---
 
+## 4a. RENOMBRES y PLACAS — política del dueño (5/ago/2026)
+
+Las cajeras **editan nombres en CNT** (agregan segundo apellido, corrigen typos). Eso
+rompía el dedup del incremental —que empareja personas por `nombre_norm`—: un nombre
+editado entraba como **persona nueva** y **partía** al cliente en dos (historia y lealtad
+divididas). Al 5/ago ya había 79 clientes partidos así.
+
+**Reglas nuevas (obligatorias en cada import de actualización):**
+
+1. **NO se fusiona en automático.** Cada import produce un **diff** para que el dueño
+   **autorice** los merges. Lo arma `diff-renombres.sql`, que llena tres tablas:
+   - `ren_cand` — merges/renombres **sugeridos** con alta confianza (detección por ticket).
+   - `ren_desaparecen` — personas en la base que ya no están en el padrón y que el diff
+     **no** explicó (revisar a mano; casi siempre son renombres con ticket ambiguo).
+   - `ren_nuevas` — nombres del padrón que no están en la base y no son destino de un
+     renombre (clientes nuevos reales).
+2. **La detección de renombres usa solo tickets LIMPIOS.** Un ticket vale para deducir un
+   renombre solo si en el export mapea a **un** nombre y en la base pertenece a **una**
+   persona. 🔴 Sin esto, los tickets chicos/pre-Zettle compartidos (ej. el ticket `1`, que
+   mapea a ~200 nombres) inventan renombres falsos en masa (decenas de personas
+   "→Rogelio Valdivia"). Se cayó en esto el 5/ago y se corrigió antes de aplicar.
+3. **Aplicar solo lo autorizado:** revisado `ren_cand`, correr `aplicar-renombres.sql`
+   (reasigna visitas+placas del duplicado al registro con historia, borra el duplicado,
+   renombra). Solo `visitas` y `persona_placas` referencian `personas.id`.
+4. **Placas: religado ultra-conservador.** El vínculo cliente↔placa (`persona_placas`) se
+   religa con `religar-placas-corroboradas.sql`: una placa se liga a un cliente **solo si
+   la MISMA placa fue leída en 2+ carros distintos de ese cliente** (corroboración
+   independiente; descarta la foto-mal-pegada). Marca `confirmada=true`,
+   `origen='corroborada'`. El **historial de placas en `carros` NO se toca**.
+
+**El reset del 5/ago (lo que se hizo una vez):** se desligaron TODAS las placas
+(`delete from persona_placas`, 966), se reconstruyó la lista de clientes para que coincida
+exacto con el export (92 renombres/fusiones aplicados, 9 basura sin visitas borradas), se
+importó 4-5 ago (+81 visitas, +20 personas) y se religaron 47 placas corroboradas. Respaldo
+en `bak_personas_0805`, `bak_persona_placas_0805`, `bak_visitas_map_0805`.
+
+**Herramientas nuevas:** `notas-ticket.awk` (ticket→nombre actual), `padron.awk` (lista
+autoritativa), `diff-renombres.sql`, `aplicar-renombres.sql`, `religar-placas-corroboradas.sql`.
+
+### El flujo de un import de actualización (con la política nueva)
+```
+1. pdftotext export.pdf → notas_utf8.txt ; NL = linea de "Notes"
+2. gawk -v nl=$NL -f notas-ticket.awk notas_utf8.txt → ticket_nombre.tsv  → cargar stg_names(ticket,display)
+   gawk -v nl=$NL -f padron.awk       notas_utf8.txt → padron.tsv        → cargar stg_padron(display)
+3. diff-renombres.sql  → ren_cand / ren_desaparecen / ren_nuevas
+4. PRESENTAR ren_cand + ren_desaparecen al dueño y ESPERAR autorización.
+5. (autorizado) aplicar-renombres.sql
+6. staging normal (3.2 Zettle, 3.3 staging.awk) → stg_cnt → import-incremental.sql
+7. religar-placas-corroboradas.sql
+```
+
+---
+
 ## 4b. INCREMENTAL — agregar solo los días nuevos (RECOMENDADO en vivo)
 
 En vez del RESET (borrar todo y re-importar), en el flujo en vivo el dueño sube un
