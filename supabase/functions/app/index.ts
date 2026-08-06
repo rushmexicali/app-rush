@@ -1318,6 +1318,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ historial: data ?? [] });
   }
 
+  // --- Buscar tickets por substring del número (buscador en vivo) -----
+  // Como el buscador de clientes: 2+ dígitos -> lista de tickets que
+  // contienen esos dígitos, clicables (cada uno abre /ticket).
+  if (ruta === "/tickets") {
+    const q = (url.searchParams.get("q") ?? "").trim();
+    if (q.length < 2) return json({ tickets: [] });
+    const { data, error } = await db.rpc("buscar_tickets", { p_q: q, p_limite: 50 });
+    if (error) { console.error("buscar_tickets:", error); return json({ error: error.message }, 500); }
+    return json({ tickets: data ?? [] });
+  }
+
   // --- Detalle de un ticket (venta de Zettle por purchaseNumber) ------
   if (ruta === "/ticket") {
     const num = Number(url.searchParams.get("num") ?? 0);
