@@ -777,7 +777,14 @@ document.getElementById("tab-trab").addEventListener("click", function () {
   mostrarVista("trab");
   cargarTrabajadores();
 });
-document.getElementById("tab-tik").addEventListener("click", function () { mostrarVista("tik"); });
+document.getElementById("tab-tik").addEventListener("click", function () {
+  mostrarVista("tik");
+  // Al entrar sin búsqueda escrita, mostrar TODOS los tickets (más nuevos
+  // primero, con infinite scroll). Con una búsqueda de 2+ ya escrita, se
+  // conserva; con 1 carácter, el aviso.
+  if (document.getElementById("tik-q").value.trim().length < 2)
+    tikNueva(document.getElementById("tik-q").value.trim());
+});
 
 // Tickets: buscador EN VIVO por CONTENIDO (número, cajera, producto) con
 // infinite scroll. Los más nuevos arriba; al bajar se cargan más viejos, por
@@ -800,16 +807,16 @@ document.getElementById("tik-res").addEventListener("click", function (ev) {
 function tikNueva(q) {
   tik.q = q; tik.offset = 0; tik.hay = false; tik.cargando = false;
   var cont = document.getElementById("tik-res");
-  if (q.length < 2) {
-    cont.innerHTML = '<div class="vacio">Busca por número de ticket, cajera o producto (ej. “manual”, “danithza”, “pinito”).</div>';
+  if (q.length === 1) {
+    cont.innerHTML = '<div class="vacio">Escribe al menos 2 letras o dígitos (por número, cajera o producto), o borra para ver todos.</div>';
     return;
   }
-  cont.innerHTML = '<div class="lista" id="tik-lista"></div><div id="tik-fin" class="vacio">Buscando…</div>';
+  cont.innerHTML = '<div class="lista" id="tik-lista"></div><div id="tik-fin" class="vacio">Cargando…</div>';
   tikPagina();
 }
 
 function tikPagina() {
-  if (tik.cargando || tik.q.length < 2) return;
+  if (tik.cargando || tik.q.length === 1) return;
   tik.cargando = true;
   var q = tik.q, off = tik.offset;
   var fin = document.getElementById("tik-fin");

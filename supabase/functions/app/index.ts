@@ -1325,7 +1325,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // recibe 30.
   if (ruta === "/tickets") {
     const q = (url.searchParams.get("q") ?? "").trim();
-    if (q.length < 2) return json({ tickets: [] });
+    // Vacío = ver TODOS (más nuevos primero, paginado). 1 carácter es muy corto
+    // (dispararía miles), así que se pide al menos 2 para filtrar.
+    if (q.length === 1) return json({ tickets: [] });
     const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0) || 0);
     const { data, error } = await db.rpc("buscar_tickets", { p_q: q, p_limite: 30, p_offset: offset });
     if (error) { console.error("buscar_tickets:", error); return json({ error: error.message }, 500); }
