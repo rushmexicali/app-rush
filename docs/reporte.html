@@ -263,10 +263,10 @@
      (el MISMO modal que abre un ticket clicable en cualquier tabla). -->
 <div id="vista-tik" style="display:none">
   <div class="barra">
-    <input id="tik-q" inputmode="numeric" autocomplete="off" autocapitalize="off"
-           placeholder="Número de ticket (mínimo 2 dígitos)…" style="flex:1; min-width:200px">
+    <input id="tik-q" autocomplete="off" autocapitalize="off"
+           placeholder="Buscar ticket: número, cajera o producto…" style="flex:1; min-width:200px">
   </div>
-  <div id="tik-res"><div class="vacio">Escribe al menos 2 dígitos del número de ticket.</div></div>
+  <div id="tik-res"><div class="vacio">Busca por número de ticket, cajera o producto (ej. “manual”, “danithza”, “pinito”).</div></div>
 </div>
 
 <div id="acceso">
@@ -779,29 +779,61 @@ document.getElementById("tab-trab").addEventListener("click", function () {
 });
 document.getElementById("tab-tik").addEventListener("click", function () { mostrarVista("tik"); });
 
-// Tickets: buscador EN VIVO, como el de clientes. Al teclear 2+ dígitos salen
-// todos los tickets cuyo número contiene esos dígitos (más recientes primero),
-// clicables directo — cada renglón abre el modal (abrirTicket -> /ticket).
-var tikTimer = null;
+// Tickets: buscador EN VIVO por CONTENIDO (número, cajera, producto) con
+// infinite scroll. Los más nuevos arriba; al bajar se cargan más viejos, por
+// páginas de 30. Cada renglón abre el modal (delegación -> abrirTicket).
+var tik = { q: "", offset: 0, cargando: false, hay: false, timer: null, PAG: 30 };
+
 document.getElementById("tik-q").addEventListener("input", function () {
   var q = this.value.trim();
-  clearTimeout(tikTimer);
-  tikTimer = setTimeout(function () { tikBuscar(q); }, 250);
+  clearTimeout(tik.timer);
+  tik.timer = setTimeout(function () { tikNueva(q); }, 250);
 });
-function tikBuscar(q) {
+
+// Un solo handler por delegación: sirve para todos los renglones, incluidos los
+// que se agreguen despues al bajar (no hay que recablear en cada página).
+document.getElementById("tik-res").addEventListener("click", function (ev) {
+  var b = ev.target.closest ? ev.target.closest("button[data-ticket]") : null;
+  if (b) abrirTicket(b.getAttribute("data-ticket"));
+});
+
+function tikNueva(q) {
+  tik.q = q; tik.offset = 0; tik.hay = false; tik.cargando = false;
   var cont = document.getElementById("tik-res");
-  if (q.length < 2) { cont.innerHTML = '<div class="vacio">Escribe al menos 2 dígitos del número de ticket.</div>'; return; }
-  cont.innerHTML = '<div class="vacio">Buscando…</div>';
-  pedirJSON("/tickets?q=" + encodeURIComponent(q)).then(function (d) {
-    // Si el dueño siguió escribiendo, esta respuesta ya no aplica.
-    if (document.getElementById("tik-q").value.trim() !== q) return;
-    tikResultados(d.tickets || []);
-  }).catch(function (e) { if (e && e.message === "codigo") return; cont.innerHTML = '<div class="vacio">No se pudo buscar.</div>'; });
+  if (q.length < 2) {
+    cont.innerHTML = '<div class="vacio">Busca por número de ticket, cajera o producto (ej. “manual”, “danithza”, “pinito”).</div>';
+    return;
+  }
+  cont.innerHTML = '<div class="lista" id="tik-lista"></div><div id="tik-fin" class="vacio">Buscando…</div>';
+  tikPagina();
 }
-function tikResultados(tickets) {
-  var cont = document.getElementById("tik-res");
-  if (!tickets.length) { cont.innerHTML = '<div class="vacio">Ningún ticket con esos dígitos.</div>'; return; }
-  var html = '<div class="lista">';
+
+function tikPagina() {
+  if (tik.cargando || tik.q.length < 2) return;
+  tik.cargando = true;
+  var q = tik.q, off = tik.offset;
+  var fin = document.getElementById("tik-fin");
+  if (fin && off) fin.textContent = "Cargando más…";
+  pedirJSON("/tickets?q=" + encodeURIComponent(q) + "&offset=" + off).then(function (d) {
+    if (tik.q !== q) return;                 // el dueño ya cambió la búsqueda
+    var tickets = d.tickets || [];
+    tikAgregar(tickets);
+    tik.offset += tickets.length;
+    tik.hay = tickets.length >= tik.PAG;
+    tik.cargando = false;
+    var f = document.getElementById("tik-fin");
+    if (f) f.textContent = (tik.offset === 0) ? "Ningún ticket con ese contenido." : "";
+  }).catch(function (e) {
+    tik.cargando = false;
+    if (e && e.message === "codigo") return;
+    var f = document.getElementById("tik-fin"); if (f) f.textContent = "No se pudo buscar.";
+  });
+}
+
+function tikAgregar(tickets) {
+  var lista = document.getElementById("tik-lista");
+  if (!lista) return;
+  var html = "";
   tickets.forEach(function (t) {
     var num = String(t.ticket);
     var sub = [];
@@ -814,11 +846,15 @@ function tikResultados(tickets) {
             (sub.length ? '<div class="item-sub">' + sub.join(" · ") + "</div>" : "") +
             "</button>";
   });
-  html += "</div>";
-  if (tickets.length >= 50) html += '<div class="vacio">Muestra los 50 más recientes. Escribe más dígitos para afinar.</div>';
-  cont.innerHTML = html;
-  cliCablearBotones(cont);
+  lista.insertAdjacentHTML("beforeend", html);
 }
+
+// Infinite scroll: cerca del fondo (y estando en la pestaña Tickets), traer más.
+window.addEventListener("scroll", function () {
+  if (document.getElementById("vista-tik").style.display === "none") return;
+  if (tik.cargando || !tik.hay) return;
+  if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 400) tikPagina();
+});
 
 // --- Buscar: nombre/placa -> personas; placa/marca/submarca -> vehículos ---
 var cliTimer = null;

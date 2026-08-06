@@ -1318,13 +1318,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ historial: data ?? [] });
   }
 
-  // --- Buscar tickets por substring del número (buscador en vivo) -----
-  // Como el buscador de clientes: 2+ dígitos -> lista de tickets que
-  // contienen esos dígitos, clicables (cada uno abre /ticket).
+  // --- Buscar tickets por CONTENIDO (número, cajera, producto...) -----
+  // Buscador en vivo con infinite scroll: 2+ caracteres -> página de tickets
+  // (más nuevos primero) cuyo contenido contiene el texto. `offset` para pedir
+  // la siguiente página. La página es de 30; el front sabe que hay más si
+  // recibe 30.
   if (ruta === "/tickets") {
     const q = (url.searchParams.get("q") ?? "").trim();
     if (q.length < 2) return json({ tickets: [] });
-    const { data, error } = await db.rpc("buscar_tickets", { p_q: q, p_limite: 50 });
+    const offset = Math.max(0, Number(url.searchParams.get("offset") ?? 0) || 0);
+    const { data, error } = await db.rpc("buscar_tickets", { p_q: q, p_limite: 30, p_offset: offset });
     if (error) { console.error("buscar_tickets:", error); return json({ error: error.message }, 500); }
     return json({ tickets: data ?? [] });
   }
