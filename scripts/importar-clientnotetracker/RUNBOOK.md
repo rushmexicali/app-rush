@@ -92,6 +92,18 @@ pdftotext.exe -enc UTF-8 -layout "client_note_tracker_*.pdf" "$W/notas_utf8.txt"
 Anota la línea donde empieza la sección de notas:
 `NL = grep -n "^ *Notes *$" notas_utf8.txt` (la primera).
 
+⚠️ **Si ese grep no encuentra nada, NO improvises: usa la primera línea `^Name:`.**
+`-layout` acomoda el PDF en columnas y puede **pegar el encabezado `Notes` al final de una línea
+`First name:`` (pasó el 15/ago/2026: `First name: zairy aguilar       Notes`). Además la palabra
+"Notes" cae **a media lista de clientes**, no al final, así que ni siquiera partiéndola sirve como
+corte. El corte correcto es donde empieza el primer bloque de nota de verdad:
+```
+NL = grep -n "^Name:" notas_utf8.txt | head -1
+```
+Con el corte mal puesto, `padron.awk` **trunca el padrón** y el diff reporta como "desaparecidas"
+a personas que sí están. Comprueba siempre que `wc -l padron.tsv` sea del orden del total de
+clientes (≈4,900 al 15/ago/2026), no menos.
+
 ### 3.2 Jalar Zettle con la bandera "Gratis"  (PowerShell)
 Paginar `purchases/v2` (cursor `lastPurchaseHash`), y por cada compra escribir
 `purchaseNumber \t amount \t YYYY-MM-DD \t gz` donde `gz=1` si algún producto se
@@ -196,15 +208,92 @@ autoritativa), `diff-renombres.sql`, `aplicar-renombres.sql`, `religar-placas-co
 
 ### El flujo de un import de actualización (con la política nueva)
 ```
-1. pdftotext export.pdf → notas_utf8.txt ; NL = linea de "Notes"
+1. pdftotext export.pdf → notas_utf8.txt ; NL = primera linea "^Name:"  (ver 3.1)
 2. gawk -v nl=$NL -f notas-ticket.awk notas_utf8.txt → ticket_nombre.tsv  → cargar stg_names(ticket,display)
    gawk -v nl=$NL -f padron.awk       notas_utf8.txt → padron.tsv        → cargar stg_padron(display)
 3. diff-renombres.sql  → ren_cand / ren_desaparecen / ren_nuevas
-4. PRESENTAR ren_cand + ren_desaparecen al dueño y ESPERAR autorización.
+3b. CRUCE POR PREFIJO (el que de verdad encuentra los renombres, ver 4c)
+4. PRESENTAR al dueño y ESPERAR autorización de lo que no sea prefijo estricto.
 5. (autorizado) aplicar-renombres.sql
-6. staging normal (3.2 Zettle, 3.3 staging.awk) → stg_cnt → import-incremental.sql
-7. religar-placas-corroboradas.sql
+6. staging normal (3.2 Zettle, 3.3 staging.awk) → stg_cnt
+6b. COTEJO DE TICKETS MAL TECLEADOS (ver 4d) — ANTES de importar
+7. import-incremental.sql
+8. religar-placas-corroboradas.sql
+9. Cotejo final: visitas por día en la base == filas por día del staging_full.tsv
 ```
+
+---
+
+## 4c. El renombre se detecta por PREFIJO DE PALABRAS, no por ticket (15/ago/2026)
+
+`ren_cand` (detección por ticket) resultó **inútil y peligrosa** en el import del 15/ago: dio 2
+candidatos y **los 2 eran falsos**, disparados por tickets mal tecleados (§4d). Lo que sí funciona
+es cruzar las dos listas que el propio diff ya produce:
+
+```sql
+create table public.ren_prefijo as
+select d.id old_id, d.nombre old_nombre, d.nombre_norm old_norm, d.visitas,
+       n.display new_nombre, n.nombre_norm new_norm
+from public.ren_desaparecen d
+join public.ren_nuevas n on n.nombre_norm like d.nombre_norm || ' %';
+```
+
+O sea: **el nombre viejo es prefijo exacto por palabras del nuevo** (la cajera agregó apellido).
+El 15/ago dio **70 pares** con:
+
+- `viejos_ambiguos = 0` y `nuevos_ambiguos = 0` → el emparejamiento es **1 a 1**.
+- `choca_con_persona_existente = 0` → el nombre nuevo **no existe** como persona, así que es un
+  **renombre puro**: no se fusiona ni se borra a nadie, solo se actualiza `nombre`/`nombre_norm`.
+
+**Esos tres ceros son la condición para aplicarlo sin preguntar.** Si alguno no da cero, ese caso
+se le presenta al dueño. Se aplican metiéndolos en `ren_cand` y corriendo `aplicar-renombres.sql`
+(con `choca_id = null`, que hace que el script solo renombre). Respaldar antes en
+`bak_personas_<fecha>`, `bak_persona_placas_<fecha>`, `bak_visitas_map_<fecha>`.
+
+**Lo que este cruce NO atrapa, y hay que presentar aparte:** los clientes **partidos en el
+origen** — el nombre viejo **sigue** en el padrón *y además* hay ficha nueva con el apellido
+completo. Ahí CNT tiene dos fichas de la misma persona (20 casos el 15/ago). Se detectan cruzando
+las personas creadas por el import contra las viejas, con el mismo `like ... || ' %'`.
+🔴 **No fusionar por parecido:** el 15/ago se buscó corroboración por placa y **ninguno de los 20
+compartía placa**; en 3 las placas eran **distintas**, o sea que bien podían ser homónimos. Regla
+del dueño: **1000% o nada**. Eso se arregla en caja, no aquí.
+
+---
+
+## 4d. Cotejo obligatorio: tickets mal tecleados (15/ago/2026)
+
+Un número de ticket mal escrito que **colisiona con un ticket viejo** hace daño en dos lados a la
+vez, y los dos en silencio:
+
+1. **El dedup del incremental descarta la visita nueva.** Si esa visita era un **canje gratis**,
+   el cliente conserva un sello que ya usó → el negocio regala un lavado de más. El 15/ago pasó
+   **dos veces** (Dennis Bosquez con el ticket `22658`, de junio; Astrid Mascareño con el `391`,
+   de sep/2025 — los dos eran canjes).
+2. **`diff-renombres.sql` inventa un merge falso**, porque cree que ese ticket cambió de dueño.
+
+⚠️ **Y hay un tercer caso:** dos filas del **mismo** export con el mismo ticket **entran las dos**
+(el `not exists` se evalúa contra la tabla previa, no contra lo que se está insertando). El 15/ago
+el ticket `26258` quedó en dos visitas; **Zettle desempata por fecha** (era del 8/ago, así que era
+de Leonel Gallardo, no de Arturo Coronel, cuya nota es del 7/ago) — al otro se le quita el ticket
+**y el monto**, si no se cuenta el mismo dinero dos veces.
+
+Correr **antes** del import:
+
+```sql
+-- (a) tickets del export que ya existen con fecha ANTERIOR = mal tecleados
+select s.nombre, s.dt_local, s.ticket, s.es_gratis, p.nombre as duena_de_la_vieja
+from stg_cnt s
+join visitas v on v.caja='import' and v.ticket = s.ticket
+join personas p on p.id = v.persona_id
+where (v.creado_en at time zone 'America/Tijuana')::date < (s.dt_local::timestamp)::date;
+
+-- (b) tickets repetidos DENTRO del propio export
+select ticket, count(*), string_agg(nombre || ' @' || dt_local, ' | ')
+from stg_cnt where ticket is not null group by ticket having count(*) > 1;
+```
+
+**Qué hacer:** la visita **sí va** (el cliente vino de verdad); lo que se descarta es el **ticket**
+(y su monto, que apunta a una venta ajena). Nunca al revés.
 
 ---
 
@@ -229,7 +318,15 @@ las notas son las date-filtradas.
 **Dry-run:** correr `import-incremental-dryrun.sql` (mismo cuerpo + `raise`, revierte)
 para ver `visitas +N / personas +N / ligadas` antes de escribir. Luego el real.
 
-5. **Propagar placas al CRM (migración `086`).** Las visitas nuevas que quedaron
+5. ⛔ **OBSOLETO desde el 5/ago/2026 — NO correr este bloque.** La política del dueño
+   (§4a punto 4) es **1000% o nada**: el vínculo cliente↔placa solo se crea con
+   corroboración de 2+ carros (`religar-placas-corroboradas.sql`, paso 8). Este bloque
+   crea enlaces **sugeridos** de una sola foto, que es justo lo que el reset del 5/ago
+   borró (966 placas). Se deja escrito solo para que nadie lo reviva por error.
+   Comprobado el 15/ago: `persona_placas` tiene 123 filas, **todas** `confirmada` y
+   `origen='corroborada'`, 0 sugeridas.
+
+   **Propagar placas al CRM (migración `086`).** Las visitas nuevas que quedaron
    ligadas a un carro con placa de foto deben alimentar `persona_placas` (si no, la
    placa se queda en el carro y no llega a caja/búsqueda). El import inserta visitas
    directo (no pasa por `enlazar_visita_a_carro`), así que hay que correr el helper a

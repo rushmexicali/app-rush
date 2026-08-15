@@ -10,6 +10,27 @@
 
 El análisis completo está en `CLAUDE.md §11.75`. Aquí sólo lo que espera respuesta o trabajo.
 
+### 🟠 Del import de ClientNoteTracker del 15/ago — 20 clientes partidos EN EL CNT
+
+El import 6–14/ago ya está aplicado (590 visitas, 70 renombres, corte al 14/ago). Pero quedaron
+**20 clientes con DOS fichas en el ClientNoteTracker**: la vieja con la historia y una nueva con
+el apellido completo, porque la cajera creó ficha en vez de buscar al cliente. Ejemplos:
+
+| Ficha con historia | Ficha nueva | ¿Placa? |
+|---|---|---|
+| `gustavo diaz` (14 visitas) | `GUSTAVO DIAZ CONTRO` (1) | **distintas** |
+| `ADRIAN MARTINEZ` (7) | `ADRIAN MARTINEZ MORENO` (1) | **distintas** |
+| `KEVIN HERNANDEZ RAMIREZ` (3) | `KEVIN HERNANDEZ` (1) | **distintas** |
+| `RAMON CERVANTES` (3), `gerardo espinoza` (3), `JAVIER LIMON` (3)… | +apellido | vieja sin placa |
+
+**NO se fusionaron**, a propósito: se buscó corroboración por placa y **ninguno de los 20 comparte
+placa**; en los 3 de arriba las placas son **distintas**, o sea que podrían ser homónimos reales.
+La regla del dueño es *1000% o nada*.
+
+- ❓ **Decisión del dueño:** ¿se fusionan en el CRM aunque el CNT siga partido, o se deja así?
+- 📌 **La raíz se arregla en caja, no en el CRM:** si la cajera busca al cliente existente en vez
+  de crear ficha nueva, esto deja de pasar. Mientras siga, cada import trae más partidos.
+
 ### ❓ Preguntas al dueño (el dato no las contesta)
 
 - 🔴 **¿Quién estuvo de supervisor el 6, el 10 y el 11 de agosto?** Son los tres días donde la
