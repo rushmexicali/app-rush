@@ -6,6 +6,129 @@
 
 ---
 
+## 📊 DEL ANÁLISIS DEL 4–14/ago/2026 (hecho el 15/ago) — lo que necesita decisión
+
+El análisis completo está en `CLAUDE.md §11.75`. Aquí sólo lo que espera respuesta o trabajo.
+
+### ❓ Preguntas al dueño (el dato no las contesta)
+
+- 🔴 **¿Quién estuvo de supervisor el 6, el 10 y el 11 de agosto?** Son los tres días donde la
+  app se abandonó por rachas (29%, 21% y 46% de carros afectados). El 11 hubo **9 carros
+  seguidos sin tocar desde las 17:14 hasta el cierre**. La app no guarda quién la opera, así
+  que es la única forma de saber si es entrenamiento de una persona o proceso de todos.
+- 🟠 **¿Un 6to lavado gratis de un EXPRESS es express?** Hoy `Gratis`+`6to Express` se cuenta
+  como completo y no va a la línea 1 (3 casos: carros 2208, 2211, 2290). Si la respuesta es
+  sí, el arreglo es una línea en `es_lavado_express`. **No se toca la regla sin su palabra.**
+- 🟠 **¿Por qué nadie usa el rechazo de entrega?** 0 usos en 25 días (~1,900 carros); la tabla
+  tiene 3 filas históricas. ¿No hay rechazos, o no se usa la pantalla?
+- 🟠 **¿La app de la cajera se va a usar o el ClientNoteTracker es lo definitivo?** 15 visitas
+  por `caja='principal'` contra 14,025 por `import`. Hoy la lealtad depende de que alguien
+  corra la importación a mano.
+- 🔵 **¿El 12/ago cerraron temprano?** Última venta 15:32 (dato de Zettle, no de la app), 38
+  ventas. Y el 11 sólo 39. Dos días chicos seguidos.
+- 🟡 **`A GRIS`** (carro 2183, 13/ago) — segundo caso del código `A` por `AU` (el primero fue
+  `A GUINDA` el 20/jul). Sigue sin decidirse si se acepta `A` = automóvil o se corrige en caja.
+
+### 📌 Para el CLAUDE.md cuando se toque el catálogo
+
+`Completo Cera` ya no existe (último 28/jul); lo reemplazó **`Completo RUSH`** con variantes
+`Chico`/`Grande`. Clasifica bien (`'completo%'`), pero el catálogo documentado en §12.1 está
+viejo.
+
+---
+
+## 🔍 SEGUNDA REVISIÓN COMPLETA DE CÓDIGO — 3/ago/2026
+
+**Qué es esto:** una auditoría de "desarrollador externo que abre el repo por primera vez", pedida
+por el dueño para apartarse y mirar el conjunto. Se leyó **todo**: la API (`app/index.ts`, 1331 líneas),
+los 3 HTML (`index`/`reporte`/`caja`, ~5,400 líneas), el `sw.js`, las 3 Edge Functions restantes y las
+95 migraciones. **Nada se ha tocado todavía** — esto es el hallazgo, no el arreglo.
+
+**Veredicto:** el proyecto está mucho mejor de lo que 95 migraciones harían temer. Reglas de negocio
+en la base, limpieza de julio (055–060) que se sostiene, escape universal, `firmaRender` bien resuelto.
+No hay incendio. Hay 3 bugs baratos, 1 hueco de seguridad real acotado, deuda menor, y features de valor
+esperando. Regla aplicada: **si el arreglo causa más problemas de los que quita, NO entra** (ver §"NO tocar").
+
+### 🔧 Bugs baratos que arreglar (sin efectos secundarios)
+
+- 🟠 **La cola se vacía en pantalla sin avisar.** `docs/index.html:1309` — `carros = d.carros || []`.
+  Si `/cola` responde **200 con JSON inesperado** (`{ok:false}`, cuerpo sin `carros`), la lista se
+  vuelve `[]` y se pinta "No hay carros en proceso" **sin señalar error**. Para el supervisor, el turno
+  desapareció. Viola "cero sorpresas". Fix: si `d.carros` no es arreglo → mostrar error y **conservar la
+  lista anterior**. Riesgo cero.
+- 🟠 **`escapar()` divergió entre los 3 HTML** (¡el bug #1 del proyecto, otra vez, en silencio!).
+  Caja (`caja.html:501`) y reporte (`reporte.html:302`) son null-safe; `docs/index.html:969` **no** lo
+  es → un `null` se pinta como el texto `"null"` en la tarjeta. Justo en el escape de HTML. Fix de una
+  línea. **Es la prueba de que la copia de helpers entre los 3 HTML ya duele** (ver §deuda).
+- 🟠 **El service worker cachea respuestas no-OK.** `docs/sw.js:56` guarda `r.clone()` sin mirar
+  `r.ok`. En la ventana de un deploy de Pages, un 404 con cuerpo HTML queda cacheado y se serviría
+  offline. Baja probabilidad, alto impacto (app rota sin wifi). Fix: envolver el `put` en `if (r.ok)`.
+- 🟡 **Posible FUGA DE LEALTAD en la caja (el único que toca dinero).** Si la cajera toca "Registrar
+  visita" y luego usa el **botón atrás** del teléfono en vez de Listo/Cancelar, el `popstate`
+  (`caja.html:597`) limpia `visitaActual` **sin llamar a `/descartar-visita`**. Esa visita ya cuenta
+  para "cada 5 = 1 gratis" → queda colgada e infla la lealtad de alguien = un lavado gratis de más.
+  **PRIMER PASO: confirmar si el backend barre visitas sin enlazar.** Si no, es fuga real.
+
+### 🔒 Seguridad (real, pero acotado)
+
+- 🔴 **El webhook de Zettle NO verifica la firma.** El `signingKey` se guardó "para más adelante" y
+  nunca se implementó. Función pública, `--no-verify-jwt`, URL descubrible (repo público) →
+  **cualquiera puede inyectar `PurchaseCreated` falsos** y ensuciar cola y reportes. Acotado por el
+  `UNIQUE` de `purchase_uuid` (no duplica), por eso no es emergencia. Cierre: validar el HMAC con el
+  `signingKey` que ya tenemos. Sin efectos secundarios.
+
+### 🧹 Deuda y redundancia — CUÁNDO, no "ya"
+
+- **Extraer `rush-comun.js`** (API, código de acceso, `pedir`, `escapar`, `achicar` — ~80-120 líneas
+  idénticas y ya divergidas entre los 3 HTML). PERO en este proyecto "un archivo autocontenido" tiene
+  valor (wifi flojo, menos piezas), y un archivo nuevo **obliga a meterlo en la precache del `sw.js`** o
+  se rompe offline. Hacerlo **la próxima vez que se toque auth/API**, no como refactor especulativo. El
+  CSS **no** se extrae (caja y reporte visten distinto a propósito).
+- **Unificar "el tipo sale de la submarca"** — copiada en `guardar_datos_de_foto` y
+  `enlazar_visita_a_carro` (086). Misma regla calibrada en 063; el día que se cambie una y no la otra,
+  se desincronizan en silencio. Extraer helper `tipo_desde_foto(...)`. Bajo riesgo, alto valor preventivo.
+- **`schema_actual.sql` de solo lectura** (`supabase db dump --schema-only`) versionado como doc, con
+  nota "las migraciones son append-only; esta es la foto de la verdad". Resuelve de raíz el dolor de "el
+  archivo miente" para quien entre nuevo. Minutos, riesgo cero. **Este lo haría sin dudar.**
+- **Índice en `asignaciones(empleado_id)`** antes de que duela (lo usan el auto-join de encimados,
+  `perfil_de_secador`, `secadores_de_placas`). Add barato, no destructivo.
+- **Debounce al buscador de placas del reporte** (`reporte.html:652`, hoy un GET por tecla; los otros
+  dos buscadores ya lo tienen).
+- Cosmético riesgo cero: CSS muerto `.rejilla.marcas` (`index.html:402`); params sin uso en
+  `pintarPlacas`/`cliResultadosHTML` del reporte; `textoCarro` duplicado inline en la caja.
+
+### 🚫 Lo que NO tocar (por la regla del dueño)
+
+- **No consolidar/reescribir las 95 migraciones.** Un snapshot que dropea y recrea contra producción es
+  peligroso y no mejora el esquema real. El `schema_actual.sql` da el beneficio con 0% del riesgo.
+- **No quitar los estados legacy `tunel`/`por_asignar`** (front ni checks) sin confirmar por consulta
+  que la base ya no los emite. Son red de seguridad intencional.
+- **No materializar `historial_placas`** todavía (1.6 ms hoy; optimizar sería resolver un no-problema).
+- El loop de relojes O(n²)/seg **no es problema** (40k iteraciones en un teléfono moderno es nada).
+
+### 💡 Qué construir para el negocio (por valor, atado a dolores ya medidos)
+
+1. **La cámara fija trasera** (ya identificada) — de mayor impacto: ataca de raíz la foto pegada al
+   carro equivocado (~2-3/día), las fotos faltantes (lunes 88%) y en parte los olvidos. Ningún software
+   cierra los tres; la cámara sí. Ya está en la memoria `camara-caja-frontal-3-4-marca-submarca`.
+2. **Sacar a la luz "devolución después de entregar"** — dato YA existe (`ventas` con
+   `refundsPurchaseUuid` → carro entregado y sin cancelar). Por definición del dueño es señal de calidad
+   *peor* que un rechazo (el cliente ya se fue molesto) y hoy es **invisible**. Contarlo en el reporte
+   diario junto a rechazos. Barato. (Ya está en Decisiones pendientes del `CLAUDE.md` §13.)
+3. **Usar de verdad la analítica por persona** (era el punto #1 del proyecto, ya calibrada con 064/065).
+   Los cierres gritan hallazgos sin explotar: Jorge Luna 100% encimados dos días; Edgar Reyes como dato
+   limpio. Es leer lo que ya se mide, no código nuevo.
+4. **Aviso al cliente "su carro está listo"** (opcional, costo honesto) — hay teléfonos en el CRM, pero
+   requiere integración externa (costo/mensaje + regla de permiso). Evaluar, no recomendación firme.
+5. **Vista de horas pico para acomodar personal** — el volumen por hora ya existe (sábado 127, 76%
+   encimados). Falta la pantalla.
+
+**Resumen en una frase:** 3 arreglos baratos (cola en blanco, `escapar`, `sw` cache), cerrar la firma
+del webhook cuando se pueda, y cobrar los intereses de lo que ya se mide (#2 y #3), mientras la cámara
+fija (#1) resuelve de raíz lo que hoy se parcha.
+
+---
+
 ## ✅ CIERRE DEL 24/jul/2026 — marca/modelo de la foto, review adversarial, analítica calibrada
 
 **Todo shippeado y verificado.** Migraciones `061`–`065` en producción, Edge Function `app`

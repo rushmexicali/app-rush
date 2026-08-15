@@ -771,6 +771,124 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 11.75 Cierre del 4–14/ago/2026 — 11 días: el dato ya es bueno, el problema es el olvido
+
+**750 lavados en 11 días.** La calidad de datos llegó a su mejor nivel del proyecto y el bug de
+la foto mal pegada desapareció. Lo que quedó al descubierto —porque ya no lo tapa el ruido— es
+que **la app se abandona por rachas**, y esas rachas son las que ensucian el día.
+
+**Volumen y tiempos (todos los días congelados correctamente):**
+
+| Día | | Lavados | Espera | Secado | Encimados | Afectados por olvido |
+|---|---|---|---|---|---|---|
+| 4/ago | Martes | 50 | 43.0 | 30.1 | 12 (24%) | 4 (8%) |
+| 5/ago | Miércoles | 44 | 35.5 | 26.0 | 8 (18%) | 1 (2%) |
+| **6/ago** | **Jueves** | **85** | **55.7** | **42.8** | 40 (47%) | **26 (29%)** |
+| 7/ago | Viernes | 89 | 39.6 | 28.3 | 31 (35%) | 2 (2%) |
+| 8/ago | Sábado | **117** | 44.5 | 33.0 | 58 (50%) | 4 (3%) |
+| 9/ago | Domingo | 78 | 43.8 | 32.3 | 39 (50%) | 6 (8%) |
+| **10/ago** | **Lunes** | 60 | 46.1 | 33.6 | 31 (52%) | **14 (21%)** |
+| **11/ago** | **Martes** | **31** | 36.6 | 24.4 | 6 (19%) | **18 (46%)** |
+| 12/ago | Miércoles | 36 | 50.6 | 34.3 | 11 (31%) | 4 (11%) |
+| 13/ago | Jueves | 56 | 42.3 | 29.8 | 17 (30%) | 3 (5%) |
+| 14/ago | Viernes | 104 | 46.2 | 35.3 | 54 (52%) | 5 (5%) |
+
+"Afectados por olvido" = secado < 3 min, o secado > 75 min, o nunca asignado y borrado, o
+cerrado automáticamente. **No es volumen:** el sábado 8 con 117 carros tuvo 3% de afectados; el
+martes 11 con 31 carros tuvo 46%.
+
+### 🔴 Lo importante: tres días donde la app se abandonó
+
+- **11/ago (el peor): 16 de 39 carros nunca se asignaron (41%).** Dos ventanas muertas:
+  11:03–12:08 (7 carros, borrados en ráfaga a las 12:42) y **17:14 hasta el cierre (9 carros,
+  todos cerrados automáticamente a las 20:30)**. La última entrega real del día fue a las 17:15
+  — de ahí en adelante nadie tocó el teléfono. La foto cayó a 74% ese día por la misma razón.
+- **6/ago: 26 de 90 afectados.** El patrón se ve en el reloj: siete carros (1687, 1692–1697)
+  entregados **todos entre 16:03:50 y 16:04:31**, con "secado" de 88 a 140 min; y cuatro más
+  (1703, 1708, 1710, 1711) asignados **y** entregados en el mismo momento, con secado de 0.1 a
+  2.1 min. Es un carro olvidado y una puesta al día a manotazos. Más 4 carros de 15:08–15:35
+  que nunca se asignaron y se borraron.
+- **10/ago: 14 de 66** (8 secados de segundos + 4 nunca asignados).
+
+**Cuánto distorsiona:** el 6/ago el reporte dice espera 55.7 y secado 42.8 min; quitando los
+olvidos son **49.4 y 33.3**. O sea que el día "más lento del periodo" es en su mayoría captura,
+no taller. Los demás días la diferencia es menor a 1.5 min.
+
+👉 **La pregunta que hay que hacerle al dueño, porque el dato no la contesta: quién estaba de
+supervisor el 6, el 10 y el 11 de agosto.** La app no guarda quién la opera. Si es la misma
+persona, es entrenamiento; si son distintas, es proceso.
+
+### ✅ Lo que mejoró y hay que reconocer
+
+- **0 placas repetidas en 11 días** (verificado con `placas_repetidas_del_rango` y a mano con
+  `normalizar_placa`). Los 3 días anteriores tuvieron 4. El bug de la foto pegada al carro
+  equivocado no apareció ni una vez.
+- **Nota de caja 99%** (748 de 750) y **foto 96–100%** todos los días menos el 11 (74%, por el
+  abandono). El outbox del 3/ago sostuvo la cobertura.
+- **Placa leída 88–93%**, marca 95%, submarca 92%.
+- **Línea 1 impecable:** 254 express, todos en la línea 1, 0 no-express adentro.
+- **0 devoluciones después de entregar** en todo el periodo.
+
+### 🟠 Hallazgos nuevos
+
+1. **`Gratis` + variante `6to Express` se cuenta como COMPLETO.** Es la trampa de la variante,
+   otra vez: `es_lavado_express` sólo mira `express%`, `manual%`+express y `pasajeros%`+express,
+   así que un 6to lavado gratis de un **express** cae en `lleva_aspirado = true`. 3 casos
+   (carros 2208, 2211 el 13/ago; 2290 el 14/ago), y los dos del 13 se mandaron a la **línea 3**
+   en vez de la 1. Ensucia el promedio de completos con secados de express. Arreglo de una
+   línea en `es_lavado_express`; **falta confirmarlo con el dueño** (¿un 6to gratis de express
+   es express?) antes de tocar la regla.
+2. **El catálogo cambió y el `CLAUDE.md` estaba viejo.** `Completo Cera` desapareció el
+   28/jul y lo reemplazó **`Completo RUSH`** (633 carros, el producto principal hoy), con
+   variantes `Chico`/`Grande` en vez de `Completo`/`Completo Grande`. Se verificó que
+   `lleva_aspirado` lo clasifica bien —cae en el patrón `'completo%'`—, no por accidente.
+3. **El rechazo de entrega está muerto: 0 usos desde el 21/jul** (25 días, ~1,900 carros). La
+   tabla `rechazos` tiene 3 filas históricas en total. O la calidad es perfecta, o los
+   supervisores no usan la pantalla. Lo segundo es más probable y hay que preguntarlo.
+4. **La app de la cajera tampoco se usa.** De 14,040 visitas, sólo **15** entraron por
+   `caja = 'principal'` (10 el 26/jul, 4 el 27, 1 el 5/ago). El resto es `import`. La lealtad
+   depende **por completo** del ClientNoteTracker y de que alguien corra la importación.
+5. **`A GRIS` (carro 2183, 13/ago)** — segunda vez del código `A` por `AU`. Ya son dos casos en
+   3½ semanas. Sigue sin decidirse si se acepta `A` = automóvil.
+6. **Días chicos sin explicar (preguntar, no consultar):** el 11/ago sólo hubo 39 ventas y el
+   12/ago 38, **con la última venta a las 15:32** — el negocio cerró temprano, no fue la app
+   (las ventas de Zettle también se detienen ahí).
+
+### Analítica por persona — 11 días, ya con base suficiente
+
+Completos (con aspirado), una persona, 5+ carros:
+
+| Persona | Carros | Secado | Encimados |
+|---|---|---|---|
+| Mario Hernández | 67 | 43.8 | 25 (37%) |
+| Jesús Gil | 62 | 36.5 | 21 (34%) |
+| Pablo Cruz | 62 | 37.9 | 21 (34%) |
+| Jorge Luna | 53 | 44.6 | **53 (100%)** |
+| Edgar Reyes | 40 | **39.0** | 9 (23%) |
+| Saul Ramirez | 39 | 45.4 | 15 (38%) |
+| José Cruz | 36 | 46.6 | 11 (31%) |
+| Jaime Gallegos | 36 | 38.8 | **36 (100%)** |
+| Luis Luna | 33 | 51.3 | 10 (30%) |
+| Luis Chávez | 18 | 32.8 | 4 (22%) |
+
+Express: **Walter Rodríguez 101 carros a 15.3 min** — la línea 1 es suya.
+
+**Cómo leerla:**
+- **Jorge Luna y Jaime Gallegos traen 100% de encimados**, 11 días seguidos. Eso ya no es
+  casualidad: *cada* carro que les entra los agarra ocupados. Es posición o forma de asignar,
+  no lentitud — su secado (44.6 y 38.8) no se puede comparar contra el de nadie.
+- **La señal limpia de "sí es más lento" son Luis Luna (51.3 min con 30% encimados) y José
+  Cruz (46.6 con 31%)**: tiempos altos **sin** saturación que los explique. Ahí sí vale
+  preguntar qué pasa.
+- **Edgar Reyes es el mejor dato limpio del periodo**: 40 carros a 39.0 min con sólo 23% de
+  encimados. Y **Luis Chávez el más rápido** (32.8), aunque con menos volumen.
+
+**Horas pico (para acomodar personal):** el día es más plano de lo que parece — 6 a 7.5 carros
+por hora de 9 AM a 6 PM, con el pico en 12–13 h (7.5). Lo que mueve la carga es el **día de la
+semana**, no la hora: viernes y sábado 104–117, martes y miércoles 31–50.
+
+---
+
 ## 11.80 Cierre del 1–3/ago/2026 — fin de semana de alto volumen, y la foto arreglada
 
 Tres días seguidos limpios en lo operativo: **0 rechazos, 0 cancelados, 0 borrados, 0
