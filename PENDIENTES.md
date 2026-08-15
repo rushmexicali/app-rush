@@ -10,7 +10,20 @@
 
 El análisis completo está en `CLAUDE.md §11.75`. Aquí sólo lo que espera respuesta o trabajo.
 
-### 🟠 Del import de ClientNoteTracker del 15/ago — 20 clientes partidos EN EL CNT
+### ✅ RESUELTO — 20 clientes partidos en el CNT: NO se fusionan (decisión del dueño, 15/ago/2026)
+
+**El dueño decidió dejarlos como están.** No se fusionan ni ahora ni en imports futuros. Encaja
+con su propia regla de *1000% o nada*: no hay evidencia de que sean la misma persona (ninguno
+comparte placa, y en 3 las placas son distintas), y fusionar por parecido de nombre es
+exactamente el error que la política del 5/ago existe para evitar.
+
+⚠️ **Regla para el próximo import: estos casos se REPORTAN, no se preguntan otra vez.** Ya están
+decididos. Solo vale volver a sacarlos si aparece corroboración de verdad — la misma placa leída
+en carros de las dos fichas —, y ahí ya no sería fusionar por parecido.
+
+El detalle de los 20 queda abajo como referencia.
+
+#### (Referencia) Los 20 casos
 
 El import 6–14/ago ya está aplicado (590 visitas, 70 renombres, corte al 14/ago). Pero quedaron
 **20 clientes con DOS fichas en el ClientNoteTracker**: la vieja con la historia y una nueva con
@@ -27,9 +40,10 @@ el apellido completo, porque la cajera creó ficha en vez de buscar al cliente. 
 placa**; en los 3 de arriba las placas son **distintas**, o sea que podrían ser homónimos reales.
 La regla del dueño es *1000% o nada*.
 
-- ❓ **Decisión del dueño:** ¿se fusionan en el CRM aunque el CNT siga partido, o se deja así?
+- ✅ **Decidido (15/ago): NO se fusionan.** Ver arriba.
 - 📌 **La raíz se arregla en caja, no en el CRM:** si la cajera busca al cliente existente en vez
-  de crear ficha nueva, esto deja de pasar. Mientras siga, cada import trae más partidos.
+  de crear ficha nueva, esto deja de pasar. Mientras siga, cada import trae más partidos — y con
+  la decisión tomada, se quedan partidos.
 
 ### ❓ Preguntas al dueño (el dato no las contesta)
 
