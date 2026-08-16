@@ -54,6 +54,15 @@
   }
   .grande.azul  { background:#2f81f7; border-color:#2f81f7; color:#fff; }
   .grande.verde { background:#238636; border-color:#238636; color:#fff; }
+  /* Un boton apagado y MUDO es de las cosas que mas confunden: se ve igual que
+     uno descompuesto y la cajera no sabe si la app fallo o si le falta un paso.
+     En rojo y diciendo QUE falta, se entiende sola. Va DESPUES de .verde a
+     proposito: misma especificidad, gana la ultima. Y sin opacidad: la idea es
+     que se LEA, no que se desvanezca. */
+  .grande.falta {
+    background:#20161a; border-color:#f85149; color:#ff7875;
+    font-size:20px; opacity:1;
+  }
   .secundario {
     width:100%; min-height:56px; font-size:17px; font-weight:700;
     margin:8px 0; padding:10px; background:#21262d;
@@ -422,7 +431,9 @@
   <div id="tk-aviso">Selecciona un ticket con lavado gratis</div>
   <div id="lista-tickets"><div class="nota">Buscando los últimos tickets…</div></div>
 
-  <button id="btn-registrar" class="grande verde" disabled>Registrar visita</button>
+  <!-- Nace en rojo diciendo que falta elegir el ticket; pintarTickets() lo pasa
+       a verde "Registrar visita" en cuanto hay uno bueno seleccionado. -->
+  <button id="btn-registrar" class="grande verde falta" disabled>Selecciona un ticket</button>
 </div>
 
 <!-- La pantalla "¿A qué lavado corresponde?" se quito el 15/ago/2026. Ahora el
@@ -1274,12 +1285,30 @@ function firmaTickets() {
 var tkFirma = null;
 
 function pintarTickets() {
-  // El aviso y el candado del botón se actualizan SIEMPRE (son baratos y no
+  // El aviso y el estado del botón se actualizan SIEMPRE (son baratos y no
   // mueven nada que se pueda tocar). Lo que se salta si nada cambió es armar
   // de nuevo la lista de botones.
   var malo = ticketSel && ticketMalo(ticketSel);
   document.getElementById("tk-aviso").classList.toggle("on", !!malo);
-  document.getElementById("btn-registrar").disabled = !ticketSel || !!malo;
+
+  // El botón DICE por qué no se puede tocar todavía, en vez de sólo apagarse.
+  // La leyenda se repite con el aviso de arriba a propósito: el aviso está
+  // junto a los tickets y el botón hasta abajo, y no siempre se ven los dos.
+  // Repetirlo cuesta un renglón; no repetirlo cuesta una llamada.
+  //
+  // ⚠️ Mientras se está registrando NO se toca el botón. El refresco de cada
+  // 2 s corre igual, y sin este candado le devolvería el "Registrar visita"
+  // encima del "Registrando…" y lo volvería a habilitar en pleno envío — justo
+  // cuando el wifi va lento, que es cuando la cajera vuelve a picarle.
+  if (!ocupado) {
+    var btnReg = document.getElementById("btn-registrar");
+    var texto = !ticketSel ? "Selecciona un ticket"
+              : malo      ? "Selecciona un ticket con lavado gratis"
+                          : "Registrar visita";
+    btnReg.disabled = !ticketSel || !!malo;
+    btnReg.classList.toggle("falta", btnReg.disabled);
+    if (btnReg.textContent !== texto) btnReg.textContent = texto;
+  }
 
   var firma = firmaTickets();
   if (firma === tkFirma) return;
