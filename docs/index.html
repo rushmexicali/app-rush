@@ -1406,11 +1406,19 @@ function abrirPantalla(c, modo) {
     // sube hasta que /asignar responda ok, para que el flujo de subida y
     // lectura de placa quede igual que antes (en background, sin bloquear).
     // fotoDataURL es la imagen ya achicada, lista para mandar al confirmar.
-    // Si el carro ya trae foto (raro al asignar), el requisito ya se cumplio.
+    //
+    // 🔑 El requisito se cumple con la PLACA, no con la foto (15/ago/2026).
+    // Antes bastaba con que existiera una foto (`!!c.foto`), asi que un carro
+    // fotografiado desde la caja sin que se leyera la placa daba el requisito
+    // por cumplido y nadie volvia a intentar: 65 carros en 11 dias (~6 al dia)
+    // acabaron con foto y sin placa. Ahora, si hay foto pero no salio la placa,
+    // se le pide otra al supervisor — que la toma en el patio, donde el carro
+    // si se deja fotografiar. Ver CLAUDE.md §11.70.
     foto: c.foto || null,
     fotoPreview: c.foto || null,
     fotoDataURL: null,
-    fotoLista: !!c.foto,
+    fotoLista: !!c.placa,
+    fotoSinPlaca: !!c.foto && !c.placa,
     fotoProcesando: false
   };
   var idsPrev = c.secador_ids || [], nomsPrev = c.secadores || [];
@@ -1717,6 +1725,17 @@ function pintarFotoAsignar() {
                       '<span>Cambiar foto</span>';
     estado.className = "listo";
     estado.textContent = "— lista ✓";
+  } else if (asig.fotoSinPlaca) {
+    // Ya hay foto, pero de ella NO salio la placa. Es el caso de las pickup
+    // grandes (Tundra) que desde la ventana de la caja tapan la placa. Aqui el
+    // carro ya esta en el patio y si se deja fotografiar bien, asi que se pide
+    // el segundo intento — que es lo unico que faltaba para cerrar el hueco de
+    // los ~6 carros diarios que se quedaban con foto y sin placa.
+    boton.disabled = false;
+    boton.innerHTML = (asig.fotoPreview ? '<img class="mini" src="' + escapar(asig.fotoPreview) + '" alt="">' : CAMARA) +
+                      '<span>Tomar foto otra vez</span>';
+    estado.className = "pendiente";
+    estado.textContent = "— no se leyó la placa";
   } else {
     boton.disabled = false;
     boton.innerHTML = CAMARA + '<span>Tomar foto</span>';
@@ -2468,6 +2487,11 @@ function tomarFotoAsignar(archivo) {
       asig.fotoDataURL = imagen;
       asig.fotoPreview = imagen;
       asig.fotoLista = true;
+      // Ya tomo una nueva: se apaga el aviso de "no se leyó la placa". Si esta
+      // tampoco sirve, no se le vuelve a pedir en el mismo momento — la lectura
+      // ocurre despues, en segundo plano, y detenerlo aqui lo dejaria atorado
+      // con un carro que no se deja fotografiar.
+      asig.fotoSinPlaca = false;
       asig.fotoProcesando = false;
       pintarAsignacion();
     })

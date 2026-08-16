@@ -873,10 +873,14 @@ function procesarImagen(dataURL) {
     if (d.placa && fijarPlaca(d.placa, datos)) {
       est.textContent = "Placa leída: " + captura.placa + resumenLectura(d);
     } else {
-      // Ya no hay captura manual: se busca al cliente por nombre arriba y el
-      // supervisor le toma la foto al carro cuando lo asigne.
+      // NO se le pide retomar la foto. En Mexicali entran muchas pickup
+      // grandes (Tundra) donde la placa no se alcanza a ver desde la ventana
+      // de la caja, y pedirle al cliente que se recorra lo dejaría fuera del
+      // alcance para cobrar. Se sigue normal: se busca al cliente por nombre y
+      // la foto se guarda igual. El segundo intento lo hace el SUPERVISOR al
+      // asignar carril y secador, con el carro ya en el patio.
       captura = datos;
-      est.textContent = "No se vio la placa. Busca al cliente por su nombre arriba." + resumenLectura(d);
+      est.textContent = "Foto tomada. Busca al cliente por su nombre arriba." + resumenLectura(d);
       document.getElementById("in-top").focus();
     }
   }).catch(function (e) { quitarLeyendo(); if (e && e.message === "codigo") return; est.textContent = "Sin conexión. Intenta otra vez."; });
@@ -1313,11 +1317,20 @@ function pintarTickets() {
 document.getElementById("btn-registrar").addEventListener("click", function () {
   if (!personaActual || !ticketSel) return;
   var btn = this;
+  var c = captura || {};
   conCandado(btn, "Registrando…", function () {
     return postJSON("/visita-con-ticket", {
       persona: personaActual.id,
       carro: ticketSel.carro_id,
-      usa_gratis: document.getElementById("chk-gratis").checked
+      usa_gratis: document.getElementById("chk-gratis").checked,
+      // Lo que alcanzó a sacar la cámara de la caja. Puede ir todo vacío (la
+      // cajera solo buscó por nombre) o la foto sin placa (la Tundra que tapa
+      // la placa): el registro procede igual en los dos casos.
+      foto_path: c.foto_path || null,
+      placa:     c.placa     || null,
+      marca:     c.marca     || null,
+      submarca:  c.submarca  || null,
+      tipo:      c.tipo      || null
     }).then(function (d) {
       if (!d || d.ok === false) {
         alert((d && d.error) || "No se pudo registrar");

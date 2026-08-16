@@ -789,9 +789,8 @@ pantallas** a **3 pasos en una sola**. Migraciones `101`–`102`, `docs/caja.htm
   para no consultar por cada tecla). Hasta abajo de esa lista está siempre **"+ Registrar cliente
   nuevo"**, con lo ya tecleado: si no aparece, se da de alta sin ir a buscar otro botón.
 - **La cámara se queda debajo**, para reconocer al cliente por su placa. Es opcional.
-- **Se quitó "Capturar placa manualmente".** Si la placa no se lee, la cajera busca por nombre y
-  el carro llega sin placa: ahí la toma el **supervisor**, cuya cámara se habilita al asignar
-  carril y secador. El respaldo no desapareció, se movió a quien tiene el carro enfrente.
+- **Se quitó "Capturar placa manualmente".** El respaldo no desapareció, se movió a quien tiene
+  el carro enfrente — ver abajo.
 - **Los últimos 5 tickets de Zettle salen solos**, refrescándose cada 2 s, con **número, monto,
   contenido y hora exacta**. Se excluyen los ya asignados a otro cliente.
 - **"Registrar visita" nace apagado** y se prende al elegir un ticket.
@@ -825,6 +824,33 @@ pantallas** a **3 pasos en una sola**. Migraciones `101`–`102`, `docs/caja.htm
 3. **La lista de tickets NO se reconstruye si no cambió.** Se compara una firma antes de armar
    los botones. Sin eso, el refresco de cada 2 s movería los botones justo cuando la cajera va a
    tocar uno — es la misma lección del reloj de la cola del supervisor (20/jul/2026).
+
+### La placa que no se puede leer: la caja no regaña, el supervisor reintenta (migración `103`)
+
+Textual del dueño (15/ago/2026): *"los carros de Mexicali tienden a llegar muchas pickup muy
+grandes como las Tundra, lo cual hace que no se aprecie bien la placa… no le avises a la cajera
+que hay que retomar foto, ya que es imposible decirle al cliente que se haga para adelante: ya
+no estaría a la altura de la ventana de la caja para poder cobrar. Al momento de asignar a fila
+y secador, ahí se le pedirá de nuevo la foto al supervisor"*.
+
+- **La caja nunca se traba ni avisa.** Si la lectura no saca placa, el mensaje es neutro
+  (*"Foto tomada. Busca al cliente por su nombre arriba"*) y el registro sigue normal. La foto
+  **sí se guarda** y se le pega al carro, así que el supervisor la ve en la cola.
+- **🔑 El requisito de foto al asignar se cumple con la PLACA, no con la foto.** Éste era un
+  hueco **que ya existía en producción**: `fotoLista` miraba `!!c.foto`, así que en cuanto había
+  una foto —aunque no se hubiera leído nada— el requisito se daba por cumplido y **nadie volvía a
+  intentar**. Medido del 4 al 14/ago: **65 carros con foto y sin placa, ~6 por día (9%)**. Ahora,
+  si hay foto pero no hay placa, el bloque dice **"— no se leyó la placa"** y el botón
+  **"Tomar foto otra vez"**; el carro está en el patio, donde sí se deja fotografiar.
+- **No se puede quedar atorado:** al tomar la foto nueva el requisito se cumple **aunque esa
+  tampoco llegue a leer la placa**. La lectura ocurre después y en segundo plano; detenerlo ahí
+  lo dejaría trabado con un carro que de plano no se deja fotografiar.
+- **`placa_en` distingue los dos casos** y por eso importa: nulo = *nunca se intentó*; con fecha
+  y `placa` vacía = *se intentó y no se pudo*. La caja lo estampa sólo cuando de verdad hubo foto.
+- **La lectura de la caja se guarda con `guardar_datos_de_foto`, la misma del supervisor**, no
+  con una copia: ahí viven el candado de la **placa repetida del día** (migración `100`) y el
+  ligado placa→cliente. Verificado en la prueba: un segundo carro del mismo día con la misma
+  placa sale `placa_dudosa` y **no** se escribe.
 
 **Cómo se probó:** la base con un bloque `do $$ … raise` de 5 casos (lavado normal, cortesía
 neutra, switch de gratis con ticket que no es 6to, ticket 6to con el switch apagado, y el mismo

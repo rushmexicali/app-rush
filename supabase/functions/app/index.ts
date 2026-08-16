@@ -1264,6 +1264,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
       p_carro:      Number(cuerpo.carro),
       p_usa_gratis: cuerpo?.usa_gratis === true,
       p_caja:       cuerpo?.caja ?? "principal",
+      // Lo que leyó la cámara de la caja. Todo opcional: si la placa no se
+      // pudo leer (pickups grandes), la visita se registra igual y el segundo
+      // intento de foto lo hace el supervisor al asignar.
+      p_foto_path:  cuerpo?.foto_path ?? null,
+      p_placa:      cuerpo?.placa ?? null,
+      p_marca:      cuerpo?.marca ?? null,
+      p_submarca:   cuerpo?.submarca ?? null,
+      p_tipo:       cuerpo?.tipo ?? null,
     });
     if (error) { console.error("registrar_visita_con_carro:", error); return json({ error: error.message }, 500); }
     return json(data);
