@@ -771,6 +771,71 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 11.70 La app de la caja, simplificada (15/ago/2026)
+
+El dueño pidió *"hacer el flujo mucho más simple"*. La caja pasó de **4 pasos con dos
+pantallas** a **3 pasos en una sola**. Migraciones `101`–`102`, `docs/caja.html`, `sw.js` v8.
+
+**El flujo nuevo, completo:**
+
+```
+1. Escribir el nombre en la barra de arriba  →  tocar al cliente
+2. Cobrar en Zettle  →  su ticket aparece solo  →  tocarlo
+3. Registrar visita
+```
+
+- **La barra buscadora va hasta arriba de la primera pantalla**, y los resultados **caen debajo
+  de ella** sin cambiar de pantalla (2+ letras, con la misma espera de 300 ms del buscador viejo
+  para no consultar por cada tecla). Hasta abajo de esa lista está siempre **"+ Registrar cliente
+  nuevo"**, con lo ya tecleado: si no aparece, se da de alta sin ir a buscar otro botón.
+- **La cámara se queda debajo**, para reconocer al cliente por su placa. Es opcional.
+- **Se quitó "Capturar placa manualmente".** Si la placa no se lee, la cajera busca por nombre y
+  el carro llega sin placa: ahí la toma el **supervisor**, cuya cámara se habilita al asignar
+  carril y secador. El respaldo no desapareció, se movió a quien tiene el carro enfrente.
+- **Los últimos 5 tickets de Zettle salen solos**, refrescándose cada 2 s, con **número, monto,
+  contenido y hora exacta**. Se excluyen los ya asignados a otro cliente.
+- **"Registrar visita" nace apagado** y se prende al elegir un ticket.
+- **Desapareció la pantalla "¿A qué lavado corresponde?".** Registrar y enlazar son ahora **una
+  sola operación atómica** (`registrar_visita_con_carro`). Eso mata la **fuga de lealtad** que
+  estaba documentada: ya no existe el momento en que una visita cuenta sin lavado al cual
+  pertenecer, así que tampoco hacen falta "No hubo venta / cancelar" ni "Listo".
+
+### Las tres reglas que hay que respetar si esto se toca
+
+1. **🔑 EL TICKET MANDA sobre el switch de la cajera.** Si el ticket es un `6to`, la visita se
+   registra como canje **aunque se le haya olvidado prender "Utilizar Lavado GRATIS"**. Si no
+   fuera así, un lavado regalado le sumaría un sello y el cliente cobraría el mismo premio dos
+   veces. El switch sólo sirve para avisar **antes**: si está prendido y el ticket no es un 6to,
+   el ticket se pinta **rojo** con la leyenda *"Selecciona un ticket con lavado gratis"* y el
+   botón no deja registrar. La misma condición prende el rojo y el candado — una sola regla.
+
+2. **Una CORTESÍA no es un canje.** `Gratis` + variante `Cortesia`/`Mango`/`Remake`/`Tony`/
+   `SushiRoll`/`Uribe`/`Admin` es un regalo del negocio: **ni suma sello ni consume gratis**,
+   pero **sí queda en el historial** (el cliente sí vino). Es el tercer estado que faltaba:
+   columna `visitas.es_cortesia`, y `lealtad_por_persona` las excluye de `lavados_pagados` y de
+   `canjes` —pero no de `visitas_totales`—.
+   - **Quien decide es `clase_de_gratis(producto, variante)`, una sola función**, por **prefijo
+     `6to%`** y no por lista blanca de cortesías. Los nombres de cortesía los inventa el dueño en
+     Zettle (ya van 7 distintos) y una lista se queda vieja **en silencio**; con el prefijo, lo
+     que no es 6to cae solo del lado de cortesía, que es el error barato.
+   - ⚠️ En PL/pgSQL va con `is not distinct from`, no con `=`: para un lavado normal la función
+     devuelve NULL y `null = 'canje'` es NULL, no false. Con `=` la columna salía nula y reventaba
+     el not-null (lo cachó la prueba, no la lectura).
+
+3. **La lista de tickets NO se reconstruye si no cambió.** Se compara una firma antes de armar
+   los botones. Sin eso, el refresco de cada 2 s movería los botones justo cuando la cajera va a
+   tocar uno — es la misma lección del reloj de la cola del supervisor (20/jul/2026).
+
+**Cómo se probó:** la base con un bloque `do $$ … raise` de 5 casos (lavado normal, cortesía
+neutra, switch de gratis con ticket que no es 6to, ticket 6to con el switch apagado, y el mismo
+ticket con otro cliente) más el camino "ticket sin lavado"; y la vista de lealtad contra una
+**línea base de las 4,871 personas** — 0 cambiaron, que era la condición para no romper saldos.
+El front, en el navegador con datos falsos: el autocompletado con una sola consulta por palabra,
+el orden de la pantalla, el rojo y el candado en los 5 casos, y que la lista no se reconstruye
+sola pero sí cuando entra un ticket nuevo (conservando lo ya seleccionado).
+
+---
+
 ## 11.75 Cierre del 4–14/ago/2026 — 11 días: el dato ya es bueno, el problema es el olvido
 
 **750 lavados en 11 días.** La calidad de datos llegó a su mejor nivel del proyecto y el bug de

@@ -22,7 +22,10 @@
 //                     con respaldo a la camara del dispositivo si falla.
 //   v7 (4/ago/2026) — elegir camara Exterior/Tablet + boton Regresar; se quita
 //                     el boton de la camara nativa de Android.
-var CACHE = "rush-v7";
+//   v8 (15/ago/2026) — la caja se simplifica: buscador arriba, el ticket se
+//                     elige antes de registrar, y se quita la captura manual
+//                     de placa.
+var CACHE = "rush-v8";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest",
@@ -58,8 +61,14 @@ self.addEventListener("fetch", function (ev) {
   ev.respondWith(
     fetch(ev.request)
       .then(function (r) {
-        var copia = r.clone();
-        caches.open(CACHE).then(function (c) { c.put(ev.request, copia); });
+        // Solo se guarda lo que salio BIEN. Sin este candado, un 404 con
+        // cuerpo HTML —lo que devuelve Pages durante los segundos de un
+        // despliegue— quedaba guardado, y despues se servia sin wifi como si
+        // fuera la app. Es el arreglo que la revision del 3/ago dejo anotado.
+        if (r && r.ok) {
+          var copia = r.clone();
+          caches.open(CACHE).then(function (c) { c.put(ev.request, copia); });
+        }
         return r;
       })
       .catch(function () { return caches.match(ev.request); })

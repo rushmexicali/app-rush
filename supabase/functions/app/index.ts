@@ -1250,6 +1250,33 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json(data);
   }
 
+  // --- Caja: registrar la visita Y enlazarla a su ticket, en un paso ---
+  // La cajera elige el ticket ANTES, así que no existe el hueco donde una
+  // visita quedaba colgada sin lavado (la fuga de lealtad del botón atrás).
+  if (ruta === "/visita-con-ticket") {
+    if (req.method !== "POST") return json({ error: "usa POST" }, 405);
+    let cuerpo: any;
+    try { cuerpo = await req.json(); } catch { return json({ ok: false, error: "cuerpo invalido" }, 400); }
+    if (!cuerpo?.persona) return json({ ok: false, error: "falta persona" }, 400);
+    if (!cuerpo?.carro)   return json({ ok: false, error: "falta el ticket" }, 400);
+    const { data, error } = await db.rpc("registrar_visita_con_carro", {
+      p_persona:    Number(cuerpo.persona),
+      p_carro:      Number(cuerpo.carro),
+      p_usa_gratis: cuerpo?.usa_gratis === true,
+      p_caja:       cuerpo?.caja ?? "principal",
+    });
+    if (error) { console.error("registrar_visita_con_carro:", error); return json({ error: error.message }, 500); }
+    return json(data);
+  }
+
+  // --- Caja: los últimos tickets de Zettle sin asignar (se pide en vivo) --
+  if (ruta === "/tickets-recientes") {
+    const lim = Number(url.searchParams.get("limite") ?? 5);
+    const { data, error } = await db.rpc("tickets_recientes", { p_limite: lim });
+    if (error) { console.error("tickets_recientes:", error); return json({ error: error.message }, 500); }
+    return json({ tickets: data ?? [] });
+  }
+
   // --- Descartar una visita (no hubo venta) ---------------------------
   if (ruta === "/descartar-visita") {
     if (req.method !== "POST") return json({ error: "usa POST" }, 405);
