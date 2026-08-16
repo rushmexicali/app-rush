@@ -1228,16 +1228,53 @@ document.getElementById("chk-gratis").addEventListener("change", function () {
 // --- Los ultimos tickets de Zettle, en vivo --------------------------
 // Se refrescan solos cada 2 s mientras se ve al cliente, para que el ticket
 // aparezca en cuanto la cajera cobre en Zettle, sin tocar nada.
+// El ritmo NO es fijo. Se consulta rápido sólo cuando de verdad está por
+// llegar el ticket —los segundos justo después de que la cajera eligió al
+// cliente y se pasó a cobrar— y se va calmando solo. Así el caso normal se
+// siente instantáneo y una pantalla olvidada abierta deja de costar.
+//
+// Y se PARA en cuanto hay un ticket elegido: a partir de ahí lo que llegue es
+// ruido, ella ya va a tocar Registrar. Si lo suelta, se reanuda desde el
+// principio.
+//
+// Medido contra el ritmo fijo de 2 s: de ~30 consultas por cliente a ~12, y una
+// pantalla olvidada pasa de 30 por minuto a 4.
 var tkTimer = null;
-var TK_CADA = 2000;
+var tkDesde = 0;
+var TK_RITMO = [
+  { hasta:  60000, cada:  2000 },   // el primer minuto: como estaba
+  { hasta: 180000, cada:  5000 },   // ya se tardó: no urge tanto
+  { hasta: Infinity, cada: 15000 }  // pantalla olvidada abierta
+];
+
+function tkCada() {
+  var t = Date.now() - tkDesde;
+  for (var i = 0; i < TK_RITMO.length; i++) if (t < TK_RITMO[i].hasta) return TK_RITMO[i].cada;
+  return 15000;
+}
+
+// setTimeout encadenado y no setInterval, porque el intervalo cambia solo.
+function programarTickets() {
+  if (tkTimer) { clearTimeout(tkTimer); tkTimer = null; }
+  tkTimer = setTimeout(function () {
+    // No se consulta si hay un ticket ya elegido (lo que llegue es ruido), ni
+    // si el tablet está en segundo plano. Lo segundo lo cubre casi siempre el
+    // visibilitychange de abajo, pero ese evento sólo avisa de los CAMBIOS: si
+    // la pantalla se abre ya estando oculta, nunca se entera. Preguntar aquí
+    // cuesta nada y cierra el caso.
+    if (!ticketSel && !document.hidden) cargarTickets();
+    programarTickets();
+  }, ticketSel ? 2000 : tkCada());
+}
 
 function arrancarTickets() {
   pararTickets();
+  tkDesde = Date.now();
   cargarTickets();
-  tkTimer = setInterval(cargarTickets, TK_CADA);
+  programarTickets();
 }
 function pararTickets() {
-  if (tkTimer) { clearInterval(tkTimer); tkTimer = null; }
+  if (tkTimer) { clearTimeout(tkTimer); tkTimer = null; }
 }
 // Si el tablet se va a segundo plano (la cajera se pasa a Zettle), se deja de
 // consultar; al volver, se pide de inmediato.
@@ -1347,6 +1384,10 @@ function pintarTickets() {
         // Volver a tocar el mismo lo deselecciona (es la forma de corregirse).
         ticketSel = (ticketSel && ticketSel.carro_id === id) ? null
                   : ticketsAhora.filter(function (t) { return t.carro_id === id; })[0] || null;
+        // Lo soltó: vuelve a estar esperando un ticket, así que se reanuda el
+        // ritmo rápido desde cero (si no, quedaría en el ritmo lento y el
+        // ticket correcto tardaría en aparecer justo cuando lo está buscando).
+        if (!ticketSel) { tkDesde = Date.now(); programarTickets(); }
         pintarTickets();
       });
     });
