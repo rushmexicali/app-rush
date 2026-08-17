@@ -88,9 +88,31 @@ where public.normalizar_nombre(display) is not null
   and public.normalizar_nombre(display) not in (select new_norm from public.ren_cand)
 group by public.normalizar_nombre(display);
 
+-- 4) RENOMBRES POR PREFIJO DE PALABRAS: el nombre viejo es prefijo exacto del
+--    nuevo (la cajera agrego apellido). Esta es la deteccion que DE VERDAD
+--    encuentra los renombres; la de tickets (ren_cand) ha dado falsos las dos
+--    ultimas veces. Ver RUNBOOK 4c.
+--    Se aplica sin preguntar SOLO si los tres contadores de abajo dan cero:
+--    viejos_ambiguos, nuevos_ambiguos y choca_con_persona_existente. Con los tres
+--    en cero es un renombre PURO (no fusiona ni borra a nadie): se copia a
+--    ren_cand con choca_id null y se corre aplicar-renombres.sql.
+drop table if exists public.ren_prefijo;
+create table public.ren_prefijo as
+select d.id old_id, d.nombre old_nombre, d.nombre_norm old_norm, d.visitas,
+       n.display new_nombre, n.nombre_norm new_norm
+from public.ren_desaparecen d
+join public.ren_nuevas n on n.nombre_norm like d.nombre_norm || ' %';
+
 -- Resumen
 select
   (select count(*) from public.ren_cand) merges_sugeridos,
   (select count(*) from public.ren_cand where choca_id is not null) con_duplicado,
   (select count(*) from public.ren_desaparecen) desaparecen_sin_explicar,
-  (select count(*) from public.ren_nuevas) clientes_nuevos;
+  (select count(*) from public.ren_nuevas) clientes_nuevos,
+  (select count(*) from public.ren_prefijo) prefijo_pares,
+  (select count(*) from (select old_id from public.ren_prefijo
+                          group by old_id having count(*)>1) z) prefijo_viejos_ambiguos,
+  (select count(*) from (select new_norm from public.ren_prefijo
+                          group by new_norm having count(*)>1) z) prefijo_nuevos_ambiguos,
+  (select count(*) from public.ren_prefijo r
+     join public.personas p on p.nombre_norm = r.new_norm) prefijo_choca_con_persona;

@@ -227,8 +227,10 @@ autoritativa), `diff-renombres.sql`, `aplicar-renombres.sql`, `religar-placas-co
 ## 4c. El renombre se detecta por PREFIJO DE PALABRAS, no por ticket (15/ago/2026)
 
 `ren_cand` (detección por ticket) resultó **inútil y peligrosa** en el import del 15/ago: dio 2
-candidatos y **los 2 eran falsos**, disparados por tickets mal tecleados (§4d). Lo que sí funciona
-es cruzar las dos listas que el propio diff ya produce:
+candidatos y **los 2 eran falsos**, disparados por tickets mal tecleados (§4d). El 17/ago volvió a
+pasar: **1 candidato, también falso** (`MIGUEL ANGEL RODRIGUEZ`→`EDGAR AYON`, ticket `25786`). Van
+**3 de 3 falsos**; trátala como sospechosa por defecto. Lo que sí funciona es cruzar las dos listas
+que el propio diff ya produce:
 
 ```sql
 create table public.ren_prefijo as
@@ -237,6 +239,9 @@ select d.id old_id, d.nombre old_nombre, d.nombre_norm old_norm, d.visitas,
 from public.ren_desaparecen d
 join public.ren_nuevas n on n.nombre_norm like d.nombre_norm || ' %';
 ```
+
+✅ **Desde el 17/ago esto ya vive dentro de `diff-renombres.sql`** (paso 4), junto con los tres
+contadores de control. Ya no hay que escribirlo a mano.
 
 O sea: **el nombre viejo es prefijo exacto por palabras del nuevo** (la cajera agregó apellido).
 El 15/ago dio **70 pares** con:
@@ -294,6 +299,23 @@ from stg_cnt where ticket is not null group by ticket having count(*) > 1;
 
 **Qué hacer:** la visita **sí va** (el cliente vino de verdad); lo que se descarta es el **ticket**
 (y su monto, que apunta a una venta ajena). Nunca al revés.
+
+⚠️ **Y un tercer cotejo que faltaba (17/ago/2026): tickets que NO EXISTEN en Zettle.** El export
+traía `27927` cuando el máximo de Zettle era `27046` — o sea un número al que Zettle **todavía no
+llega**. Hoy no colisiona con nada, así que ningún cotejo lo atrapa; pero dentro de unas semanas
+Zettle sí va a emitir ese número, y entonces el dedup de un import futuro va a descartar la visita
+buena creyéndola repetida. **Es una mina con fecha.** Se descarta igual:
+
+```sql
+select nombre, dt_local, ticket from stg_cnt
+where ticket is not null and monto_cent is null and not es_gratis;
+```
+
+**Y no se adivina el número correcto**, aunque se vea obvio. El 17/ago los tres descartados tenían
+un candidato evidente por la secuencia horaria (los tickets suben con la hora): `27927`→`26927` y
+`26907`→`26909`, los dos libres y encajando entre sus vecinos. Se dejaron **sin ticket** de todos
+modos, y se le reportó la hipótesis al dueño. Costo: $530 de gasto sin atribuir en 2 visitas de
+14,810. Inventar un número es exactamente el error que este proyecto ya pagó caro.
 
 ---
 
