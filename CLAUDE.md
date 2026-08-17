@@ -771,6 +771,115 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 11.65 Cierre del 15–16/ago/2026 — fin de semana grande y limpio; la caja nueva no se ha usado
+
+**220 lavados en dos días**, los dos entregados completos y sin devoluciones. Operativamente es
+uno de los cierres más limpios del proyecto. Lo que hay que leer no son los tiempos: es que **la
+app de la caja que se desplegó el 15/ago no se está usando**, y que el olvido de fin de turno
+sigue vivo.
+
+**Volumen y tiempos:**
+
+| Día | | Lavados | Espera | Secado | Encimados | Afectados por olvido |
+|---|---|---|---|---|---|---|
+| 15/ago | Sábado | **115** | 51.1 | 38.9 | 72 (63%) | 14 (12%) |
+| 16/ago | Domingo | 105 | 44.0 | 33.4 | 54 (51%) | 11 (10%) |
+
+Quitando los olvidos, el 15 queda en **49.8 / 36.4** y el 16 en **42.5 / 31.1** — o sea que la
+distorsión por captura es de 1.3–2.5 min, chica. Los tiempos son taller, no captura.
+
+**Los encimados vuelven a ser la mitad del día** (63% el sábado). Un secado individual alto en
+estos dos días es cola, no lentitud.
+
+### ✅ Higiene operativa
+
+- **0 rechazos, 0 devoluciones, 0 tiempos imposibles el 16, 0 placas repetidas** en los dos días.
+- **La prevención de placa duplicada (migración `100`) está trabajando:** bloqueó **5 escrituras**
+  (3 el 15, 2 el 16) que quedaron en `placa_dudosa` en vez de pegarse al carro equivocado. Ésa es
+  la razón por la que `placas_repetidas_del_rango` devolvió **cero**: no es que no haya pasado, es
+  que se atajó. Los 5 son candidatos a foto mal pegada y se pueden revisar por ese campo.
+- **Línea 1 impecable:** 74 express, 73 en la línea 1, **0 no-express adentro** (el que falta es
+  uno que nunca se asignó y se cerró solo).
+- Solo **2 borrados de supervisor** (los dos el 15, nunca asignados) y **0 cancelados** el 16.
+
+### Calidad de datos
+
+| Día | Nota de caja | Foto | Placa leída | Marca | Submarca |
+|---|---|---|---|---|---|
+| 15/ago | 117/119 (98%) | 117/119 (98%) | 108 (**91%**) | 112 (94%) | 107 (90%) |
+| 16/ago | 101/105 (96%) | 103/105 (98%) | 87 (**83%**) | 99 (94%) | 96 (91%) |
+
+🟠 **El 83% de placa del 16 es el peor del mes** (el rango 4–14/ago fue 88–93%). Son **16 carros
+con foto y sin placa**, repartidos por todo el día, no en un bache. De ésos, 2 salieron por el
+candado de placa dudosa; los otros 14 son lectura fallida de verdad. La mitad sí sacó marca y
+submarca de la misma foto, así que la foto era buena y lo que no se dejó leer fue la placa —
+consistente con lo que dijo el dueño de las pickups grandes.
+
+### 🔴 El hallazgo del cierre: la caja nueva no se está usando
+
+La app de la caja se desplegó el **15/ago** (§11.70) y desde entonces:
+
+- **1 sola visita** entró por `caja = 'principal'` (el 15/ago). **0 el 16, 0 el 17.**
+- **0 fotos vienen de la caja.** Se midió por el retraso entre el pago y la foto: en los 220
+  carros del fin de semana, la foto llega **6 a 25 min después** del cobro (promedio 12.6),
+  o sea que la toma el supervisor al asignar. Una foto de caja llegaría en segundos. En 7 días
+  (10–16/ago) hay exactamente **2 fotos** con menos de 2 min.
+- Se vendieron **22 lavados `6to Lavado`** en esos dos días y **ninguno** quedó registrado como
+  canje en el CRM.
+
+👉 **Consecuencia directa:** la lealtad (**248 gratis por honrar en 248 personas**) sigue
+dependiendo por completo del ClientNoteTracker y de que alguien corra el import. La simplificación
+del flujo no movió la aguja porque nadie la está tocando. **Es pregunta para el dueño, no consulta:
+si las cajeras no la abren, ¿es entrenamiento, es el teléfono, o es que el flujo de CNT sigue
+siendo el oficial?**
+
+### 🟠 El olvido de fin de turno, otra vez
+
+Los **4 cerrados automáticamente del 16/ago** son los carros 2563, 2565, 2566 y 2567, entrados
+entre **19:15 y 19:45**. Dos de ellos ni siquiera se asignaron. Es el mismo patrón del 11/ago:
+la app se suelta en la última media hora. El 15/ago no tuvo ninguno.
+
+### 🟡 `6to Express` va por la quinta vez, y hoy volvió a pasar
+
+El hallazgo #1 de §11.75 no está arreglado y sigue apareciendo: el carro **2590 de hoy
+(17/ago, 11:56)** es un `Gratis` + `6to Express`, se clasificó como **completo con aspirado** y
+se mandó a la **línea 2**. Ya van 5 casos (1547, 2208, 2211, 2290, 2590). Sigue **pendiente de
+confirmar con el dueño** si un 6to gratis de express es express antes de tocar
+`es_lavado_express`.
+
+### Analítica por persona — los dos días juntos
+
+Completos (con aspirado), una persona:
+
+| Persona | Carros | Secado | Encimados |
+|---|---|---|---|
+| Jesús Gil | 21 | 42.9 | 11 (52%) |
+| Walter Rodríguez | 21 | 45.3 | 14 (67%) |
+| Mario Hernández | 18 | 47.7 | 10 (56%) |
+| Pablo Cruz | 18 | 42.7 | 14 (78%) |
+| Luis Luna | 14 | **60.9** | 7 (50%) |
+| Jaime Gallegos | 11 | **33.3** | 11 (**100%**) |
+| Luis Chávez | 7 | 46.6 | **0 (0%)** |
+| Jorge Luna | 7 | 53.2 | 7 (100%) |
+| Edgar Reyes | 7 | **36.0** | 2 (29%) |
+
+Express: **Saul Ramirez 24 carros a 13.6 min** — este fin de semana la línea 1 fue suya, no de
+Walter (que se movió a completos).
+
+**Cómo leerla:**
+- **Jaime Gallegos y Jorge Luna siguen al 100% de encimados**, igual que en los 11 días previos.
+  Ya es estructural: es posición o forma de asignar. Jaime además bajó a 33.3 min *estando siempre
+  saturado*, que es el mejor dato del fin de semana.
+- 🔴 **Luis Chávez es la señal nueva y hay que verla:** 7 completos a **46.6 min con 0% de
+  encimados**. En los 11 días anteriores era el **más rápido** del taller (32.8 min). Sin
+  saturación que lo explique, subió 14 min. Vale preguntar qué cambió.
+- **Luis Luna repite el patrón de lento sin saturación** (60.9 min con 50%), tercer periodo
+  seguido. Es el caso más consistente del proyecto.
+- **Edgar Reyes vuelve a ser el mejor dato limpio** (36.0 con 29% de encimados).
+
+**Horas:** el sábado sí tuvo pico (12–14 h, 16–17 carros/hora); el domingo fue plano (6–13/hora,
+sin pico claro). El día de la semana sigue mandando sobre la hora.
+
 ## 11.70 La app de la caja, simplificada (15/ago/2026)
 
 El dueño pidió *"hacer el flujo mucho más simple"*. La caja pasó de **4 pasos con dos
