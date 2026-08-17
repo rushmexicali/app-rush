@@ -103,6 +103,43 @@ select d.id old_id, d.nombre old_nombre, d.nombre_norm old_norm, d.visitas,
 from public.ren_desaparecen d
 join public.ren_nuevas n on n.nombre_norm like d.nombre_norm || ' %';
 
+-- 5) RENOMBRES CON TYPO CORREGIDO, contra TODAS las personas (no solo ren_nuevas).
+--    🔴 El paso 4 tiene DOS puntos ciegos y los dos se vieron el 17/ago/2026:
+--      a) Solo mira ren_nuevas, que EXCLUYE los nombres que ya existen como
+--         persona. Si la cajera creo la ficha corregida en un export ANTERIOR,
+--         el destino ya entro a la base y el prefijo no lo ve nunca.
+--      b) Exige prefijo EXACTO, asi que cualquier typo corregido lo rompe:
+--         "hector figeroa" -> "HECTOR FIGUEROA DAUTO" no es prefijo.
+--    Solucion: comparar el ESQUELETO DE CONSONANTES (fuera vocales y h, las
+--    repetidas se aplastan). colins/collins -> clns ; figeroa/figueroa -> fgr ;
+--    henri/henrri -> hnr. Se piden 2+ palabras y que un esqueleto contenga al
+--    otro, asi que tambien caza los reordenes (Arizona Guadalupe Ramos).
+--    ⚠️ ESTO NO SE APLICA SOLO: es una LISTA PARA EL DUENO. Da falsos
+--    (ARTURO CONTRERAS -> VICENTE ARTURO CHAVARI CONTRERAS) y ambiguos
+--    (JAVIER MEZA -> JAVIER CHAVEZ MEZA o JAVIER MONTANO MEZA). Regla del
+--    dueno: 1000% o nada.
+drop table if exists public.ren_esqueleto;
+create table public.ren_esqueleto as
+with esq as (
+  select p.id, p.nombre, p.nombre_norm,
+         (select count(*) from public.visitas v where v.persona_id = p.id) visitas,
+         exists(select 1 from public.stg_padron s
+                 where public.normalizar_nombre(s.display) = p.nombre_norm) en_padron,
+         (select array_agg(regexp_replace(regexp_replace(lower(w),'[aeiouh]','','g'),
+                                          '(.)\1+','\1','g') order by ord)
+            from unnest(string_to_array(lower(p.nombre_norm),' ')) with ordinality t(w,ord)
+           where regexp_replace(regexp_replace(lower(w),'[aeiouh]','','g'),'(.)\1+','\1','g') <> '') sk
+  from public.personas p where p.origen = 'import'
+)
+select d.id old_id, d.nombre old_nombre, d.visitas old_visitas,
+       e.id new_id, e.nombre new_nombre, e.visitas new_visitas, e.en_padron,
+       count(*) over (partition by d.id) as candidatos_del_viejo
+from esq d
+join public.ren_desaparecen rd on rd.id = d.id
+join esq e on e.id <> d.id and (d.sk <@ e.sk or e.sk <@ d.sk)
+where cardinality(d.sk) >= 2
+  and d.id not in (select old_id from public.ren_prefijo);
+
 -- Resumen
 select
   (select count(*) from public.ren_cand) merges_sugeridos,
@@ -115,4 +152,7 @@ select
   (select count(*) from (select new_norm from public.ren_prefijo
                           group by new_norm having count(*)>1) z) prefijo_nuevos_ambiguos,
   (select count(*) from public.ren_prefijo r
-     join public.personas p on p.nombre_norm = r.new_norm) prefijo_choca_con_persona;
+     join public.personas p on p.nombre_norm = r.new_norm) prefijo_choca_con_persona,
+  (select count(distinct old_id) from public.ren_esqueleto) esqueleto_viejos_con_candidato,
+  (select count(distinct old_id) from public.ren_esqueleto
+    where candidatos_del_viejo = 1) esqueleto_con_un_solo_candidato;

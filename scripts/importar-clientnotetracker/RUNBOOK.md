@@ -243,6 +243,43 @@ join public.ren_nuevas n on n.nombre_norm like d.nombre_norm || ' %';
 ✅ **Desde el 17/ago esto ya vive dentro de `diff-renombres.sql`** (paso 4), junto con los tres
 contadores de control. Ya no hay que escribirlo a mano.
 
+### 🔴 4c-bis. El prefijo tiene DOS puntos ciegos, y los dos cuestan clientes partidos (17/ago/2026)
+
+El cruce por prefijo del 4c **no encuentra la mayoría de los renombres**, y el 17/ago se reportó
+—mal— que 13 clientes habían "desaparecido sin destino". El dueño lo corrigió de memoria:
+*"No fueron borrados, se les agregó el segundo apellido"*. Tenía razón. Los dos huecos:
+
+1. **Solo mira `ren_nuevas`, que EXCLUYE a quien ya existe como persona.** Si la cajera creó la
+   ficha corregida en un export **anterior**, ese nombre ya entró a la base en el import pasado y
+   el prefijo no lo ve **nunca**. `GABRIELA COLLINS VARGAS` se creó el 9/ago y `HECTOR FIGUEROA
+   DAUTO` el 7/ago: los dos ya eran personas cuando corrió el diff del 17.
+2. **Exige prefijo EXACTO, así que un typo corregido lo rompe.** La cajera no solo agrega el
+   apellido: de paso **arregla la ortografía**. `hector figeroa`→`HECTOR FIGUEROA DAUTO` y
+   `gabriela colins`→`GABRIELA COLLINS VARGAS` no son prefijo de nada.
+
+**El arreglo (paso 5 de `diff-renombres.sql`, tabla `ren_esqueleto`): comparar el ESQUELETO DE
+CONSONANTES contra TODAS las personas.** Se quitan vocales y `h`, y las letras repetidas se
+aplastan:
+
+```
+colins / collins   -> clns
+figeroa / figueroa -> fgr
+henri / henrri     -> hnr
+```
+
+Se pide que un esqueleto **contenga** al otro (por palabras) y 2+ palabras, así que además caza
+los **reordenes**: `Arizona Guadalupe Ramos` ↔ `GUADALUPE RAMOS ARIZONA`. El 17/ago encontró
+**14 de 20** desaparecidos, contra 4 del método viejo.
+
+⚠️ **Es una LISTA PARA EL DUEÑO, no se aplica sola** — a diferencia del prefijo, no tiene un
+criterio de "tres ceros" que la haga segura:
+- **Da falsos:** `ARTURO CONTRERAS` → `VICENTE ARTURO CHAVARI CONTRERAS`.
+- **Da ambiguos:** `JAVIER MEZA` empata con `JAVIER CHAVEZ MEZA` **y** `JAVIER MONTAÑO MEZA`.
+  La columna `candidatos_del_viejo` los marca; con 2+ candidatos siempre se pregunta.
+- **Y no lo caza todo:** una letra cambiada de verdad rompe el esqueleto
+  (`KIANA ASCURO` → `KIANA ASPURO`, `scr` vs `spr`). Ésos siguen apareciendo como sin candidato,
+  así que la lista de "sin destino" **nunca es prueba de que la ficha se borró**.
+
 O sea: **el nombre viejo es prefijo exacto por palabras del nuevo** (la cajera agregó apellido).
 El 15/ago dio **70 pares** con:
 
