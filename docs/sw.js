@@ -25,7 +25,10 @@
 //   v8 (15/ago/2026) — la caja se simplifica: buscador arriba, el ticket se
 //                     elige antes de registrar, y se quita la captura manual
 //                     de placa.
-var CACHE = "rush-v8";
+//   v9 (17/ago/2026) — la FOTO sale del stream principal de la Reolink
+//                     (2560x1920) en vez del cuadro del feed chico (640x480);
+//                     el feed en vivo sigue en el chico.
+var CACHE = "rush-v9";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest",

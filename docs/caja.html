@@ -606,6 +606,19 @@ function escapar(t) {
   });
 }
 
+// --- Tamano de la foto que se manda a leer -----------------------------
+// 2576 px es el lado largo maximo que aprovecha la vision de alta resolucion
+// de Sonnet 5 (el modelo que lee la placa). Por encima de eso la API reduce la
+// imagen ella sola, asi que mandar mas es pagar tokens de mas sin ganar
+// nitidez. El stream principal de la Reolink mide 2560x1920, o sea que cabe
+// entero y NO se reescala.
+//
+// 🔴 Antes esto era 1280 px con calidad 0.6, heredado de la app del telefono
+// (donde la foto se toma a un metro del carro). Con la camara fija a distancia
+// no alcanzo: la placa quedaba de ~60 px y salia ilegible. Ver 11.60.
+var MAX_LADO = 2576;
+var CALIDAD  = 0.85;
+
 // --- Achicar la foto en el telefono antes de subir (igual que la app) ---
 function achicar(archivo) {
   return new Promise(function (listo, falla) {
@@ -615,13 +628,13 @@ function achicar(archivo) {
       var img = new Image();
       img.onerror = falla;
       img.onload = function () {
-        var max = 1280, an = img.width, al = img.height;
+        var max = MAX_LADO, an = img.width, al = img.height;
         if (an > al && an > max) { al = Math.round(al * max / an); an = max; }
         else if (al > max)       { an = Math.round(an * max / al); al = max; }
         var lienzo = document.createElement("canvas");
         lienzo.width = an; lienzo.height = al;
         lienzo.getContext("2d").drawImage(img, 0, 0, an, al);
-        listo(lienzo.toDataURL("image/jpeg", 0.6));
+        listo(lienzo.toDataURL("image/jpeg", CALIDAD));
       };
       img.src = lector.result;
     };
@@ -737,7 +750,15 @@ function fijarPlaca(placaCruda, datosFoto) {
 var feedStream = null, feedVivo = false, feedPC = null, feedWS = null, feedFuente = "reolink";
 
 var GO2RTC_HOST = "rushserver.tail267016.ts.net";
+// El FEED en vivo va por el stream chico (640x480): es fluido, gasta poco en el
+// tablet y en el tailnet, y solo sirve para apuntar la camara.
 var GO2RTC_SRC  = "reolink_sub";
+// La FOTO va por el stream PRINCIPAL (2560x1920), que es 4x el lado del chico.
+// La placa pasa de ~60 px a ~240 px, que es donde de verdad se lee. Son dos
+// cosas distintas a proposito: mantener el feed en alta resolucion cargaria el
+// tablet todo el turno para nada, porque la cajera no necesita ver la placa —
+// la necesita la IA, y solo en el instante de la foto.
+var GO2RTC_SNAP = "reolink";
 
 function obtenerStreamReolink() {
   return new Promise(function (resolve, reject) {
@@ -854,12 +875,39 @@ document.addEventListener("visibilitychange", function () {
 function capturarCuadro() {
   var v = document.getElementById("feed-video");
   if (!v.videoWidth) return null;
-  var max = 1280, an = v.videoWidth, al = v.videoHeight;
+  var max = MAX_LADO, an = v.videoWidth, al = v.videoHeight;
   if (an > al && an > max) { al = Math.round(al * max / an); an = max; }
   else if (al > max)       { an = Math.round(an * max / al); al = max; }
   var c = document.createElement("canvas"); c.width = an; c.height = al;
   c.getContext("2d").drawImage(v, 0, 0, an, al);
-  return c.toDataURL("image/jpeg", 0.6);
+  return c.toDataURL("image/jpeg", CALIDAD);
+}
+
+// Pide a go2rtc un cuadro del stream PRINCIPAL y lo devuelve como dataURL.
+// Es una foto aparte del feed: el feed sigue en el stream chico. go2rtc tiene
+// que levantar el stream grande y esperar un cuadro clave, asi que tarda ~2 s
+// —por eso el boton avisa "Tomando foto..." mientras tanto—. Si falla (relay
+// caido, fuera del tailnet), NO se queda sin foto: cae al cuadro del feed, que
+// es exactamente lo que se hacia antes.
+function fotoDeLaReolink() {
+  return new Promise(function (listo, falla) {
+    var corte = setTimeout(function () { falla(new Error("timeout")); }, 20000);
+    fetch("https://" + GO2RTC_HOST + "/api/frame.jpeg?src=" + GO2RTC_SNAP, { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.blob(); })
+      .then(function (b) {
+        var lector = new FileReader();
+        lector.onerror = function () { clearTimeout(corte); falla(new Error("lector")); };
+        lector.onload  = function () { clearTimeout(corte); listo(lector.result); };
+        lector.readAsDataURL(b);
+      })
+      .catch(function (e) { clearTimeout(corte); falla(e); });
+  });
+}
+
+// Devuelve la foto que se va a leer, segun la camara elegida.
+function tomarFoto() {
+  if (feedFuente !== "reolink") return Promise.resolve(capturarCuadro());
+  return fotoDeLaReolink().catch(function () { return capturarCuadro(); });
 }
 
 // Congela el feed y muestra LA MISMA foto que se sube a Claude, oscurecida,
@@ -915,9 +963,18 @@ document.getElementById("btn-foto").addEventListener("click", function () {
     document.getElementById("estado-captura").textContent = "Elige una cámara arriba (Exterior o Tablet) primero.";
     return;
   }
-  var img = capturarCuadro();
-  if (!img) { document.getElementById("estado-captura").textContent = "La cámara aún no está lista, intenta otra vez."; return; }
-  procesarImagen(img);
+  var est = document.getElementById("estado-captura");
+  var btn = this;
+  est.textContent = "Tomando foto...";
+  btn.disabled = true;
+  tomarFoto().then(function (img) {
+    btn.disabled = false;
+    if (!img) { est.textContent = "La cámara aún no está lista, intenta otra vez."; return; }
+    procesarImagen(img);
+  }).catch(function () {
+    btn.disabled = false;
+    est.textContent = "No se pudo tomar la foto. Intenta otra vez.";
+  });
 });
 
 // El boton "Tomar foto con camara de Tablet" (camara NATIVA de Android) se quito
