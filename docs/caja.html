@@ -750,15 +750,23 @@ function fijarPlaca(placaCruda, datosFoto) {
 var feedStream = null, feedVivo = false, feedPC = null, feedWS = null, feedFuente = "reolink";
 
 var GO2RTC_HOST = "rushserver.tail267016.ts.net";
-// El FEED en vivo va por el stream chico (640x480): es fluido, gasta poco en el
-// tablet y en el tailnet, y solo sirve para apuntar la camara.
-var GO2RTC_SRC  = "reolink_sub";
-// La FOTO va por el stream PRINCIPAL (2560x1920), que es 4x el lado del chico.
-// La placa pasa de ~60 px a ~240 px, que es donde de verdad se lee. Son dos
-// cosas distintas a proposito: mantener el feed en alta resolucion cargaria el
-// tablet todo el turno para nada, porque la cajera no necesita ver la placa —
-// la necesita la IA, y solo en el instante de la foto.
+// El FEED en vivo va por el stream PRINCIPAL (2560x1920). Primero se puso en el
+// substream (640x480) por ahorrar ancho de banda; el dueño lo corrigio el
+// 17/ago/2026: "se ve un poco mal en el app". Con la camara fija a distancia el
+// substream no da ni para que la cajera vea bien lo que esta encuadrando.
+//
+// ⚠️ La camara solo expone DOS perfiles: main y sub. El intermedio (`ext`) de
+// Reolink esta apagado — se comprobo pidiendole un cuadro y no devolvio nada.
+// Si algun dia el tablet no aguanta los 5 MP, la salida NO es bajarle la
+// resolucion a la foto: es prender el `ext` en la camara y apuntar el feed ahi,
+// dejando la foto en main.
+var GO2RTC_SRC  = "reolink";
+// La FOTO tambien sale del principal. Se deja el nombre aparte porque son
+// decisiones distintas: el feed puede cambiar de perfil sin arrastrar la foto.
 var GO2RTC_SNAP = "reolink";
+// Debajo de este ancho, un cuadro del feed no sirve para leer la placa y hay que
+// pedir el cuadro grande aparte. Ver tomarFoto().
+var ANCHO_MINIMO = 1600;
 
 function obtenerStreamReolink() {
   return new Promise(function (resolve, reject) {
@@ -905,8 +913,19 @@ function fotoDeLaReolink() {
 }
 
 // Devuelve la foto que se va a leer, segun la camara elegida.
+//
+// Con el feed ya en el stream principal, el cuadro del feed sirve tal cual y la
+// foto sale INSTANTANEA — sin los ~2 s que costaba pedirla aparte.
+//
+// El respaldo no es decorativo: WebRTC baja la resolucion solo cuando el ancho
+// de banda se aprieta, y ahi el cuadro del feed volveria a ser chico sin que
+// nadie se entere. Por eso se mide `videoWidth` (lo que DE VERDAD llego
+// decodificado, no lo que se pidio): si viene chico, se pide el cuadro grande a
+// go2rtc. Asi la foto nunca depende de como ande la red en ese momento.
 function tomarFoto() {
   if (feedFuente !== "reolink") return Promise.resolve(capturarCuadro());
+  var v = document.getElementById("feed-video");
+  if (v.videoWidth >= ANCHO_MINIMO) return Promise.resolve(capturarCuadro());
   return fotoDeLaReolink().catch(function () { return capturarCuadro(); });
 }
 

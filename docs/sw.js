@@ -26,9 +26,11 @@
 //                     elige antes de registrar, y se quita la captura manual
 //                     de placa.
 //   v9 (17/ago/2026) — la FOTO sale del stream principal de la Reolink
-//                     (2560x1920) en vez del cuadro del feed chico (640x480);
-//                     el feed en vivo sigue en el chico.
-var CACHE = "rush-v9";
+//                     (2560x1920) en vez del cuadro del feed chico (640x480).
+//  v10 (17/ago/2026) — el FEED en vivo tambien pasa al principal: en el chico
+//                     se veia mal en el tablet. Como el cuadro del feed ya
+//                     sirve, la foto vuelve a ser instantanea.
+var CACHE = "rush-v10";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest",
