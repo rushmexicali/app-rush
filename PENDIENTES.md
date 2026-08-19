@@ -47,7 +47,7 @@ producción, no solo se leyó.
    lealtad reintroducida por el **formato** de la respuesta). En supervisor: "Entregado" se cierra
    como si hubiera funcionado. *Arreglo de una línea:* que `json()` agregue `ok:false` cuando
    `status >= 400` — cubre las 33 rutas.
-5. **El perfil de Trabajadores muestra minutos fabricados como medidos.** `perfil_de_secador` no
+5. ✅ **HECHO 19/ago (migración 106).** El perfil de Trabajadores mostraba minutos fabricados como medidos. `perfil_de_secador` no
    excluye `cerrado_automaticamente` ni secados < 3 min, que el resto del reporte sí excluye.
    Visibles hoy: carro 2164 = **298 min** (Saul Ramirez), 2121 = **180 min** (Jaime Gallegos). Y 99
    carros históricos de < 3 min salen como "0/1/2 min". Es la pantalla donde se evalúa a una persona.
@@ -65,7 +65,7 @@ producción, no solo se leyó.
 8. ✔ **Storage es el límite que se rompe primero.** 251 MB hoy, +8.5 MB/día → **765 MB en régimen
    (77% de 1 GB)**. A 150-200 carros/día **no cabe**. Bajar la retención de 90 a 60 días lo deja en
    510 MB — decisión del dueño (¿para qué sirven las fotos viejas?).
-9. ✔ **Un 200 con lista vacía de Jibble marca a TODA la plantilla como "fuera".** El guard solo
+9. ✅ **HECHO 19/ago (rechazado en los dos lados).** Un 200 con lista vacía de Jibble marcaba a TODA la plantilla como "fuera". El guard solo
    cubre el fallo duro. Y un `id` nulo desactiva la barrida entera: `'a' <> all(array['b',null])`
    devuelve **NULL**, no true (verificado en la base), así que nadie se marca fuera nunca.
 
@@ -80,22 +80,22 @@ producción, no solo se leyó.
 11. **Un solo código abre las tres apps.** El del supervisor alcanza `/respaldo` (todo el
     histórico), `/personas` (4,871 con teléfono), `/tickets` (todas las ventas) y editar clientes.
     Vive en el `localStorage` de un teléfono que rota entre turnos.
-12. **El webhook de Zettle no verifica la firma.** La URL se deduce del repo público → se pueden
+12. 🟠 **PARCIAL 19/ago.** Se cerró el descarte en silencio (bitácora, migración 108) y se están guardando las cabeceras de un aviso bueno para aprender el esquema. **La verificación NO se implementó**: no hay documentación pública confiable y adivinarla rechazaría ventas reales. El webhook de Zettle no verifica la firma. La URL se deduce del repo público → se pueden
     **inyectar ventas falsas**. NO puede cancelar carros reales (el `purchase_uuid` nunca sale por
     la API), NO duplica (unique) y NO lee datos. `ZETTLE_SIGNING_KEY` ya está guardada sin usarse.
 
 ### 📊 Números que no cuadran (reporte del dueño)
 
-13. **En el día en curso el desglose suma más que el total.** "Vehículos lavados" cuenta entregados;
+13. ✅ **HECHO 19/ago (migración 107).** En el día en curso el desglose sumaba más que el total. "Vehículos lavados" cuenta entregados;
     "con/sin aspirado" cuenta todos. Hoy: titular **25**, desglose **29**. En días congelados cuadra
     → el error **solo aparece cuando se mira el día en curso**.
-14. **El encabezado de sección no cuadra con su tabla, y el faltante es la señal.** El 11/ago:
+14. ✅ **HECHO 19/ago.** El encabezado de sección no cuadraba con su tabla, y el faltante era la señal. El 11/ago:
     encabezado **22 carros**, tabla **15**. Los 7 que faltan son los que nunca se asignaron — el
     peor día de abandono del mes, y la pantalla no lo dice.
-15. **"Secado promedio general" mezcla express con completos**, lo que el resto del reporte prohíbe.
+15. ✅ **HECHO 19/ago (se parte en dos).** "Secado promedio general" mezclaba express con completos, lo que el resto del reporte prohíbe.
     13/ago 29.8 min (39% express) contra 17/ago 39.8 min (24%): los extremos son la mezcla, no el
     taller.
-16. **Rechazos, `rechazos_por_secador` y `cancelados` se calculan y nunca se pintan.** La `083` dice
+16. ✅ **HECHO 19/ago (sección propia).** Rechazos, `rechazos_por_secador` y `cancelados` se calculaban y nunca se pintaban. La `083` dice
     textualmente de los cancelados *"que no desaparezcan en silencio"* — y desaparecen.
 
 ### 🔧 Backend
@@ -110,12 +110,12 @@ producción, no solo se leyó.
     cola de reintentos (`fotos_por_leer` exige `placa_en is null`). Justo el flujo de las pickups.
 20. ✅ **HECHO 19/ago (se dropeó la vieja).** `buscar_tickets` tenía dos sobrecargas y la llamada de 2 argumentos revienta con `42725`.
     La `098` agregó en vez de reemplazar — la lección exacta de la `052`. *Arreglo:* `drop` la vieja.
-21. **`trabajadores()` y `perfil_de_secador()` cuentan rechazos con `count(*)`**; el reporte con
+21. ✅ **HECHO 19/ago.** `trabajadores()` y `perfil_de_secador()` contaban rechazos con `count(*)`; el reporte con
     `count(distinct grupo)`. Un rechazo con 2 motivos dará 2 en un lado y 1 en el otro (bug de la
     `036`, arreglado solo en el reporte).
 22. **7 sitios desenvuelven `payload` a mano** en vez de usar `detalle_venta()`. Ya hay **2 ventas
     invisibles** para `buscar_tickets`, `tickets_recientes` y `ticket_detalle` (su carro sí se creó).
-23. **El webhook descarta en silencio** por tres caminos (cuerpo ilegible, JSON inválido, sin
+23. ✅ **HECHO 19/ago (migración 108).** El webhook descartaba en silencio por tres caminos (cuerpo ilegible, JSON inválido, sin
     `purchase_uuid`): responde 200 y el único rastro son logs de ~1 día que nadie mira.
 24. **`crear_carro_desde_venta` no tiene `exception when others`**: un error en el trigger **tumba
     la venta completa**. Es la lección de §7 un nivel más abajo.

@@ -773,6 +773,102 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 11.45 Segunda tanda de la auditoría: el crítico, los tres que muerden solos y los números del reporte (19/ago/2026, migraciones `106`–`108`)
+
+Después de los 7 priorizados (§11.50), esta tanda cierra el hallazgo crítico que había quedado
+fuera, las tres cosas que pueden morder sin que nadie las provoque, y los cuatro números del
+reporte que se contradecían.
+
+### El perfil del trabajador dejaba de aplicar las dos reglas que todo el resto respeta
+
+Es la pantalla donde se evalúa a **una persona con nombre**, y era la única vista del proyecto que
+imprimía crudos los dos casos que el reporte excluye de sus promedios por ser ficción:
+
+| Lo que se veía | Lo que era |
+|---|---|
+| **298 minutos** a nombre de Saul Ramirez (carro 2164) | Nadie lo entregó; lo cerró el corte de las 8:30 |
+| **180 minutos** a nombre de Jaime Gallegos (carro 2121) | Igual |
+| **99 carros históricos** con "0" o "1 minuto" | Olvidos entregados de golpe, no trabajo |
+
+Ahora `perfil_de_secador` devuelve `cerrado_solo` y `secado_corto`, y la pantalla los dice como lo
+que son (*"298 · cerrado solo"*, *"1 · olvido"*, con la explicación al pasar el cursor). **El número
+no se esconde**: esconderlo sería la otra forma de mentir.
+
+### Y de paso, los rechazos se contaban de dos formas distintas
+
+`trabajadores()` y `perfil_de_secador()` usaban `count(*)` sobre `rechazos`, que tiene **una fila
+por (persona × motivo)**: un rechazo con dos motivos le contaba **dos** a la misma persona. El
+reporte del dueño ya usaba `count(distinct grupo)` con el comentario que explica por qué —es la
+trampa del join que multiplica, migración `036`— pero el arreglo nunca llegó a estas dos. Tampoco
+se unían a `carros`, así que un carro **de prueba** le anotaba rechazos a una persona real.
+
+> El hash de `trabajadores()` quedó **idéntico** antes y después: hoy no cambia ningún número
+> porque los 3 rechazos históricos tienen un solo motivo cada uno. La mina queda desactivada sin
+> mover nada, que es la mejor forma de arreglar algo.
+
+### Jibble ya no puede vaciar la grilla del supervisor
+
+`sincronizar_empleados` marca `fuera` a todo el que no venga en la lista. El Edge Function sólo se
+protegía del fallo duro (`!rGente.ok`); un **200 con lista vacía** —por ejemplo si se reorganizan
+los grupos, cuyos identificadores están escritos a mano en el código— pasaba de largo y dejaba al
+supervisor sin nadie a quien asignar, con el taller lleno de gente. Ahora se rechaza en los dos
+lados: el Edge Function devuelve 502 y **la base también se niega**, porque es la última línea.
+
+> ⚠️ **Dos tropiezos en este arreglo, los dos míos.** Primero escribí `sincronizar_empleados` **de
+> memoria** y salió completamente equivocada: otras columnas, otra lógica de colores, y sin el
+> bloque de caducidad de los manuales. Aplicarla habría roto la sincronización. La saqué de la base
+> y le hice los dos cambios quirúrgicos. **Después la prueba encontró un bug en ese arreglo**:
+> filtraba los nulos de la lista de vistos pero el `insert` seguía reventando por el not-null de
+> `empleados.id`, o sea que un miembro sin id tumbaba la sincronización entera en vez de saltarse a
+> esa persona. Ahora se filtra **una sola vez, arriba**, y esa lista limpia alimenta las dos cosas.
+
+### El service worker servía la foto del carro anterior
+
+`sw.js` sólo exceptuaba a Supabase del caché. El cuadro de la cámara de la caja se pide **con una
+URL idéntica en cada foto**, así que entraba al caché — y si el relay se caía, el `catch` devolvía
+el **JPEG guardado del carro anterior** con `r.ok` en `true`. La caja leía esa placa y se la pegaba
+al cliente presente; la cajera veía el congelado con el spinner encima y no tenía forma de saberlo.
+
+Ahora sólo se cachea lo del **mismo origen**. Se compara contra el origen en vez de listar hosts a
+propósito: una cámara nueva o un relay nuevo quedan protegidos solos, sin que nadie se acuerde.
+
+### Los cuatro números del reporte
+
+La migración `107` **sólo agrega campos** — ningún valor viejo cambia, así que los reportes ya
+congelados siguen siendo válidos y la página cae de pie si no los trae. Verificado día por día: el
+único valor distinto en toda la historia es el secado del 19/jul, deriva de una versión vieja de la
+función que ya existía y que se dejó fuera del re-congelado a propósito.
+
+| Qué decía | Qué pasa ahora |
+|---|---|
+| En el día en curso el desglose sumaba **más** que el total (hoy: 32 arriba, 39 abajo) | Las dos tarjetas dicen *"incluye los que todavía no se entregan"* |
+| El encabezado de sección no cuadraba con su tabla | Sale una alerta con **cuántos carros no tuvieron secador**. El 11/ago el título decía 22 y la tabla 15: el campo nuevo confirma los **7 exactos**, que eran el peor día de abandono del mes |
+| **"Secado promedio general"** mezclaba express con completos | Se parte en dos. Hoy: completos **33.9 min** contra express **15.4**, que el promedio único de 27.4 escondía |
+| **Rechazos y devoluciones** se calculaban y nunca se pintaban | Sección propia con el desglose por persona, y sólo aparece cuando no es cero |
+
+### El webhook deja de descartar en silencio, y la firma NO se adivina
+
+Tres caminos respondían 200 sin guardar nada (cuerpo ilegible, JSON inválido, aviso sin
+`purchaseUUID`). Responder 200 es **correcto** —reintentar un aviso roto da el mismo aviso roto— y
+está bien argumentado en el propio archivo; el problema era que el único rastro es un
+`console.error` en logs que duran un día y que nadie mira. Si Zettle cambiara el nombre de un
+campo, cada venta caería ahí, Zettle quedaría contento y **la cola amanecería vacía sin una sola
+alerta**. Ahora queda en `webhook_bitacora`.
+
+**Sobre la firma, dicho de frente: no la implementé.** `ZETTLE_SIGNING_KEY` está guardada desde el
+día uno "para verificar firmas más adelante" y ninguna función la lee. Busqué el esquema y **no hay
+documentación pública confiable** de cómo firma Zettle. Adivinarlo en el camino por donde entra el
+dinero es la peor opción posible: una firma mal calculada **rechaza ventas reales**. Se guardan las
+cabeceras de un aviso bueno para aprender el esquema del tráfico real, y con eso se implementa la
+verificación de verdad.
+
+> ⚠️ **La bitácora NUNCA puede tumbar una venta.** Va en `try/catch` y su fallo se traga a
+> propósito. Es la lección de la fecha en milisegundos (§7) aplicada al revés: allá una venta se
+> perdió por un campo secundario; aquí un campo secundario no puede perder una venta.
+>
+> ⏳ El registro de los avisos **buenos** es temporal y está marcado como tal en el código. Se quita
+> en cuanto la firma esté implementada.
+
 ## 11.50 Los 7 puntos de la auditoría, hechos y desplegados (19/ago/2026, migración `105`)
 
 La auditoría de siete frentes encontró 46 hallazgos (ver §11.52). El dueño escogió los **7
