@@ -810,10 +810,11 @@ normal.
 18:23  carro 2642  leyó JETTA
 ```
 
-- **Es la razón completa del mal día de datos del 17:** placa 58/84 (**69%**, el peor del
-  proyecto), marca 77%, submarca 64%. Sacando los 17 de la caída, los 67 restantes dan **87% de
+- **Era la razón completa del mal día de datos del 17:** placa 58/84 (**69%**, el peor del
+  proyecto), marca 77%, submarca 64%. Sacando los 17 de la caída, los 67 restantes daban **87% de
   placa, 97% de marca y 81% de submarca** — o sea, un día normal. El 18/ago, sin caída, quedó en
-  85% / 100% / 90%.
+  85% / 100% / 90%. ✅ **Ya se recuperó** (ver abajo): el 17/ago quedó en **88% de placa, 98% de
+  marca y 85% de submarca**.
 - **No es un patrón, es un evento.** Se midió `foto sin intento de lectura` día por día en todo
   agosto: **0 todos los días menos el 17, que tiene 17.** No hay que arreglar un bug; hay que
   enterarse cuando pase.
@@ -822,13 +823,51 @@ normal.
   servicio a las 18:57, leyó `9VYE404` sin problema.
 - 🔴 **Nadie se enteró, y ése es el problema real.** El diseño dice que la placa "nunca bloquea":
   si Anthropic se cae o tarda, la foto se guarda y el carro sigue. Correcto para el supervisor —
-  pero **hacia afuera la caída es muda**: no hay aviso, no hay reintento, y el dato se pierde
-  para siempre. Los 17 carros conservan su foto en Storage, así que **la lectura se puede
-  recuperar corriendo el prompt otra vez sobre esas 17 imágenes** (cuesta centavos). Falta
-  decidirlo.
+  pero **hacia afuera la caída es muda**: no hay aviso y no hay reintento. Lo que salva el dato
+  es que la foto sí quedó guardada; **falta la alarma**, que es lo único pendiente de esto.
 - **Causa raíz: no se sabe.** Los logs de Edge Functions ya no cubren el 17/ago. Las hipótesis
   son caída/límite de la API de Anthropic o un error de la función; nada en la base lo distingue.
   Lo accionable no es la causa, es la **falta de alarma**.
+
+### ✅ Las lecturas perdidas se recuperaron (19/ago/2026)
+
+Se volvió a leer la foto de **24 carros** (los 17 de la caída, más 7 sueltos de otros días que
+arrastraban lo mismo desde el 29/jul) y se guardó con `guardar_datos_de_foto`, la misma RPC del
+supervisor. **21 de 24 sacaron placa**; los 3 que no, tampoco la tenían en la imagen.
+
+| Día | Placa antes | Placa ahora |
+|---|---|---|
+| 29/jul | 76/88 | **79** |
+| 3/ago | 76/95 | **77** |
+| 4/ago | 47/50 | **48** |
+| **17/ago** | **58/84 (69%)** | **74/84 (88%)** |
+
+Hoy **`foto sin intento de lectura` es 0 en toda la base**.
+
+**Cómo se hizo, que es lo que importa si vuelve a pasar:**
+
+- **El prompt NO se copió: se extrae del propio `supabase/functions/app/index.ts`** en tiempo de
+  corrida (`awk` sobre el template literal `INSTRUCCION_FOTO`), junto con el mismo modelo
+  (`claude-sonnet-5`), el mismo `json_schema`, el mismo `effort: low` y el mismo corte de 25 s.
+  Una copia del prompt sería una segunda regla para la misma pregunta — el error que este
+  proyecto ya cometió varias veces.
+- **Las reglas de aceptación las aplica Postgres sobre la respuesta cruda**, no un parser nuevo:
+  la placa solo si `placa_legible`, la organización solo si hubo placa, el tipo solo si es uno de
+  los cuatro válidos. Idéntico a lo que hace el `.ts`.
+- **Se validó contra dos carros de control** cuya lectura ya existía (2644 → `57-378` /
+  ANAPROMEX / Mazda6; 2649 → `9VYE404` / Honda / CR-V). Las dos salieron iguales antes de tocar
+  nada.
+- **0 placas repetidas nuevas.** Se corrió `placas_repetidas_del_rango` sobre los cuatro días
+  después de escribir; los dos grupos que salen del 29/jul ya existían y no involucran a ningún
+  carro recuperado.
+- **Se re-congelaron los cuatro reportes**, con `congelado_en` intacto (la hora del corte es un
+  hecho; lo que cambió es el dato de placa). Antes se sacó el diff campo por campo: **lo único
+  distinto es el bloque `placas`** — lavados, tiempos y equipos quedaron idénticos.
+
+> 🇺🇸 **Y salió la segunda placa gringa verificada:** el carro 2629 traía placa de **Arizona**
+> (`ROA 11T`, Toyota Highlander blanco) y se leyó completa, ignorando "ARIZONA" y "GRAND CANYON
+> STATE" como manda el prompt. Con la de California del 2649, el camino de las placas de EU ya
+> está probado en los dos estados que más entran a Mexicali.
 
 ### ✅ Higiene operativa
 

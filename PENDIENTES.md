@@ -24,11 +24,11 @@ Dos cosas separadas que decidir:
   el reporte del dueño, del mismo tipo que la de placas repetidas: *"N carros con foto y sin
   intento de lectura"*. El dato ya existe (`foto_path is not null and placa_en is null`), no hace
   falta tabla nueva.
-- 🟠 **Recuperar los 17 del 17/ago.** Las fotos siguen en Storage; correr el prompt otra vez
-  sobre esas 17 imágenes recupera placa/marca/submarca y cuesta centavos. Se escribe con
-  `guardar_datos_de_foto`, que ya trae el candado de placa repetida. **Falta el visto bueno**
-  porque es escribir sobre días ya congelados (el reporte congelado no cambia — `placas` se
-  calcula al vuelo sólo para el día de hoy —, así que habría que decidir si se re-congela el 17).
+- ✅ **HECHO el 19/ago — recuperadas.** Se releyeron **24 carros** (los 17 de la caída + 7
+  sueltos desde el 29/jul); **21 sacaron placa**. El 17/ago pasó de 69% a **88%** de placa, y
+  `foto sin intento de lectura` quedó en **0 en toda la base**. Se re-congelaron los 4 días
+  tocados conservando `congelado_en` (el diff campo por campo confirmó que sólo cambia el bloque
+  `placas`). La herramienta quedó en `scripts/releer-fotos/` con su README.
 - 🔵 **Causa raíz: no se sabe.** Los logs de Edge Functions ya no cubren el 17/ago. Si vuelve a
   pasar y hay alerta, se puede mirar en caliente.
 
