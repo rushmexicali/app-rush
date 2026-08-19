@@ -6,6 +6,56 @@
 
 ---
 
+## 📊 DEL CIERRE DEL 17–18/ago/2026 (hecho el 19/ago) — lo nuevo
+
+Análisis completo en `CLAUDE.md §11.60`. Aquí sólo lo que espera trabajo o decisión.
+
+### 🔴 La lectura de placa se puede caer y NADIE se entera
+
+El 17/ago, de **16:40 a 18:20**, 17 carros seguidos subieron foto y **nunca se intentó leerla**
+(`placa_en` nulo, y placa/marca/submarca en nulo). Es la razón completa del 69% de placa de ese
+día. Se midió todo agosto: **0 casos todos los días menos ése**. No es un bug crónico; es un
+evento sin alarma.
+
+Dos cosas separadas que decidir:
+
+- 🔴 **Avisar cuando pase.** Hoy la caída es muda por diseño ("la placa nunca bloquea"), lo cual
+  está bien para el supervisor pero deja el dato perdido en silencio. Lo barato es una alerta en
+  el reporte del dueño, del mismo tipo que la de placas repetidas: *"N carros con foto y sin
+  intento de lectura"*. El dato ya existe (`foto_path is not null and placa_en is null`), no hace
+  falta tabla nueva.
+- 🟠 **Recuperar los 17 del 17/ago.** Las fotos siguen en Storage; correr el prompt otra vez
+  sobre esas 17 imágenes recupera placa/marca/submarca y cuesta centavos. Se escribe con
+  `guardar_datos_de_foto`, que ya trae el candado de placa repetida. **Falta el visto bueno**
+  porque es escribir sobre días ya congelados (el reporte congelado no cambia — `placas` se
+  calcula al vuelo sólo para el día de hoy —, así que habría que decidir si se re-congela el 17).
+- 🔵 **Causa raíz: no se sabe.** Los logs de Edge Functions ya no cubren el 17/ago. Si vuelve a
+  pasar y hay alerta, se puede mirar en caliente.
+
+### ❓ Se suma a las preguntas al dueño
+
+- 🟠 **`6to Express` ya va por la séptima vez.** Dos casos nuevos: carros **2607** (17/ago) y
+  **2694** (18/ago). Total: 1547, 2208, 2211, 2290, 2590, 2607, 2694 — todos contados como
+  completo con aspirado y mandados fuera de la línea 1. La pregunta sigue siendo la misma y sin
+  respuesta.
+- 🟠 **La caja nueva sigue en cero.** Las únicas dos visitas por `caja='principal'` del 17–18 son
+  la prueba de la cámara Reolink, y quedaron descartadas. **22 lavados gratis vendidos** en esos
+  dos días, **0 registrados como canje.**
+
+### 🟢 Lo que salió bien y no necesita nada
+
+0 rechazos, 0 devoluciones, 0 cerrados automáticamente, 0 placas repetidas, 41/41 express en la
+línea 1, nota de caja 100%/98%. Los olvidos bajaron a 7–8% (el mejor nivel medido).
+
+### ✅ HECHO el 19/ago — se deshizo la prueba de la cámara sobre `Guillermo Lara Torres`
+
+Ver `CLAUDE.md §11.60`. Se le quitó la placa `9VYE404` (que es de un cliente recurrente real),
+se descartaron sus dos visitas de prueba y los carros 2643/2649 volvieron a quedar sin cliente.
+**Las fotos y la placa del carro se conservaron**: se verificaron contra la imagen y la cámara
+había sacado el carro correcto las dos veces.
+
+---
+
 ## 📊 DEL ANÁLISIS DEL 4–14/ago/2026 (hecho el 15/ago) — lo que necesita decisión
 
 El análisis completo está en `CLAUDE.md §11.75`. Aquí sólo lo que espera respuesta o trabajo.

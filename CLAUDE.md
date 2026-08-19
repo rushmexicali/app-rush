@@ -705,9 +705,11 @@ idénticas, guiones incluidos, y el Mustang pasó de vacío a `72973`. Como el p
 visible `7…3`, devolvió vacío 3 de 3 veces teniendo el formato y la mitad de los dígitos
 para adivinar.
 
-> **Pendiente de verificar:** el camino de las placas de Estados Unidos está escrito pero
-> **no probado contra una placa gringa real** — no hay ninguna todavía en la base. La
-> primera que entre es la prueba.
+> ✅ **Verificado el 17/ago/2026:** el camino de las placas de Estados Unidos estaba escrito
+> pero **no probado contra una placa gringa real**. Ya lo está: el carro 2649 (Honda CR-V rojo)
+> traía placa de **California** `9VYE404` y se leyó correcta y completa, sin confundir el nombre
+> del estado ni el marco del portaplacas con la placa. Salió de la prueba de la cámara fija de
+> caja, ver §11.60.
 
 - **No hubo que subir la resolución.** El `CLAUDE.md` decía que a 1280px la placa quedaría
   con ~130px y habría que subir a 2000px. Se midió con una foto real: la placa medía ~170px
@@ -770,6 +772,138 @@ para adivinar.
 
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
+
+## 11.60 Cierre del 17–18/ago/2026 — dos días limpios, y la lectura de placa se cayó 100 minutos
+
+**146 lavados** en lunes y martes, todos entregados, **0 rechazos, 0 devoluciones, 0 cerrados
+automáticamente, 0 placas repetidas, 0 no-express en la línea 1**. Operativamente es el cierre
+más limpio del proyecto. El hallazgo del periodo no está en los tiempos: es una **caída de la
+lectura de placa** que no avisó a nadie.
+
+**Volumen y tiempos:**
+
+| Día | | Lavados | Espera | Secado | Encimados | Afectados por olvido |
+|---|---|---|---|---|---|---|
+| 17/ago | Lunes | **84** | 51.2 | 39.8 | 40 (48%) | 6 (7%) |
+| 18/ago | Martes | 62 | 45.8 | 33.2 | 20 (32%) | 5 (8%) |
+
+Quitando los olvidos: 17/ago **50.8 / 38.7** y 18/ago **44.7 / 32.1**. La distorsión por captura
+es de 0.4–1.1 min — la más chica registrada. **Los tiempos son taller, no captura.**
+
+El lunes 17 sale con una espera alta (51.2 min) para un volumen mediano — al nivel del sábado
+15/ago, que tuvo 115 carros. La causa se ve en el reloj: **13 carros entraron entre 17:00 y
+17:59**, el pico más cerrado del periodo, contra 2 a 10 por hora el resto del día.
+
+### 🔴 El hallazgo: la lectura de placa se cayó de 16:40 a 18:20 del 17/ago
+
+**17 carros seguidos (2626–2641 y 2645) subieron foto y NUNCA se intentó leerla.** No es que la
+foto saliera mala: `placa_en` quedó **nulo**, que es justo la señal de *"nunca se intentó"* — con
+placa, marca y submarca en nulo las tres. Antes de las 16:40 y después de las 18:22 todo leyó
+normal.
+
+```
+16:24  carro 2625  leyó (y el candado de placa repetida lo atajó, ver abajo)
+16:40  carro 2626  foto subida, sin intento   ← empieza
+...    17 carros
+18:20  carro 2645  foto subida, sin intento   ← termina
+18:22  carro 2644  leyó MAZDA 6
+18:23  carro 2642  leyó JETTA
+```
+
+- **Es la razón completa del mal día de datos del 17:** placa 58/84 (**69%**, el peor del
+  proyecto), marca 77%, submarca 64%. Sacando los 17 de la caída, los 67 restantes dan **87% de
+  placa, 97% de marca y 81% de submarca** — o sea, un día normal. El 18/ago, sin caída, quedó en
+  85% / 100% / 90%.
+- **No es un patrón, es un evento.** Se midió `foto sin intento de lectura` día por día en todo
+  agosto: **0 todos los días menos el 17, que tiene 17.** No hay que arreglar un bug; hay que
+  enterarse cuando pase.
+- **También se llevó a la caja.** El carro 2643 (prueba de la cámara, 18:06) subió una foto
+  perfectamente legible de un Nissan Note y tampoco sacó nada; el 2649, ya recuperado el
+  servicio a las 18:57, leyó `9VYE404` sin problema.
+- 🔴 **Nadie se enteró, y ése es el problema real.** El diseño dice que la placa "nunca bloquea":
+  si Anthropic se cae o tarda, la foto se guarda y el carro sigue. Correcto para el supervisor —
+  pero **hacia afuera la caída es muda**: no hay aviso, no hay reintento, y el dato se pierde
+  para siempre. Los 17 carros conservan su foto en Storage, así que **la lectura se puede
+  recuperar corriendo el prompt otra vez sobre esas 17 imágenes** (cuesta centavos). Falta
+  decidirlo.
+- **Causa raíz: no se sabe.** Los logs de Edge Functions ya no cubren el 17/ago. Las hipótesis
+  son caída/límite de la API de Anthropic o un error de la función; nada en la base lo distingue.
+  Lo accionable no es la causa, es la **falta de alarma**.
+
+### ✅ Higiene operativa
+
+- **0 rechazos, 0 devoluciones, 0 cancelados que no sean borrado de supervisor, 0 cerrados
+  automáticamente** los dos días. El olvido de fin de turno del 16/ago (4 carros sueltos entre
+  19:15 y 19:45) **no se repitió**: el supervisor cerró la cola solo las dos noches.
+- **Línea 1 impecable:** 41 express, **41 en la línea 1**, 0 no-express adentro.
+- **0 placas repetidas** (`placas_repetidas_del_rango`), tercer periodo seguido en cero.
+- **El candado de placa duplicada trabajó una vez:** el carro 2625 (16:23, `CA BLANCA`) quedó en
+  `placa_dudosa = PCA-6715-C`, que era la del carro 2624 (una Grand Caravan de 20 minutos antes).
+  Foto pegada al carro equivocado, atajada antes de escribirse.
+- **6 borrados de supervisor** (2 el lunes, 4 el martes), todos nunca asignados. Es lo que el
+  botón existe para hacer.
+- **Nota de caja 100% el lunes** (84/84) y 98% el martes.
+
+### 🟠 Lo que sigue igual
+
+- **La caja nueva sigue sin usarse.** Las **únicas** dos visitas por `caja='principal'` de estos
+  dos días son las de la prueba de la cámara Reolink, y quedaron descartadas. Se vendieron **22
+  lavados gratis** (15 el lunes, 7 el martes) y **ninguno** se registró como canje en el CRM. Es
+  el tercer periodo seguido con el mismo resultado.
+- **`6to Express` va por la séptima vez.** Dos casos nuevos: carro **2607** (17/ago) y **2694**
+  (18/ago), los dos `Gratis` + `6to Express`, clasificados como **completo con aspirado** y
+  mandados a la **línea 2**. Con el 2590 del mismo 17/ago ya son 7 en total. Sigue esperando la
+  palabra del dueño antes de tocar `es_lavado_express`.
+
+### Analítica por persona — los dos días juntos
+
+Completos (con aspirado), una persona:
+
+| Persona | Carros | Secado | Encimados |
+|---|---|---|---|
+| Jesús Gil | 21 | 38.6 | 7 (33%) |
+| Luis Luna | 16 | **53.9** | 5 (31%) |
+| Pablo Cruz | 14 | 44.3 | 6 (43%) |
+| Edgar Reyes | 12 | 41.0 | 6 (50%) |
+| José Cruz | 11 | 50.8 | 5 (45%) |
+| Jaime Gallegos | 9 | 48.6 | 9 (**100%**) |
+| Mario Hernández | 7 | **37.8** | 1 (**14%**) |
+| Jorge Luna | 6 | **34.6** | 6 (**100%**) |
+
+Express: **Walter Rodríguez 10 a 19.6 min**, **Saul Ramirez 8 a 22.8**, **Pablo Cruz 7 a 14.8**.
+
+**Cómo leerla:**
+- 🔴 **Luis Luna, cuarto periodo seguido de lo mismo:** el secado más alto (53.9 min) con apenas
+  31% de encimados. Ya no es ruido — es el caso más consistente del proyecto y el que más vale
+  preguntar en el taller.
+- **Mario Hernández es el mejor dato limpio del periodo:** 37.8 min con **14%** de encimados, el
+  porcentaje más bajo de cualquiera con volumen.
+- **Jaime Gallegos y Jorge Luna siguen al 100% de encimados**, ya 15 días seguidos. Jorge además
+  sale con **34.6 min estando siempre saturado**, el mejor tiempo del periodo. Su número no se
+  puede comparar contra el de nadie.
+- **Luis Chávez casi no aparece** (1 completo en dos días), así que la señal del fin de semana
+  pasado —46.6 min sin saturación— sigue sin poderse confirmar ni descartar.
+
+### La prueba de la cámara Reolink, y lo que dejó (19/ago/2026)
+
+El 17/ago se probó la cámara fija de caja registrando dos visitas **a nombre del cliente
+`Guillermo Lara Torres`** (persona 35333). Eso le pegó a él dos tickets de clientes reales, le
+sumó dos sellos y le ligó la placa `9VYE404` como confirmada. Se deshizo el 19/ago.
+
+- **Se conservaron las fotos y la placa del carro**, porque se verificaron **contra la imagen**:
+  el carro 2643 es un Nissan Note plateado y su nota decía `AU PLATEADO`; el 2649 es un Honda
+  CR-V rojo con placa de California `9VYE404` y su nota decía `CA ROJA`. **La cámara sacó el
+  carro correcto las dos veces.** Lo único equivocado era el cliente.
+- **Se quitó:** el renglón de `persona_placas` (9VYE404 → Guillermo) y las dos visitas, que
+  pasaron a `estado='descartada'` + `es_prueba=true` (la fila se conserva, no se borra). Los dos
+  carros volvieron a `cliente = null`, que es lo que da su nota. Guillermo quedó en 0 lavados
+  pagados, 0 sellos, 1 visita (su cortesía real del 15/ago).
+- ⚠️ **La placa `9VYE404` es de un cliente recurrente de verdad**, no de Guillermo: aparece en
+  los carros 282 (21/jul), 1323 (1/ago) y 2649 (17/ago). Si se hubiera quedado ligada, el CRM le
+  habría dado a Guillermo el historial de otra persona.
+- ✅ **De paso, esto cierra el pendiente de §9:** *"el camino de las placas de Estados Unidos
+  está escrito pero no probado contra una placa gringa real"*. Ya está probado — `9VYE404`,
+  placa de California, leída correcta y completa.
 
 ## 11.65 Cierre del 15–16/ago/2026 — fin de semana grande y limpio; la caja nueva no se ha usado
 
