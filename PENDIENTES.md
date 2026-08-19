@@ -8,6 +8,10 @@
 
 ## 🔬 AUDITORÍA COMPLETA DEL 19/ago/2026 — 46 hallazgos
 
+> ✅ **Los 7 PRIORIZADOS ya están hechos y desplegados** (migración `105`, commit `9904fe3`).
+> Ver `CLAUDE.md §11.50`. Lo que sigue abajo con ✅ ya no requiere trabajo; lo que sigue sin marca
+> es la deuda que el dueño dejó fuera del alcance de hoy.
+
 Siete revisiones en paralelo sobre todo el código (base, API, las tres pantallas, funciones de fondo,
 costos). **Nada se tocó: fue de solo lectura.** Lo marcado ✔ se comprobó a mano contra la base de
 producción, no solo se leyó.
@@ -20,7 +24,7 @@ producción, no solo se leyó.
 
 ### 🔴 Rompen algo hoy
 
-1. ✔ **El contador de "encimados" lleva 25 días mintiendo sobre dos personas.** La CTE `encimados`
+1. ✅ **HECHO 19/ago.** El contador de "encimados" lleva 25 días mintiendo sobre dos personas. La CTE `encimados`
    de `reporte_del_rango` no filtra `cancelado_en`. Los carros **515 y 516** (24/jul, cancelados al
    descontrolarse la cola, `entregado_en` nulo) tienen asignación a **Jorge Luna** y **Jaime
    Gallegos**, y los dejan "ocupados para siempre". Medido el 16/ago: Jorge 7/7 (100%) → **1/10
@@ -30,15 +34,15 @@ producción, no solo se leyó.
    estando siempre saturado"). **No estaban saturados.**
    *Arreglo:* `and c2.cancelado_en is null and not c2.es_prueba`; cerrar 515/516; re-congelar desde
    el 26/jul (solo cambia `encimados`, el secado no).
-2. ✔ **La caja puede regalar un lavado y quitarle al cliente el que sí ganó.**
+2. ✅ **HECHO 19/ago (se RECHAZA, decisión del dueño).** La caja podía regalar un lavado y quitarle al cliente el que sí ganó.
    `registrar_visita_con_carro` **no verifica saldo**; la vieja `registrar_visita` **sí** — regla
    duplicada divergente. `lealtad_por_persona` tapa el descubierto con `greatest(0, …)`. Hoy hay
    **26 personas con canjes > ganados** (déficit 31 sellos), todas del import, pero el camino sigue
    abierto. **Decisión del dueño**: ¿se rechaza o pasa y queda anotado?
-3. ✔ **Un error 500 vacía la cola en pantalla Y apaga el aviso.** `docs/index.html:1311`
+3. ✅ **HECHO 19/ago.** Un error 500 vaciaba la cola en pantalla y apagaba el aviso. `docs/index.html:1311`
    `carros = d.carros || []` seguido de `avisarError(false)`. El supervisor lee "No hay carros en
    proceso" sin señal de falla, y al volver el servicio los 15 carros vuelven a sonar como nuevos.
-4. ✅ **HECHO 19/ago (falta desplegar al cierre).** Los errores del backend no llevaban `ok:false` y los tres fronts los leían como éxito.
+4. ✅ **HECHO Y DESPLEGADO 19/ago.** Los errores del backend no llevaban `ok:false` y los tres fronts los leían como éxito.
    401/500/400/405/503. En caja: "listo, siguiente cliente" con la visita sin registrar (la fuga de
    lealtad reintroducida por el **formato** de la respuesta). En supervisor: "Entregado" se cierra
    como si hubiera funcionado. *Arreglo de una línea:* que `json()` agregue `ok:false` cuando
@@ -50,11 +54,11 @@ producción, no solo se leyó.
 
 ### ⏰ Bombas con fecha
 
-6. ✔ **El obrero de relectura (104) NUNCA ha corrido.** Falta desplegar `app`, crear
+6. ✅ **HECHO 19/ago (cron jobid 7).** El obrero de relectura nunca había corrido. Faltaba desplegar `app`, crear
    `relectura_token` en Vault y agendar el cron. `placa_intentos = 0` en los 2,654 carros. Y
    `/fotos-pendientes` da 404, que el reporte lee como cero: **la alerta no aparecería nunca.**
    👉 Es trabajo mío a medio terminar. Pasos en `scripts/releer-fotos/DESPLIEGUE-104.md`.
-7. ✔ **`limpiar-fotos` nunca ha borrado nada; su primera corrida real son ~7,400 archivos.** 21
+7. ✅ **HECHO 19/ago (tope de 1,000 por corrida).** `limpiar-fotos` nunca había borrado nada; su primera corrida real serían ~7,400 archivos. 21
    corridas, 0 archivos (la más vieja tiene 31 días, el umbral 90). Primera real ~**17/oct/2026**:
    ~15 tandas en una invocación contra el límite de tiempo. Si se corta, quedan ligas muertas.
    *Arreglo:* tope por corrida y **probarlo antes de octubre**.
@@ -67,7 +71,7 @@ producción, no solo se leyó.
 
 ### 🔒 Seguridad
 
-10. ✔ **`anon` ejecuta 7 funciones `SECURITY DEFINER` y lee las 5 vistas.** Entre ellas
+10. ✅ **HECHO 19/ago (el revoke iba a PUBLIC, no a anon).** `anon` ejecutaba 7 funciones `SECURITY DEFINER` y leía las 5 vistas. Entre ellas
     `olvidar_fotos_viejas` (con `p_dias:=0` deja sin foto a todos los carros) y
     `sincronizar_empleados`. Las vistas no son `security_invoker`, así que brincan RLS:
     `historial_placas` (placas+clientes+dinero de 2,641 carros) y `lealtad_por_persona` (4,919
@@ -96,7 +100,7 @@ producción, no solo se leyó.
 
 ### 🔧 Backend
 
-17. ✔ **`editar_carro` escribe antes de validar.** El `update` va ANTES de los tres checks de
+17. **`editar_carro` escribe antes de validar.** El `update` va ANTES de los tres checks de
     secadores, y un `return` en plpgsql **no revierte**: el color se guarda aunque el guardado
     "falle" por dejar 0 secadores.
 18. **`guardar_datos_de_foto` borra lo que viene nulo**, contradiciendo la "aceptación parcial por
@@ -104,7 +108,7 @@ producción, no solo se leyó.
     "tomar foto otra vez" (103) esto se dispara solo.
 19. ✔ **`/foto` no limpia `placa_en`** al subir foto nueva, así que una re-toma **nunca** entra a la
     cola de reintentos (`fotos_por_leer` exige `placa_en is null`). Justo el flujo de las pickups.
-20. ✔ **`buscar_tickets` tiene dos sobrecargas** y la llamada de 2 argumentos revienta con `42725`.
+20. ✅ **HECHO 19/ago (se dropeó la vieja).** `buscar_tickets` tenía dos sobrecargas y la llamada de 2 argumentos revienta con `42725`.
     La `098` agregó en vez de reemplazar — la lección exacta de la `052`. *Arreglo:* `drop` la vieja.
 21. **`trabajadores()` y `perfil_de_secador()` cuentan rechazos con `count(*)`**; el reporte con
     `count(distinct grupo)`. Un rechazo con 2 motivos dará 2 en un lado y 1 en el otro (bug de la
@@ -167,19 +171,23 @@ producción, no solo se leyó.
 - ✔ Ninguna función `SECURITY DEFINER` con `search_path` suelto. Sin secretos en `docs/`.
 - ✔ `leerFoto` distingue bien "miré y no vi" de "no alcancé a mirar". Es la parte mejor construida.
 
-### 🎯 Orden sugerido
+### 🎯 Orden sugerido — los 7 primeros YA ESTÁN HECHOS (19/ago)
 
-1. `ok:false` automático cuando `status >= 400` (#4) — **una línea, mata la clase entera**.
-2. Encimados + re-congelar desde el 26/jul (#1) — desbloquea la analítica por persona.
-3. Que la cola no mienta (#3, #26, #27).
-4. Terminar el despliegue de la 104 (#6) — hoy la cola está en cero.
-5. Cerrar permisos de `anon` (#10).
-6. Decidir la regla del canje sin saldo (#2) y la del `6to Express` (#25).
-7. Tope al borrado de fotos y probarlo antes de octubre (#7).
+1. ✅ `ok:false` automático cuando `status >= 400` (#4) — **una línea, mata la clase entera**.
+2. ✅ Encimados + re-congelar desde el 26/jul (#1) — desbloquea la analítica por persona.
+3. ✅ Que la cola no mienta (#3, #26, #27).
+4. ✅ Terminar el despliegue de la 104 (#6) — hoy la cola está en cero.
+5. ✅ Cerrar permisos de `anon` (#10).
+6. ✅ Decidir la regla del canje sin saldo (#2) y la del `6to Express` (#25).
+7. ✅ Tope al borrado de fotos y probarlo antes de octubre (#7).
 
 ### 🧪 Y lo único que evita que esto se repita
 
-**Una suite de regresión que se corra antes de cada despliegue.** El proyecto ya tiene la técnica
+✅ **ARRANCADA el 19/ago: `pruebas/correr.sh`.** Ya trae los primeros casos (14 de `marcarError`,
+6 grupos del canje sin saldo, y la sintaxis de las tres pantallas), corre en un comando y sale con
+código 1 si algo falla. Falta ir sumándole un caso por cada hallazgo de esta lista.
+
+**Una suite de regresión que se corra antes de cada despliegue.** El proyecto ya tenía la técnica
 (el bloque `do $$ … raise` contra la base real, que revierte al terminar), pero se escribe a mano
 para cada cambio y **se tira después de usarse**. Juntarlas convierte cada hallazgo de esta
 auditoría en una prueba permanente: la próxima vez que alguien duplique una regla o rompa un

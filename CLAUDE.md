@@ -773,6 +773,151 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 11.50 Los 7 puntos de la auditoría, hechos y desplegados (19/ago/2026, migración `105`)
+
+La auditoría de siete frentes encontró 46 hallazgos (ver §11.52). El dueño escogió los **7
+priorizados** y pidió subirlos el mismo día, con el taller abierto. Todo se probó contra la base
+real antes, y se verificó contra la API en vivo después. **Ninguna ruta se cayó y la lealtad no se
+movió** (el hash de las 4,918 personas quedó idéntico antes y después).
+
+### 1. Un error del backend ahora SE VE como error
+
+Las tres pantallas preguntan lo mismo —`if (d.ok === false)`— y **57 respuestas de error salían
+sin ese campo**, así que pasaban como buenas: la caja decía *"listo, siguiente cliente"* con la
+visita sin registrar, y al supervisor se le cerraba "Entregado" con el carro intacto.
+
+Se arregla en el ayudante `json()`, no ruta por ruta: **si depende de que quien escriba la ruta 58
+se acuerde, la clase vuelve.** Antes de tocar se verificó que ninguna respuesta manda `ok:true` con
+código de error, así que marcar no puede contradecir a nadie.
+
+`marcarError` se escribió **sin azúcar moderna a propósito**, para que la prueba pueda extraerla del
+archivo y correr esa misma función en vez de una copia. Ver `pruebas/README.md`.
+
+### 2. El contador de "encimados" dejaba de contar los carros CANCELADOS
+
+🔴 **El hallazgo más caro de la auditoría, porque ya había producido un juicio por escrito sobre
+dos personas con nombre.**
+
+Un carro cancelado conserva `entregado_en` nulo **para siempre** —así lo deja "Borrar unidad" y así
+lo deja una devolución—, de modo que sin filtrarlo deja a su secador marcado como ocupado el resto
+de la historia. Los carros **515 y 516** (24/jul, cancelados esa noche al descontrolarse la cola)
+tenían asignación a **Jorge Luna** y **Jaime Gallegos**.
+
+| 16/ago, completos | Decía | Es |
+|---|---|---|
+| Jaime Gallegos | 6 de 6 — **100 %** | 6 de 6 — **0 %** |
+| Jorge Luna | 7 de 7 — **100 %** | 1 de 7 — **14 %** |
+
+**Se re-congelaron 25 días** (25/jul – 18/ago) conservando `congelado_en`. La saturación total del
+periodo bajó de **935 a 734**: las 201 marcas falsas que la auditoría había calculado, exactas.
+
+> ⚠️ **Cómo se comprobó que el cambio era quirúrgico, que es lo que hay que repetir.** Se eligió el
+> **16/ago, un día sin ningún carro `6to Express`**, y se comparó equipo por equipo: **ningún
+> promedio de secado ni conteo de carros se movió** (lista vacía), y la saturación cambió
+> **únicamente** en esas dos personas. Los totales del día —105 lavados, 2004 s de secado, 2638 s
+> de espera— quedaron idénticos al segundo.
+>
+> Los días **19–24/jul se dejaron FUERA** a propósito: su único diff contra el recálculo son campos
+> que entonces no existían (`borrados`) y, en el 19/jul, la deriva de una versión vieja de la
+> función. Re-congelarlos habría horneado cambios que **no** son de esta corrección.
+
+**Lo que esto invalida:** en §11.65 y §11.75 quedó escrito que lo de esos dos *"ya no es
+casualidad: es posición o forma de asignar"* y que *"su secado no se puede comparar contra el de
+nadie"*. Las dos conclusiones salen del número falso. Sus tiempos se comparan como los de
+cualquiera, y Jaime resulta **rápido y sin saturación**, no saturado.
+
+### 3. La cola del supervisor deja de mentir
+
+Cuatro cosas, todas en `docs/index.html`:
+
+- **Una respuesta que no sea una lista de carros ya no vacía la cola.** Era
+  `carros = d.carros || []` seguido de `avisarError(false)`: con 15 carros lavándose, un 500 de la
+  base hacía que la pantalla dijera *"No hay carros en proceso"* **y apagara el aviso de falla**.
+  Ahora se exige que venga un arreglo; si no, **no se toca la cola** —más vale vieja que falsa— y se
+  enciende el aviso.
+- **El aviso escala.** Antes sólo salía con la cola vacía, así que un corte de red con carros en
+  pantalla no producía **ninguna** señal: los cronómetros seguían corriendo y las tarjetas se
+  seguían poniendo rojas con datos de hace media hora. Ahora, a los ~12 s de silencio, el banner
+  sale aunque haya carros y dice **de cuándo es lo que se está viendo**.
+- **Toda petición corta a los 20 s.** No había un solo `AbortController` en el archivo: una
+  petición colgada con el wifi flojo dejaba `ocupado` puesto y **todos los botones de la cola
+  dejaban de responder**, sin alerta y sin cambio de color. Para el supervisor la app se trababa y
+  la única salida era cerrarla.
+- **El candado de pantalla se vuelve a pedir.** `candado` nunca volvía a `null`, así que tras el
+  primer minimizado la pantalla se apagaba sola el resto del turno — justo lo que el comentario del
+  propio código decía que evitaba.
+
+Y `escapar()` deja de divergir: era el único de los tres HTML sin la guarda de nulos, y por eso
+podía pintar el texto `null` en un botón de secador.
+
+### 4. El obrero de relectura por fin corre
+
+La migración `104` quedó a medio desplegar y **nunca había tomado un lote** (`placa_intentos` en
+cero en los 2,654 carros). Faltaban tres cosas: desplegar la función, crear `relectura_token` en
+Vault y agendar el cron (ahora `jobid 7`, cada 5 min).
+
+**Probado de extremo a extremo sobre un carro real**, apuntando antes sus valores: se le borró la
+lectura al carro 2644 y el obrero la recuperó completa —placa `57378`, display `57-378`,
+organización `ANAPROMEX`, marca, tipo— y dejó la cola en cero.
+
+### 5. La llave pública deja de poder borrar y de poder leer el CRM
+
+> 🔴 **El primer intento no sirvió de nada, y se descubrió midiendo.** Se revocó `execute` a `anon`
+> y las 7 funciones **seguían alcanzables**: Postgres concede EXECUTE a **PUBLIC** por omisión (se ve
+> como `=X/postgres` al principio del ACL), así que quitárselo a `anon` no cambia nada — el permiso
+> le sigue llegando por el otro lado. Hay que revocarle a **PUBLIC**.
+>
+> `service_role` no se ve afectado porque tiene concesión **explícita** (`service_role=X/postgres`),
+> que sobrevive al revoke. Es la llave que usan las Edge Functions, o sea toda la app.
+
+Quedan alcanzables sólo `crear_carro_desde_venta` y `rls_auto_enable`, que devuelven
+`trigger`/`event_trigger` y PostgREST ni expone. **A propósito no se les tocaron los permisos:** la
+primera es el camino por donde entra el dinero, y moverlos por un riesgo que no existe es un mal
+trato. Las cinco vistas pasaron a `security_invoker`, así que vuelven a chocar con el RLS de las
+tablas que consultan.
+
+### 6. Un canje sin saldo se rechaza, y el 6to Express es express
+
+Dos decisiones del dueño, tomadas este día.
+
+- **Canje sin saldo → se rechaza.** La regla vivía en **dos lugares y habían divergido**:
+  `registrar_visita` (la vieja) degradaba el canje en silencio y `registrar_visita_con_carro` (la
+  que usa la caja) ni preguntaba. Ahora las dos le preguntan a **`saldo_de_gratis()`**, en un solo
+  lugar. La caja además **pinta en rojo cualquier ticket que no se pueda usar antes de que la
+  cajera lo toque**, con el motivo escrito, en vez de dejarla recibir un error después.
+  > ⚠️ **Consecuencia aceptada:** al rechazar, esa visita no queda registrada, así que ese lavado no
+  > aparecerá en el historial del cliente. El momento real de atajarlo es antes, en la caja — por
+  > eso el rojo preventivo importa más que el rechazo.
+- **`Gratis` + `6to Express` es express.** Llevaba 10 casos contándose como completo, ensuciando el
+  promedio de los completos con secados de express, y yendo a la línea equivocada.
+  > ⚠️ **`carros.tiempo_imposible` es una columna GENERADA** sobre
+  > `tiempo_minimo_seg(tipo_de_servicio(...))`, que cuelga de `lleva_aspirado`, que cuelga de
+  > `es_lavado_express`. Reemplazar la función **no recalcula lo ya guardado**: hay que forzarlo con
+  > `update carros set producto = producto`. Y `es_express` es columna **normal**, escrita por el
+  > trigger al crear el carro, así que los 10 históricos también se rellenaron. Sin las dos cosas
+  > quedaban tres verdades conviviendo.
+
+### 7. El borrado de fotos, con tope y honesto
+
+Tope de **1,000 por corrida** (el camino nunca se había ejecutado: 21 corridas, 0 archivos, y su
+primera vez real en octubre serían ~7,400 de golpe). Y el apuntador se limpia **sólo de lo que de
+verdad se borró**: antes se limpiaba por fecha, sin mirar los fallos, mientras el comentario
+afirmaba exactamente lo contrario.
+
+### De paso
+
+Se quitó la sobrecarga vieja de `buscar_tickets`, que reventaba con `42725` al llamarla con dos
+argumentos (la `098` agregó en vez de reemplazar — la lección de la `052`, otra vez). Y en la caja,
+el mensaje de error de la foto dejó de mandar a la cajera al botón de captura manual, que se quitó
+el 15/ago.
+
+### Lo que las pruebas atraparon
+
+`pruebas/canje-sin-saldo.sql` (6 grupos, patrón `do $$ … raise` que revierte todo) falló **dos
+veces por errores míos de la prueba, no del código**: la segunda vez porque reusé un ticket ya
+registrado y el candado de *"ese ticket ya se registró"* lo atajaba antes, así que estaba midiendo
+otra cosa. Es justo para lo que sirve una prueba.
+
 ## 11.55 La lectura de la foto se reintenta sola (19/ago/2026, migración `104`)
 
 Después de la caída del 17/ago —100 minutos en los que 17 carros subieron foto y la lectura
@@ -1020,9 +1165,11 @@ Express: **Walter Rodríguez 10 a 19.6 min**, **Saul Ramirez 8 a 22.8**, **Pablo
   preguntar en el taller.
 - **Mario Hernández es el mejor dato limpio del periodo:** 37.8 min con **14%** de encimados, el
   porcentaje más bajo de cualquiera con volumen.
-- **Jaime Gallegos y Jorge Luna siguen al 100% de encimados**, ya 15 días seguidos. Jorge además
-  sale con **34.6 min estando siempre saturado**, el mejor tiempo del periodo. Su número no se
-  puede comparar contra el de nadie.
+- 🔴 ~~**Jaime Gallegos y Jorge Luna siguen al 100% de encimados**, ya 15 días seguidos. Jorge
+  además sale con 34.6 min estando siempre saturado, el mejor tiempo del periodo. Su número no se
+  puede comparar contra el de nadie.~~ **FALSO — el número estaba envenenado (ver §11.50).** Dos
+  carros cancelados del 24/jul los dejaban marcados como ocupados para siempre. Ninguno de los dos
+  estaba saturado, y sus tiempos se comparan como los de cualquiera.
 - **Luis Chávez casi no aparece** (1 completo en dos días), así que la señal del fin de semana
   pasado —46.6 min sin saturación— sigue sin poderse confirmar ni descartar.
 
@@ -1143,9 +1290,12 @@ Express: **Saul Ramirez 24 carros a 13.6 min** — este fin de semana la línea 
 Walter (que se movió a completos).
 
 **Cómo leerla:**
-- **Jaime Gallegos y Jorge Luna siguen al 100% de encimados**, igual que en los 11 días previos.
-  Ya es estructural: es posición o forma de asignar. Jaime además bajó a 33.3 min *estando siempre
-  saturado*, que es el mejor dato del fin de semana.
+- 🔴 ~~**Jaime Gallegos y Jorge Luna siguen al 100% de encimados**, igual que en los 11 días
+  previos. Ya es estructural: es posición o forma de asignar. Jaime además bajó a 33.3 min *estando
+  siempre saturado*, que es el mejor dato del fin de semana.~~ **FALSO — ver §11.50.** El contador
+  no descartaba dos carros cancelados del 24/jul asignados a ellos. Medido el 16/ago con el filtro
+  corregido: Jaime **0%** de encimados, Jorge **14%**. Jaime no bajó a 33.3 min "estando saturado";
+  bajó a secas, que es mejor noticia y otra conversación.
 - 🔴 **Luis Chávez es la señal nueva y hay que verla:** 7 completos a **46.6 min con 0% de
   encimados**. En los 11 días anteriores era el **más rápido** del taller (32.8 min). Sin
   saturación que lo explique, subió 14 min. Vale preguntar qué cambió.
@@ -1350,9 +1500,12 @@ Completos (con aspirado), una persona, 5+ carros:
 Express: **Walter Rodríguez 101 carros a 15.3 min** — la línea 1 es suya.
 
 **Cómo leerla:**
-- **Jorge Luna y Jaime Gallegos traen 100% de encimados**, 11 días seguidos. Eso ya no es
+- 🔴 ~~**Jorge Luna y Jaime Gallegos traen 100% de encimados**, 11 días seguidos. Eso ya no es
   casualidad: *cada* carro que les entra los agarra ocupados. Es posición o forma de asignar,
-  no lentitud — su secado (44.6 y 38.8) no se puede comparar contra el de nadie.
+  no lentitud — su secado (44.6 y 38.8) no se puede comparar contra el de nadie.~~
+  **FALSO — ver §11.50.** "Cada carro los agarra ocupados" era literalmente cierto en el número y
+  literalmente falso en el taller: los dejaba ocupados un carro cancelado del 24/jul que nunca se
+  entregó. **Sus 44.6 y 38.8 min sí se comparan** contra los de los demás.
 - **La señal limpia de "sí es más lento" son Luis Luna (51.3 min con 30% encimados) y José
   Cruz (46.6 con 31%)**: tiempos altos **sin** saturación que los explique. Ahí sí vale
   preguntar qué pasa.
@@ -1433,8 +1586,9 @@ del carro tras asignar — el mismo hilo que motiva la cámara fija. Se relacion
 faltante: carro olvidado = carro sin foto.
 
 **Qué atender (por valor):** (1) foto del lunes al 88% — confirmar con el supervisor si el bache
-es wifi o descuido, sobre todo el 1548 sin nada; (2) los 5 olvidos del lunes; (3) Jorge Luna,
-100% de encimados los dos días. Nada urgente en rechazos/cancelados/devoluciones.
+es wifi o descuido, sobre todo el 1548 sin nada; (2) los 5 olvidos del lunes; ~~(3) Jorge Luna,
+100% de encimados los dos días~~ 🔴 **el (3) era el contador envenenado, no Jorge — ver §11.50.**
+Nada urgente en rechazos/cancelados/devoluciones.
 
 ## 11.85 Cierre del 24/jul/2026 — marca/modelo de la foto, review adversarial, y analítica calibrada
 
