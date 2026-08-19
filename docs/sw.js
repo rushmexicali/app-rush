@@ -30,7 +30,11 @@
 //  v10 (17/ago/2026) — el FEED en vivo tambien pasa al principal: en el chico
 //                     se veia mal en el tablet. Como el cuadro del feed ya
 //                     sirve, la foto vuelve a ser instantanea.
-var CACHE = "rush-v10";
+//  v11 (19/ago/2026) — la caja avisa si la lectura de placa CORRIO o no
+//                     (`leida`), para que una caida del servicio no quede
+//                     disfrazada de "se intento y no se pudo" y el obrero de
+//                     fondo pueda releer la foto solo (migracion 104).
+var CACHE = "rush-v11";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest",

@@ -958,7 +958,13 @@ function procesarImagen(dataURL) {
   return postJSON("/leer-placa", { imagen: dataURL }).then(function (d) {
     quitarLeyendo();
     if (!d || d.ok === false) { est.textContent = "No se pudo leer. Captura la placa a mano."; return; }
-    var datos = { placa: null, marca: d.marca, submarca: d.submarca, tipo: d.tipo, color: null, foto_path: d.foto_path };
+    // `leida` viaja hasta el registro de la visita. Distingue "la cámara
+    // miró y no vio placa" de "no se alcanzó a mirar" (el servicio de
+    // lectura caído). En el segundo caso el carro NO debe quedar marcado
+    // como intentado, para que el obrero de fondo lo relea solo. La caja no
+    // avisa nada distinto: para la cajera los dos casos se ven igual.
+    var datos = { placa: null, marca: d.marca, submarca: d.submarca, tipo: d.tipo,
+                  color: null, foto_path: d.foto_path, leida: d.leida !== false };
     if (d.placa && fijarPlaca(d.placa, datos)) {
       est.textContent = "Placa leída: " + captura.placa + resumenLectura(d);
     } else {
@@ -1460,7 +1466,10 @@ document.getElementById("btn-registrar").addEventListener("click", function () {
       placa:     c.placa     || null,
       marca:     c.marca     || null,
       submarca:  c.submarca  || null,
-      tipo:      c.tipo      || null
+      tipo:      c.tipo      || null,
+      // Si la lectura no corrió, el carro se queda pendiente y el obrero de
+      // fondo lo relee. Sin foto no aplica, así que va `true` por omisión.
+      leida:     c.foto_path ? (c.leida !== false) : true
     }).then(function (d) {
       if (!d || d.ok === false) {
         alert((d && d.error) || "No se pudo registrar");

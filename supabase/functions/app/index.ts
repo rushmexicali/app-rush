@@ -56,6 +56,13 @@ function autorizado(req: Request, url: URL): boolean {
   return dado === CODIGO;
 }
 
+// El token de la tarea de fondo (/releer-pendientes), que dispara pg_cron.
+// Va APARTE del codigo del supervisor a proposito: el cron guarda su llave
+// en Vault, y ahi no tiene por que quedar el codigo que abre toda la app.
+// Mismo patron que `limpiar-fotos`. Si no esta configurado, la ruta queda
+// cerrada — vale mas que la tarea no corra a que corra abierta.
+const RELECTURA_TOKEN = Deno.env.get("RELECTURA_TOKEN") ?? "";
+
 // ---------------------------------------------------------------------
 // Cuando una etapa se pinta de rojo. Calibrado por el dueno el
 // 19/jul/2026 viendo la operacion real, no inventado.
@@ -183,6 +190,19 @@ Para marca, submarca y tipo: da tu MEJOR identificacion aunque no estes 100% seg
 deja null SOLO si de plano no puedes distinguir. Pero NUNCA inventes un modelo que no
 corresponde a lo que ves — un dato inventado es peor que uno vacio. (Esto es distinto de
 la placa, donde la regla es estricta: solo si la leiste con certeza.)`;
+
+// Los bytes de una foto a base64. En trozos porque
+// `String.fromCharCode(...arreglo)` con una imagen entera revienta la pila
+// del intérprete. Lo usa el obrero de fondo, que baja la foto de Storage
+// (el camino normal ya la recibe en base64 desde el telefono).
+function aBase64(bytes: Uint8Array): string {
+  const TROZO = 0x8000;
+  let s = "";
+  for (let i = 0; i < bytes.length; i += TROZO) {
+    s += String.fromCharCode(...bytes.subarray(i, i + TROZO));
+  }
+  return btoa(s);
+}
 
 type Lectura = {
   placa: string | null;
@@ -333,6 +353,90 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // Señal de vida. No revela nada, asi que no pide codigo.
   if (ruta === "/") {
     return json({ ok: true, servicio: "app", configurado: CODIGO !== "" });
+  }
+
+  // --- El obrero de fondo: relee las fotos que se quedaron sin leer ----
+  //
+  // Va ANTES del candado del codigo porque no lo dispara una persona: lo
+  // dispara pg_cron con su propio token (migracion 104).
+  //
+  // POR QUE VIVE AQUI Y NO EN UNA FUNCION APARTE: `leerFoto` y el prompt
+  // estan en este archivo. Una funcion nueva obligaria a copiarlos, y una
+  // copia del prompt es una segunda regla para la misma pregunta — el error
+  // que este proyecto ya cometio varias veces. Una copia, un solo lugar.
+  if (ruta === "/releer-pendientes") {
+    const dadoTarea = req.headers.get("x-tarea") ?? url.searchParams.get("t") ?? "";
+    if (!RELECTURA_TOKEN || dadoTarea !== RELECTURA_TOKEN) {
+      console.error("releer-pendientes: token invalido o no configurado.");
+      return json({ ok: false, error: "no autorizado" }, 401);
+    }
+
+    // El lote lo decide la base, que ademas marca el intento al entregarlo
+    // (asi dos corridas encimadas no leen — ni cobran — la misma foto).
+    const lote = Number(url.searchParams.get("lote") ?? 10);
+    const { data: pendientes, error: errCola } = await db
+      .rpc("fotos_pendientes_de_leer", { p_limite: lote });
+
+    if (errCola) {
+      console.error("fotos_pendientes_de_leer:", errCola);
+      return json({ ok: false, error: errCola.message }, 500);
+    }
+    if (!pendientes?.length) return json({ ok: true, tomados: 0, leidos: 0 });
+
+    const dias = new Set<string>();
+    let leidos = 0, sinLectura = 0, sinFoto = 0;
+
+    for (const p of pendientes as Array<{ id: number; foto_path: string; dia: string }>) {
+      const { data: archivo, error: errBaja } = await db.storage
+        .from("fotos").download(p.foto_path);
+      if (errBaja || !archivo) {
+        // La foto ya no esta (caducó a los 3 meses, o se borro). No es un
+        // error del obrero; el contador de intentos la retira sola.
+        console.error("releer: no se pudo bajar", p.foto_path, errBaja);
+        sinFoto++;
+        continue;
+      }
+
+      const lectura = await leerFoto(aBase64(new Uint8Array(await archivo.arrayBuffer())));
+
+      // Misma regla que /foto: si NO hubo lectura no se escribe nada. El
+      // carro se queda en la cola y lo vuelve a agarrar el proximo intento.
+      if (!lectura) { sinLectura++; continue; }
+
+      const { error: errDatos } = await db.rpc("guardar_datos_de_foto", {
+        p_carro: p.id,
+        p_placa: lectura.placa,
+        p_org: lectura.organizacion,
+        p_marca: lectura.marca,
+        p_submarca: lectura.submarca,
+        p_tipo: lectura.tipo,
+      });
+      if (errDatos) { console.error("releer: guardar_datos_de_foto", p.id, errDatos); continue; }
+
+      leidos++;
+      dias.add(p.dia);
+    }
+
+    // El reporte de un dia ya congelado dice cuantas placas se alcanzaron a
+    // leer, y eso acaba de cambiar. Se corrige SOLO ese bloque: recalcular
+    // el reporte entero haria que "congelado" dejara de significar
+    // congelado. `congelado_en` no se mueve.
+    const recongelados: string[] = [];
+    for (const dia of dias) {
+      const { data: cambio, error: errCong } = await db
+        .rpc("recongelar_placas_del_dia", { p_fecha: dia });
+      if (errCong) { console.error("recongelar_placas_del_dia", dia, errCong); continue; }
+      if (cambio) recongelados.push(dia);
+    }
+
+    return json({
+      ok: true,
+      tomados: pendientes.length,
+      leidos,
+      sin_lectura: sinLectura,
+      sin_foto: sinFoto,
+      recongelados,
+    });
   }
 
   if (!autorizado(req, url)) {
@@ -544,6 +648,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
         // y el supervisor seguiria viendo la foto vieja hasta que venciera.
         foto_url: null,
         foto_url_expira: null,
+        // Foto nueva, cuenta nueva: los intentos que agoto la foto anterior
+        // no deben condenar a esta. Si no se reiniciara, una re-toma despues
+        // de una caida larga nunca entraria a la cola de reintentos.
+        placa_intentos: 0,
+        placa_intento_en: null,
       })
       .eq("id", carro);
 
@@ -1074,6 +1183,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ repetidas: data ?? [] });
   }
 
+  // --- Fotos que todavia no se han leido ------------------------------
+  // No es una alarma que exija accion: el obrero de fondo las reintenta
+  // solo. Sirve para que un problema PERMANENTE se vea — si el numero baja
+  // solo, el sistema esta trabajando; si se queda pegado, algo se rompio de
+  // verdad. `se_rindieron` es la lista corta que si necesita una mano
+  // (scripts/releer-fotos/). Aparte del reporte congelado, como la alerta
+  // de placas repetidas.
+  if (ruta === "/fotos-pendientes") {
+    const desde = url.searchParams.get("desde");
+    const hasta = url.searchParams.get("hasta") ?? desde;
+    if (!desde) return json({ error: "falta desde" }, 400);
+    const { data, error } = await db.rpc("fotos_pendientes_del_rango", { p_desde: desde, p_hasta: hasta });
+    if (error) { console.error("fotos_pendientes_del_rango:", error); return json({ error: error.message }, 500); }
+    return json(data ?? { esperando: 0, se_rindieron: 0, carros: [] });
+  }
+
   // --- Trabajadores: lista y perfil de secado -------------------------
   // La lista incluye a TODOS los empleados (activos, en descanso y fuera):
   // el dueno quiere poder abrir el perfil de alguien que hoy descansa y no
@@ -1222,6 +1347,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({
       ok: true,
       foto_path: camino,
+      // ⚠️ `leida` distingue "mire y no vi placa" de "no alcance a mirar".
+      // La caja tiene que pasarlo tal cual: si no hubo lectura, el carro NO
+      // debe quedar con `placa_en` estampado, porque entonces se ve como
+      // "se intento y no se pudo" y nunca entra a la cola de reintentos.
+      // Paso de verdad el 17/ago con el carro 2643 (migracion 104).
+      leida: lectura !== null,
       placa: lectura?.placa ?? null,
       marca: lectura?.marca ?? null,
       submarca: lectura?.submarca ?? null,
@@ -1272,6 +1403,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       p_marca:      cuerpo?.marca ?? null,
       p_submarca:   cuerpo?.submarca ?? null,
       p_tipo:       cuerpo?.tipo ?? null,
+      // Si la camara no alcanzo a leer (servicio caido), el carro se queda
+      // con `placa_en` nulo y el obrero de fondo lo levanta despues.
+      p_hubo_lectura: cuerpo?.leida !== false,
     });
     if (error) { console.error("registrar_visita_con_carro:", error); return json({ error: error.message }, 500); }
     return json(data);

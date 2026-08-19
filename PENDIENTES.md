@@ -19,11 +19,14 @@ evento sin alarma.
 
 Dos cosas separadas que decidir:
 
-- 🔴 **Avisar cuando pase.** Hoy la caída es muda por diseño ("la placa nunca bloquea"), lo cual
-  está bien para el supervisor pero deja el dato perdido en silencio. Lo barato es una alerta en
-  el reporte del dueño, del mismo tipo que la de placas repetidas: *"N carros con foto y sin
-  intento de lectura"*. El dato ya existe (`foto_path is not null and placa_en is null`), no hace
-  falta tabla nueva.
+- ✅ **RESUELTO, mejor que con una alarma (19/ago, migración `104`).** El dueño pidió que se
+  arreglara **solo**, no que avisara. Ya hay un obrero de fondo que relee las fotos pendientes en
+  cuanto vuelve el servicio, corrige el bloque `placas` del reporte congelado y liga la placa al
+  cliente. El contador en el reporte se quedó, pero como señal de problema permanente, no como
+  alarma. Ver `CLAUDE.md §11.55`.
+  - ⏳ **PENDIENTE DE DESPLEGAR** (19/ago): la migración ya está aplicada y no cambia el
+    comportamiento actual. Falta subir la función `app`, `caja.html`/`reporte.html`, poner el
+    secreto `RELECTURA_TOKEN` y agendar el cron. Va **al cierre**, porque toca `caja.html`.
 - ✅ **HECHO el 19/ago — recuperadas.** Se releyeron **24 carros** (los 17 de la caída + 7
   sueltos desde el 29/jul); **21 sacaron placa**. El 17/ago pasó de 69% a **88%** de placa, y
   `foto sin intento de lectura` quedó en **0 en toda la base**. Se re-congelaron los 4 días

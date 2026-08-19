@@ -773,6 +773,109 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 11.55 La lectura de la foto se reintenta sola (19/ago/2026, migración `104`)
+
+Después de la caída del 17/ago —100 minutos en los que 17 carros subieron foto y la lectura
+nunca corrió— el dueño pidió algo más que un aviso: *"me gustaría que se arreglara solo en el
+background y el reporte y ligas de placas y tickets se haga cuando haya internet de nuevo"*.
+
+Eso es lo que hace la `104`. Tres decisiones cargan con todo el diseño:
+
+### 1. La cola YA EXISTÍA; no se creó ninguna tabla
+
+Un carro con foto guardada y `placa_en` **nulo** *es* un pendiente de leer. Ésa es exactamente la
+semántica que el proyecto ya documenta (§9: *"nulo = nunca se intentó; con fecha y placa vacía =
+se intentó y no se pudo"*). Inventar una lista aparte habría sido tener **dos verdades para la
+misma pregunta**, que es el error que este proyecto ya cometió varias veces.
+
+La regla de quién es elegible vive en **una sola vista**, `fotos_por_leer`, que consultan el
+obrero y el disparador. Al principio el `where` estaba **copiado** en las dos funciones; se
+descubrió porque la prueba falló, no leyendo el código.
+
+### 2. El reintento va en el SERVIDOR, no en el teléfono
+
+La cola durable del front (3/ago) reintenta la **subida**, y trae un candado a propósito: *"si el
+servidor ya tiene la foto, se descarta sin subir; así jamás se re-lee en Claude una foto ya
+guardada"*. Está bien que sea así. Y en la caída del 17 el teléfono **sí tenía internet**: la foto
+subió perfecto. Lo que se cayó fue el tramo servidor→Anthropic. Ahí es donde tiene que vivir el
+reintento.
+
+### 3. El obrero es una RUTA de la función `app`, no una función nueva
+
+`leerFoto` y el prompt viven en `supabase/functions/app/index.ts`. Una Edge Function aparte
+habría obligado a **copiar el prompt** — una segunda regla para la misma pregunta. La ruta
+`/releer-pendientes` va **antes** del candado del código del supervisor, con su propio token
+(`RELECTURA_TOKEN` + `relectura_token` en Vault), porque no la dispara una persona sino `pg_cron`.
+Así el código que abre toda la app no tiene que quedar guardado en un cron.
+
+### Cómo se comporta
+
+```
+cron cada 5 min → releer_fotos_si_toca()
+                    ├─ cola vacía (lo normal) → un count sobre el índice parcial. NI SIQUIERA
+                    │                           sale de la base. No hay llamada HTTP.
+                    └─ hay pendientes → POST /app/releer-pendientes
+                                          ├─ toma hasta 10 (y marca el intento al entregarlos)
+                                          ├─ baja la foto, leerFoto, guardar_datos_de_foto
+                                          └─ recongelar_placas_del_dia por cada día tocado
+```
+
+- **Gracia de 3 minutos.** Un carro no entra a la cola hasta que su foto tiene 3 min. Sin eso, el
+  obrero pagaría una segunda lectura de algo que la ruta `/foto` todavía está leyendo (corta a los
+  25 s, más la subida).
+- **Espera creciente CON TOPE:** 2, 4, 8, 15, 15… minutos. El tope importa: el punto es que se
+  arregle solo *en cuanto vuelva el servicio*, y un backoff sin techo dejaría un carro esperando
+  horas después de que ya se podía leer. 20 intentos cubren ~4.5 h de caída.
+- **El tope de intentos existe por una sola razón:** una foto corrupta en Storage se reintentaría
+  para siempre, cobrando cada vez. Una foto **ilegible** no llega ahí — ésa sí tuvo lectura, el
+  modelo dijo "no veo placa", y `placa_en` la saca de la cola. Son casos distintos.
+- **Foto nueva, cuenta nueva:** `/foto` reinicia `placa_intentos`. Si no, una re-toma después de
+  una caída larga nunca entraría a la cola.
+- **Las ligas de placa salen gratis.** `guardar_datos_de_foto` ya liga la placa al cliente y aplica
+  el candado de placa repetida del día. Una lectura tardía las hace solas; no hubo que escribir
+  nada para eso.
+
+### El reporte congelado se corrige SOLO en el bloque `placas`
+
+`recongelar_placas_del_dia` hace `jsonb_set(datos, '{placas}', …)`, no recalcula el reporte
+entero, y **no toca `congelado_en`**. Recalcularlo todo haría que "congelado" dejara de significar
+congelado: cualquier otro cambio posterior —una corrección de captura, por ejemplo— se colaría sin
+que nadie lo pidiera. Lo que una lectura tardía cambia es cuántas placas se alcanzaron a leer, y
+nada más.
+
+### El hueco de la caja, que este trabajo destapó
+
+`registrar_visita_con_carro` llamaba a `guardar_datos_de_foto` con sólo mirar si había foto. Como
+esa RPC estampa `placa_en` **siempre**, una lectura que nunca corrió quedaba registrada como *"se
+intentó y no se pudo"* — y el carro **nunca habría entrado a esta cola**. Pasó de verdad: el carro
+2643 del 17/ago.
+
+Ahora `/leer-placa` devuelve **`leida`** (hubo lectura o no), `caja.html` lo pasa, y la RPC recibe
+`p_hubo_lectura`. Sin lectura, la foto se pega al carro igual —el supervisor la ve— pero `placa_en`
+se queda nulo, que es la verdad. **Para la cajera no cambia nada**: los dos casos se ven igual en
+pantalla, como manda la regla de que la caja nunca regaña (§11.70).
+
+⚠️ Agregar el parámetro **cambió la firma**, así que la migración hace `drop function` de la vieja
+antes de crear la nueva: un parámetro nuevo crea una **sobrecarga**, no un reemplazo, y dos
+funciones con el mismo nombre vuelven ambigua la llamada (lección de la `052`).
+
+### Se ve, pero no es una alarma
+
+El reporte del dueño muestra **"N fotos sin leer todavía"** sólo cuando no es cero, y aparte
+**"N fotos se quedaron sin leer"** cuando alguna agotó los intentos. Va aparte del reporte
+congelado (`/fotos-pendientes` + `fotos_pendientes_del_rango`), mismo patrón que la alerta de
+placas repetidas de la `095`. La diferencia con una alarma es el sentido: si el obrero está
+trabajando el número **baja solo**; si se queda pegado, algo se rompió de verdad.
+
+### Cómo se probó
+
+Bloque `do $$ … raise` con 7 casos sobre la base real, todo revertido: entra el de 40 min y **no**
+el de 1 min (la gracia), no entra el que agotó intentos, el intento se cuenta, el backoff lo saca
+y lo devuelve, el conteo separa `esperando` de `se_rindieron`, el disparador ve el trabajo, la caja
+**sin** lectura deja `placa_en` nulo y el carro entra a la cola, la caja **con** lectura sigue
+estampando como siempre, y el recongelado es idempotente. Línea base antes y después: los hashes de
+lealtad (4,918 personas) y de los reportes diarios quedaron **idénticos**.
+
 ## 11.60 Cierre del 17–18/ago/2026 — dos días limpios, y la lectura de placa se cayó 100 minutos
 
 **146 lavados** en lunes y martes, todos entregados, **0 rechazos, 0 devoluciones, 0 cerrados
