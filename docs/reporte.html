@@ -379,9 +379,35 @@ function pintarReporte(r) {
   }
   html +=   tarjeta(duracion(r.espera_promedio_seg), "Espera promedio por carro",
               "De que paga a que se lo entregan");
-  html +=   tarjeta(duracion(r.secado_promedio_seg), "Secado promedio", "General, todos los equipos");
-  html +=   tarjeta(asp.con, "Con aspirado", "");
-  html +=   tarjeta(asp.sin, "Sin aspirado", "");
+  // El promedio general mezcla express con completos, y un express tarda
+  // ~4× menos: ese número se mueve con la MEZCLA del día, no con la
+  // velocidad de nadie. Se parte en dos, que es lo que el resto del reporte
+  // exige. El general se queda, pero diciendo lo que es.
+  var spt = r.secado_por_tipo || {};
+  if (spt.con_aspirado != null || spt.sin_aspirado != null) {
+    if (spt.con_aspirado != null) {
+      html += tarjeta(duracion(spt.con_aspirado), "Secado · completos", "Los que llevan aspirado");
+    }
+    if (spt.sin_aspirado != null) {
+      html += tarjeta(duracion(spt.sin_aspirado), "Secado · express", "Sin aspirado");
+    }
+    html += tarjeta(duracion(r.secado_promedio_seg), "Secado promedio",
+              "Mezcla de los dos: sube o baja con la mezcla del día");
+  } else {
+    // Días congelados antes del 19/ago no traen el desglose.
+    html += tarjeta(duracion(r.secado_promedio_seg), "Secado promedio",
+              "Mezcla de completos y express");
+  }
+
+  // ⚠️ "Vehículos lavados" cuenta sólo los ENTREGADOS; con/sin aspirado
+  // cuentan todos los del día. En un día ya cerrado da igual, pero en el día
+  // en curso el desglose suma más que el total y no había una línea que lo
+  // explicara.
+  var enCurso = r.entregados != null && r.vehiculos_lavados != null &&
+                (asp.con + asp.sin + (asp.sin_clasificar || 0)) > r.vehiculos_lavados;
+  var notaCurso = enCurso ? "Incluye los que todavía no se entregan" : "";
+  html +=   tarjeta(asp.con, "Con aspirado", notaCurso);
+  html +=   tarjeta(asp.sin, "Sin aspirado", notaCurso);
   if (asp.sin_clasificar) {
     html += tarjeta(asp.sin_clasificar, "Sin clasificar",
               "Paquetes que no reconozco — avísame para agregarlos");
@@ -436,6 +462,19 @@ function pintarReporte(r) {
                 '<td class="num">' + (enc ? enc + " (" + pct + "%)" : "—") + "</td></tr>";
       }
       html += "</table>";
+
+      // ⚠️ El encabezado cuenta TODOS los carros del tipo; la tabla sólo lista
+      // los que tuvieron secador. La diferencia son los carros que nadie
+      // trabajó, y se evaporaban entre las dos cifras sin una palabra. El
+      // 11/ago el título decía 22 y la tabla sumaba 15: los 7 que faltaban
+      // eran el peor día de abandono del mes.
+      var huerfanos = (r.sin_equipo_por_tipo || {})[sec.clave] || 0;
+      if (huerfanos) {
+        html += '<div class="aviso alerta">⚠ <b>' + huerfanos +
+                (huerfanos === 1 ? " carro de esta sección no tuvo secador asignado"
+                                 : " carros de esta sección no tuvieron secador asignado") +
+                ".</b> Por eso el total de arriba no cuadra con la tabla: nadie los trabajó.</div>";
+      }
     }
     html += '<div class="aviso"><b>"Le entraron encimados"</b> = carros que llegaron cuando esa persona ' +
             'ya estaba secando otro, así que tuvieron que esperar su turno. Ese rato de espera se cuenta ' +
@@ -444,6 +483,50 @@ function pintarReporte(r) {
     html += '<div class="aviso">El promedio de secado sale de los carros que <b>ya terminaron</b>. ' +
             'Un equipo con carros todavía secando aparece con menos tiempo del que va a tener. ' +
             'Un mismo equipo puede salir en varias secciones: se le mide aparte lo que hizo de cada tipo.</div>';
+  }
+
+  // --- Calidad de la entrega ---
+  //
+  // El backend calculaba estos cuatro campos y la pantalla NO pintaba ninguno.
+  // Importa por dos razones: la conclusión de que "nadie usa la pantalla de
+  // rechazo" no se puede confirmar si no hay dónde verlos; y la migración 083
+  // dice textualmente de los cancelados que "no desaparezcan en silencio: si un
+  // día se cancelan cinco, el dueño tiene que poder verlo" — y desaparecían,
+  // porque la tarjeta que sí existía era la de `borrados`, que es sólo una
+  // parte.
+  //
+  // Como el resto de las tarjetas condicionales: sólo salen cuando no son cero.
+  var rech = r.rechazos || {};
+  var devoluciones = Math.max(0, (r.cancelados || 0) - (r.borrados || 0));
+  if (rech.eventos || devoluciones) {
+    html += "<h2>Calidad de la entrega</h2>";
+    html += '<div class="numeros">';
+    if (rech.eventos) {
+      html += tarjeta(rech.eventos, "Entregas rechazadas",
+                "En " + rech.carros + (rech.carros === 1 ? " carro" : " carros") +
+                ". El supervisor las revisó y las regresó a secar");
+    }
+    if (devoluciones) {
+      html += tarjeta(devoluciones, "Devoluciones",
+                "Se canceló el cobro con el carro todavía en la cola");
+    }
+    html += '</div>';
+
+    var porSec = r.rechazos_por_secador || [];
+    if (porSec.length) {
+      html += '<table><tr><th>Secador</th><th class="num">Rechazos</th><th>Qué faltó</th></tr>';
+      porSec.forEach(function (s) {
+        var motivos = [];
+        var m = s.motivos || {};
+        for (var k in m) { if (Object.prototype.hasOwnProperty.call(m, k)) motivos.push(k + " ×" + m[k]); }
+        html += "<tr><td>" + escapar(s.secador) + "</td>" +
+                '<td class="num">' + s.rechazos + "</td>" +
+                "<td>" + escapar(motivos.join(", ") || "—") + "</td></tr>";
+      });
+      html += "</table>";
+      html += '<div class="aviso">El objetivo no es castigar: es saber <b>a quién entrenar y en qué</b>. ' +
+              'Un rechazo se cuenta como UN evento aunque haya faltado más de una cosa.</div>';
+    }
   }
 
   // --- Placas ---

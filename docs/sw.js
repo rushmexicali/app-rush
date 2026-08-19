@@ -34,16 +34,16 @@
 //                     (`leida`), para que una caida del servicio no quede
 //                     disfrazada de "se intento y no se pudo" y el obrero de
 //                     fondo pueda releer la foto solo (migracion 104).
-//  v14 (19/ago/2026) — el SW solo cachea lo de ESTA pagina. Antes dejaba pasar
-//                     el cuadro de la camara de la caja, y si el relay se caia
-//                     servia la foto del carro ANTERIOR como si fuera la de
-//                     ahora, con r.ok en true.
-//  v13 (19/ago/2026) — el corte de peticiones no aplica a /foto (esa ruta
-//                     espera la lectura de placa y tarda mas a proposito).
 //  v12 (19/ago/2026) — arreglos de la auditoria: la cola del supervisor deja
 //                     de vaciarse ante un error, las peticiones tienen corte a
 //                     los 20 s, el candado de pantalla se vuelve a pedir, y la
 //                     caja pinta en rojo un 6to sin saldo antes de tocarlo.
+//  v13 (19/ago/2026) — el corte de peticiones no aplica a /foto (esa ruta
+//                     espera la lectura de placa y tarda mas a proposito).
+//  v14 (19/ago/2026) — el SW solo cachea lo de ESTA pagina. Antes dejaba pasar
+//                     el cuadro de la camara de la caja, y si el relay se caia
+//                     servia la foto del carro ANTERIOR como si fuera la de
+//                     ahora, con r.ok en true.
 var CACHE = "rush-v14";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
