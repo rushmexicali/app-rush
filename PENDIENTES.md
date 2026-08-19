@@ -38,7 +38,7 @@ producción, no solo se leyó.
 3. ✔ **Un error 500 vacía la cola en pantalla Y apaga el aviso.** `docs/index.html:1311`
    `carros = d.carros || []` seguido de `avisarError(false)`. El supervisor lee "No hay carros en
    proceso" sin señal de falla, y al volver el servicio los 15 carros vuelven a sonar como nuevos.
-4. ✔ **Los errores del backend no llevan `ok:false`, y los tres fronts los leen como éxito.**
+4. ✅ **HECHO 19/ago (falta desplegar al cierre).** Los errores del backend no llevaban `ok:false` y los tres fronts los leían como éxito.
    401/500/400/405/503. En caja: "listo, siguiente cliente" con la visita sin registrar (la fuga de
    lealtad reintroducida por el **formato** de la respuesta). En supervisor: "Entregado" se cierra
    como si hubiera funcionado. *Arreglo de una línea:* que `json()` agregue `ok:false` cuando

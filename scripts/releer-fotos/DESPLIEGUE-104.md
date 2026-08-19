@@ -1,4 +1,20 @@
-# Despliegue de la migración 104 (obrero de relectura) — al CIERRE
+# Despliegue pendiente — al CIERRE
+
+> ⚠️ **Un solo `deploy` de `app` sube DOS cosas**, porque van en el mismo archivo:
+> 1. El **obrero de relectura** de la migración `104` (esta guía).
+> 2. El arreglo del **punto 4 de la auditoría**: que un error del backend se vea como
+>    error (`marcarError` en el ayudante `json()`). Ya está probado —
+>    `bash pruebas/correr.sh`, 14 casos— y no necesita ningún paso extra: en cuanto
+>    la función suba, las 57 respuestas de error empiezan a traer `ok:false`.
+>
+> **Antes de desplegar, siempre:**
+> ```bash
+> bash pruebas/correr.sh && supabase functions deploy app --no-verify-jwt
+> ```
+
+---
+
+## La parte del obrero de relectura (migración 104)
 
 > La migración `104` **ya está aplicada** y NO cambia el comportamiento actual: la función `app`
 > desplegada no manda `p_hubo_lectura` (el default es `true`) y el cron todavía no existe.
