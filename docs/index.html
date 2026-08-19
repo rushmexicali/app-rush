@@ -1246,6 +1246,13 @@ function avisarError(hay) {
 // trababa y la unica salida era cerrarla y volverla a abrir.
 var PEDIR_CORTE_MS = 20000;
 
+// ⚠️ /foto NO puede usar el corte corto. Esa ruta sube la imagen y ADEMAS
+// espera la lectura de la placa, que del lado del servidor corta a los 25 s:
+// con 20 s se abortarian subidas que iban bien, y el reintento volveria a
+// pagar la lectura en Anthropic. El corte largo sigue existiendo para que una
+// peticion de verdad colgada no deje el candado de la cola de fotos puesto.
+var CORTE_POR_RUTA = { "/foto": 45000 };
+
 function pedir(ruta, opciones) {
   opciones = opciones || {};
   opciones.headers = opciones.headers || {};
@@ -1254,7 +1261,8 @@ function pedir(ruta, opciones) {
   if (typeof AbortController === "function" && !opciones.signal) {
     var corta = new AbortController();
     opciones.signal = corta.signal;
-    var reloj = setTimeout(function () { corta.abort(); }, PEDIR_CORTE_MS);
+    var corte = CORTE_POR_RUTA[ruta.split("?")[0]] || PEDIR_CORTE_MS;
+    var reloj = setTimeout(function () { corta.abort(); }, corte);
     return fetch(API + ruta, opciones).then(
       function (r) { clearTimeout(reloj); return r; },
       function (e) { clearTimeout(reloj); throw e; }
