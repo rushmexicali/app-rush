@@ -6,6 +6,188 @@
 
 ---
 
+## 🔬 AUDITORÍA COMPLETA DEL 19/ago/2026 — 46 hallazgos
+
+Siete revisiones en paralelo sobre todo el código (base, API, las tres pantallas, funciones de fondo,
+costos). **Nada se tocó: fue de solo lectura.** Lo marcado ✔ se comprobó a mano contra la base de
+producción, no solo se leyó.
+
+> **El patrón de fondo, que es lo que hay que arreglar de verdad.** Los 46 hallazgos son cuatro
+> causas repetidas: **regla duplicada que divergió** (6), **error que se responde como éxito** (5),
+> **trabajo a medio terminar** (3) y **dato viejo que envenena un cálculo** (2). Ninguna se atrapa
+> leyendo mejor el código; las cuatro se atrapan con una **suite de regresión que se corra antes de
+> cada despliegue**. Ver el último punto.
+
+### 🔴 Rompen algo hoy
+
+1. ✔ **El contador de "encimados" lleva 25 días mintiendo sobre dos personas.** La CTE `encimados`
+   de `reporte_del_rango` no filtra `cancelado_en`. Los carros **515 y 516** (24/jul, cancelados al
+   descontrolarse la cola, `entregado_en` nulo) tienen asignación a **Jorge Luna** y **Jaime
+   Gallegos**, y los dejan "ocupados para siempre". Medido el 16/ago: Jorge 7/7 (100%) → **1/10
+   (10%)**; Jaime 6/6 → **1/9 (11%)**. Acumulado: **201 de 935 encimados son falsos (21%)**.
+   🔴 **Invalida lo escrito en §11.65 y §11.75** sobre esas dos personas ("es posición o forma de
+   asignar", "su secado no se puede comparar contra el de nadie", "el mejor dato del fin de semana
+   estando siempre saturado"). **No estaban saturados.**
+   *Arreglo:* `and c2.cancelado_en is null and not c2.es_prueba`; cerrar 515/516; re-congelar desde
+   el 26/jul (solo cambia `encimados`, el secado no).
+2. ✔ **La caja puede regalar un lavado y quitarle al cliente el que sí ganó.**
+   `registrar_visita_con_carro` **no verifica saldo**; la vieja `registrar_visita` **sí** — regla
+   duplicada divergente. `lealtad_por_persona` tapa el descubierto con `greatest(0, …)`. Hoy hay
+   **26 personas con canjes > ganados** (déficit 31 sellos), todas del import, pero el camino sigue
+   abierto. **Decisión del dueño**: ¿se rechaza o pasa y queda anotado?
+3. ✔ **Un error 500 vacía la cola en pantalla Y apaga el aviso.** `docs/index.html:1311`
+   `carros = d.carros || []` seguido de `avisarError(false)`. El supervisor lee "No hay carros en
+   proceso" sin señal de falla, y al volver el servicio los 15 carros vuelven a sonar como nuevos.
+4. ✔ **Los errores del backend no llevan `ok:false`, y los tres fronts los leen como éxito.**
+   401/500/400/405/503. En caja: "listo, siguiente cliente" con la visita sin registrar (la fuga de
+   lealtad reintroducida por el **formato** de la respuesta). En supervisor: "Entregado" se cierra
+   como si hubiera funcionado. *Arreglo de una línea:* que `json()` agregue `ok:false` cuando
+   `status >= 400` — cubre las 33 rutas.
+5. **El perfil de Trabajadores muestra minutos fabricados como medidos.** `perfil_de_secador` no
+   excluye `cerrado_automaticamente` ni secados < 3 min, que el resto del reporte sí excluye.
+   Visibles hoy: carro 2164 = **298 min** (Saul Ramirez), 2121 = **180 min** (Jaime Gallegos). Y 99
+   carros históricos de < 3 min salen como "0/1/2 min". Es la pantalla donde se evalúa a una persona.
+
+### ⏰ Bombas con fecha
+
+6. ✔ **El obrero de relectura (104) NUNCA ha corrido.** Falta desplegar `app`, crear
+   `relectura_token` en Vault y agendar el cron. `placa_intentos = 0` en los 2,654 carros. Y
+   `/fotos-pendientes` da 404, que el reporte lee como cero: **la alerta no aparecería nunca.**
+   👉 Es trabajo mío a medio terminar. Pasos en `scripts/releer-fotos/DESPLIEGUE-104.md`.
+7. ✔ **`limpiar-fotos` nunca ha borrado nada; su primera corrida real son ~7,400 archivos.** 21
+   corridas, 0 archivos (la más vieja tiene 31 días, el umbral 90). Primera real ~**17/oct/2026**:
+   ~15 tandas en una invocación contra el límite de tiempo. Si se corta, quedan ligas muertas.
+   *Arreglo:* tope por corrida y **probarlo antes de octubre**.
+8. ✔ **Storage es el límite que se rompe primero.** 251 MB hoy, +8.5 MB/día → **765 MB en régimen
+   (77% de 1 GB)**. A 150-200 carros/día **no cabe**. Bajar la retención de 90 a 60 días lo deja en
+   510 MB — decisión del dueño (¿para qué sirven las fotos viejas?).
+9. ✔ **Un 200 con lista vacía de Jibble marca a TODA la plantilla como "fuera".** El guard solo
+   cubre el fallo duro. Y un `id` nulo desactiva la barrida entera: `'a' <> all(array['b',null])`
+   devuelve **NULL**, no true (verificado en la base), así que nadie se marca fuera nunca.
+
+### 🔒 Seguridad
+
+10. ✔ **`anon` ejecuta 7 funciones `SECURITY DEFINER` y lee las 5 vistas.** Entre ellas
+    `olvidar_fotos_viejas` (con `p_dias:=0` deja sin foto a todos los carros) y
+    `sincronizar_empleados`. Las vistas no son `security_invoker`, así que brincan RLS:
+    `historial_placas` (placas+clientes+dinero de 2,641 carros) y `lealtad_por_persona` (4,919
+    saldos). **Atenuante: la llave `anon` NO está en el repo.** *Arreglo:* `revoke execute` +
+    `security_invoker=on`. No afecta a la app (usa `service_role`).
+11. **Un solo código abre las tres apps.** El del supervisor alcanza `/respaldo` (todo el
+    histórico), `/personas` (4,871 con teléfono), `/tickets` (todas las ventas) y editar clientes.
+    Vive en el `localStorage` de un teléfono que rota entre turnos.
+12. **El webhook de Zettle no verifica la firma.** La URL se deduce del repo público → se pueden
+    **inyectar ventas falsas**. NO puede cancelar carros reales (el `purchase_uuid` nunca sale por
+    la API), NO duplica (unique) y NO lee datos. `ZETTLE_SIGNING_KEY` ya está guardada sin usarse.
+
+### 📊 Números que no cuadran (reporte del dueño)
+
+13. **En el día en curso el desglose suma más que el total.** "Vehículos lavados" cuenta entregados;
+    "con/sin aspirado" cuenta todos. Hoy: titular **25**, desglose **29**. En días congelados cuadra
+    → el error **solo aparece cuando se mira el día en curso**.
+14. **El encabezado de sección no cuadra con su tabla, y el faltante es la señal.** El 11/ago:
+    encabezado **22 carros**, tabla **15**. Los 7 que faltan son los que nunca se asignaron — el
+    peor día de abandono del mes, y la pantalla no lo dice.
+15. **"Secado promedio general" mezcla express con completos**, lo que el resto del reporte prohíbe.
+    13/ago 29.8 min (39% express) contra 17/ago 39.8 min (24%): los extremos son la mezcla, no el
+    taller.
+16. **Rechazos, `rechazos_por_secador` y `cancelados` se calculan y nunca se pintan.** La `083` dice
+    textualmente de los cancelados *"que no desaparezcan en silencio"* — y desaparecen.
+
+### 🔧 Backend
+
+17. ✔ **`editar_carro` escribe antes de validar.** El `update` va ANTES de los tres checks de
+    secadores, y un `return` en plpgsql **no revierte**: el color se guarda aunque el guardado
+    "falle" por dejar 0 secadores.
+18. **`guardar_datos_de_foto` borra lo que viene nulo**, contradiciendo la "aceptación parcial por
+    campo" de §9: una re-toma que no saca marca **borra la marca buena anterior**. Con el botón
+    "tomar foto otra vez" (103) esto se dispara solo.
+19. ✔ **`/foto` no limpia `placa_en`** al subir foto nueva, así que una re-toma **nunca** entra a la
+    cola de reintentos (`fotos_por_leer` exige `placa_en is null`). Justo el flujo de las pickups.
+20. ✔ **`buscar_tickets` tiene dos sobrecargas** y la llamada de 2 argumentos revienta con `42725`.
+    La `098` agregó en vez de reemplazar — la lección exacta de la `052`. *Arreglo:* `drop` la vieja.
+21. **`trabajadores()` y `perfil_de_secador()` cuentan rechazos con `count(*)`**; el reporte con
+    `count(distinct grupo)`. Un rechazo con 2 motivos dará 2 en un lado y 1 en el otro (bug de la
+    `036`, arreglado solo en el reporte).
+22. **7 sitios desenvuelven `payload` a mano** en vez de usar `detalle_venta()`. Ya hay **2 ventas
+    invisibles** para `buscar_tickets`, `tickets_recientes` y `ticket_detalle` (su carro sí se creó).
+23. **El webhook descarta en silencio** por tres caminos (cuerpo ilegible, JSON inválido, sin
+    `purchase_uuid`): responde 200 y el único rastro son logs de ~1 día que nadie mira.
+24. **`crear_carro_desde_venta` no tiene `exception when others`**: un error en el trigger **tumba
+    la venta completa**. Es la lección de §7 un nivel más abajo.
+25. **Menores:** falta índice en `asignaciones(empleado_id)` (3 funciones hacen seq scan) e índices
+    trigram para las búsquedas; `encimados` escanea toda la historia (18 ms/día consultado, crece
+    cuadrático); `cerrar_pendientes` no alcanza carros creados después de las 20:30;
+    `enlazar_visita_a_carro` escribe placa cruda y brinca el candado de la `100`; `desenlazar_visita`
+    borra la foto y el `cliente` que puso la nota de caja; no hay unique parcial en
+    `visitas(carro_id) where estado='activa'`; `iniciales_de` repite (Jaime Gallegos y Jesús Gil = JG);
+    `sincronizar-jibble` no tiene candado (a diferencia de `limpiar-fotos`);
+    **`Gratis`+`6to Express` ya son 10 casos, no 5.**
+
+### 📱 Estabilidad del supervisor
+
+26. **Ninguna petición tiene timeout.** Una colgada deja **todos los botones muertos y mudos**; la
+    única salida es cerrar y reabrir, y nada lo sugiere. La misma falta mata la cola de fotos toda la
+    sesión (el mutex nunca se suelta).
+27. **Sin red, la cola congelada se ve viva**: los relojes siguen corriendo y las tarjetas se ponen
+    rojas con datos viejos. El aviso solo sale si la cola está vacía.
+28. ✔ **El `wakeLock` nunca se vuelve a pedir**: `candado` no se re-inicializa a `null`, así que tras
+    el primer minimizado la pantalla se apaga sola el resto del turno.
+29. ✔ **`escapar()` divergió**: `index.html:970` es el único de los tres sin la guarda de nulos.
+30. **Del rechazo no hay regreso** (solo "Cancelar", que cierra todo) — posible causa de que la
+    pantalla lleve 25 días sin uso. Fuga de temporizador en el desglose en vivo. Re-tomar una foto
+    mientras se sube la anterior puede perder la nueva.
+
+### 💰 Costos (medidos)
+
+31. ✔ **El `CLAUDE.md` documenta mal el gasto de Anthropic por 5.4×.** Medido con `count_tokens`
+    sobre una foto real: **3,101 tokens de entrada**, no 1,698. Real: **$17.80 USD/mes**, y
+    **$26.70 desde el 1/sep** al terminar el precio de introducción. A 200 carros/día, $61. También
+    está mal el peso de la foto: **100 KB**, no 150.
+32. **Los dos crones por minuto son el mayor desperdicio**: 44% del CPU de la base, 24% de las
+    invocaciones, 4,800 llamadas/día a Jibble para refrescar 19 personas. A cada 5 min: −46,600
+    invocaciones/mes y −80% de las llamadas. En dinero, $0 (el plan gratis aguanta).
+33. **NO tocar, con su razón:** el sondeo de 3 s (medido **5,939 llamadas/día reales, no 28,800** —
+    el navegador estrangula el temporizador; bajarlo ahorra $0; **el disparador a vigilar es un
+    segundo teléfono**); las 20 tablas `bak_*`/`stg_*`/`ren_*` (5.4 MB = 1% del límite, y son la
+    evidencia de las fusiones autorizadas a mano); los índices (**no hay ninguno sin uso**); la
+    resolución de la foto (ahorraría $9/mes empeorando la lectura de placa, que viene en su peor mes).
+
+### ✅ Lo que se comprobó que está bien (para no volver a auditarlo)
+
+- ✔ **0 ventas perdidas: 2,690 tickets consecutivos (24504→27193), sin un solo hueco.**
+- ✔ **0 corridas de cron fallidas** en 74,995. Latencia del webhook: 1.21 s promedio.
+- ✔ **`/cola` está sana**: `Index Scan`, 0.14 ms, 6 buffers. No crece con el histórico.
+- ✔ **Las 3 columnas generadas en sincronía**: 0 desviaciones en 2,641 carros.
+- ✔ **El congelado resiste el cambio de horario**: 365 días, 0 duplicados, 0 huecos en 2026.
+- ✔ **0 índices muertos**, 0 degenerados. La `057` quedó bien.
+- ✔ **La fuga de lealtad de esta bandeja ya está CERRADA** y **`sw.js` ya tiene el `if (r && r.ok)`**.
+  Los dos pendientes viejos se pueden tachar.
+- ✔ 0 etapas negativas, 0 asignaciones abiertas de carros entregados, 0 express fuera de la línea 1.
+- ✔ Ninguna función `SECURITY DEFINER` con `search_path` suelto. Sin secretos en `docs/`.
+- ✔ `leerFoto` distingue bien "miré y no vi" de "no alcancé a mirar". Es la parte mejor construida.
+
+### 🎯 Orden sugerido
+
+1. `ok:false` automático cuando `status >= 400` (#4) — **una línea, mata la clase entera**.
+2. Encimados + re-congelar desde el 26/jul (#1) — desbloquea la analítica por persona.
+3. Que la cola no mienta (#3, #26, #27).
+4. Terminar el despliegue de la 104 (#6) — hoy la cola está en cero.
+5. Cerrar permisos de `anon` (#10).
+6. Decidir la regla del canje sin saldo (#2) y la del `6to Express` (#25).
+7. Tope al borrado de fotos y probarlo antes de octubre (#7).
+
+### 🧪 Y lo único que evita que esto se repita
+
+**Una suite de regresión que se corra antes de cada despliegue.** El proyecto ya tiene la técnica
+(el bloque `do $$ … raise` contra la base real, que revierte al terminar), pero se escribe a mano
+para cada cambio y **se tira después de usarse**. Juntarlas convierte cada hallazgo de esta
+auditoría en una prueba permanente: la próxima vez que alguien duplique una regla o rompa un
+cálculo, lo dice la máquina y no la operación tres semanas después. Es el único punto de la lista
+que no arregla un error sino **la razón por la que aparecen**.
+
+---
+
 ## 📊 DEL CIERRE DEL 17–18/ago/2026 (hecho el 19/ago) — lo nuevo
 
 Análisis completo en `CLAUDE.md §11.60`. Aquí sólo lo que espera trabajo o decisión.
