@@ -42,7 +42,11 @@ begin
   select x, 2, 'x', emp, now()-interval '3 hour' from unnest(array[c_auto,c_corto,c_bueno]) x;
 
   -- ---------- 1) el perfil marca lo que es ficcion ----------
-  h := public.perfil_de_secador(emp) -> 'historial';
+  -- `p_limite := 0` = todo (110). Explicito a proposito: desde que el perfil
+  -- pagina, un default de 50 haria que esta prueba dependa de cuantos carros
+  -- lleve esa persona hoy, y fallaria sola con el tiempo sin que nadie rompa
+  -- nada.
+  h := public.perfil_de_secador(emp, p_limite := 0) -> 'historial';
 
   if not exists (select 1 from jsonb_array_elements(h) e
                   where (e->>'carro_id')::bigint = c_auto and (e->>'cerrado_solo')::boolean) then
@@ -65,27 +69,27 @@ begin
   v_msg := v_msg || 'banderas del perfil OK. ';
 
   -- ---------- 2) los rechazos se cuentan por EVENTO ----------
-  antes := (public.perfil_de_secador(emp) ->> 'rechazos')::int;
+  antes := (public.perfil_de_secador(emp, p_limite := 0) ->> 'rechazos')::int;
   -- un solo rechazo con DOS motivos: dos filas, un grupo
   insert into public.rechazos (carro_id, secador, empleado_id, motivo, grupo, creado_en)
   values (c_bueno, 'x', emp, 'Vidrios', g_uno, now()),
          (c_bueno, 'x', emp, 'Rines',   g_uno, now());
 
-  if (public.perfil_de_secador(emp) ->> 'rechazos')::int <> antes + 1 then
+  if (public.perfil_de_secador(emp, p_limite := 0) ->> 'rechazos')::int <> antes + 1 then
     raise exception 'FALLA: un rechazo con dos motivos conto como % (esperaba 1 mas que %)',
-      (public.perfil_de_secador(emp) ->> 'rechazos')::int, antes;
+      (public.perfil_de_secador(emp, p_limite := 0) ->> 'rechazos')::int, antes;
   end if;
   v_msg := v_msg || 'rechazo por evento OK. ';
 
   -- ---------- 3) un carro de PRUEBA no le anota rechazos a nadie ----------
-  antes := (public.perfil_de_secador(emp) ->> 'rechazos')::int;
+  antes := (public.perfil_de_secador(emp, p_limite := 0) ->> 'rechazos')::int;
   insert into public.carros (purchase_uuid, venta_id, producto, variante, monto, creado_en, es_prueba)
   values ('p106-d-'||gen_random_uuid(), v_venta, 'Completo RUSH','Chico',270, now(), true)
   returning id into c_prueb;
   insert into public.rechazos (carro_id, secador, empleado_id, motivo, grupo, creado_en)
   values (c_prueb, 'x', emp, 'Tablero', g_dos, now());
 
-  if (public.perfil_de_secador(emp) ->> 'rechazos')::int <> antes then
+  if (public.perfil_de_secador(emp, p_limite := 0) ->> 'rechazos')::int <> antes then
     raise exception 'FALLA: un carro de PRUEBA le anoto un rechazo a una persona real';
   end if;
   v_msg := v_msg || 'carro de prueba no anota OK. ';

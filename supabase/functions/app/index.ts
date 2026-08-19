@@ -684,6 +684,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
         // de una caida larga nunca entraria a la cola de reintentos.
         placa_intentos: 0,
         placa_intento_en: null,
+        // Y el intento de la foto ANTERIOR tampoco cuenta como intento de
+        // esta. `fotos_por_leer` exige `placa_en is null`, asi que sin
+        // limpiarlo una re-toma NUNCA entraba a la cola de reintentos: si la
+        // lectura de aqui abajo se cae, la foto se queda sin leer para
+        // siempre. Es justo el flujo de las pickups grandes (103), donde el
+        // supervisor re-toma porque la primera lectura no vio la placa — o
+        // sea, el caso donde `placa_en` SIEMPRE viene estampado.
+        placa_en: null,
       })
       .eq("id", carro);
 
@@ -1245,7 +1253,33 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (ruta === "/trabajador") {
     const id = (url.searchParams.get("id") ?? "").trim();
     if (!id) return json({ error: "falta id" }, 400);
-    const { data, error } = await db.rpc("perfil_de_secador", { p_empleado: id });
+
+    // Filtros y paginado (110). Sin ninguno, la respuesta es la de siempre
+    // pero cortada a 50 carros: el historial completo de una persona con
+    // meses de trabajo son cientos de kB en el telefono del dueno.
+    const dia = (s: string) => (/^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null);
+    const desde = dia((url.searchParams.get("desde") ?? "").trim());
+    const hasta = dia((url.searchParams.get("hasta") ?? "").trim());
+    const tipoCrudo = (url.searchParams.get("tipo") ?? "").trim();
+    // Solo los tres que el reporte reconoce. Uno inventado no filtraria
+    // nada y la pantalla mostraria un cero que parece un dato.
+    const tipo = ["con_aspirado", "sin_aspirado", "encerado"].includes(tipoCrudo) ? tipoCrudo : null;
+    const saltar = Math.max(0, Number(url.searchParams.get("saltar") ?? 0) || 0);
+    const limitePedido = Number(url.searchParams.get("limite") ?? 50);
+    // 0 = todo, y es a proposito: asi el dueno puede pedir el historial
+    // completo cuando lo quiere, en vez de toparse con un tope escondido.
+    const limite = Number.isFinite(limitePedido) && limitePedido >= 0
+      ? Math.min(limitePedido, 500)
+      : 50;
+
+    const { data, error } = await db.rpc("perfil_de_secador", {
+      p_empleado: id,
+      p_desde: desde,
+      p_hasta: hasta,
+      p_tipo: tipo,
+      p_limite: limite,
+      p_saltar: saltar,
+    });
     if (error) { console.error("perfil_de_secador:", error); return json({ error: error.message }, 500); }
     if (!data) return json({ error: "Ese trabajador no existe" }, 404);
     return json({ trabajador: data });

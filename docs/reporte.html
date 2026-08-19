@@ -438,7 +438,8 @@ function pintarReporte(r) {
   var porTipo = r.por_tipo || {};
 
   if (!eq.length) {
-    html += '<div class="vacio">Ningún carro tuvo secador asignado este día.</div>';
+    html += '<div class="vacio">Ningún carro tuvo secador asignado ' +
+            (r.es_rango ? "en este periodo" : "este día") + ".</div>";
   } else {
     for (var s = 0; s < SECCIONES.length; s++) {
       var sec = SECCIONES[s];
@@ -548,14 +549,29 @@ function pintarReporte(r) {
   return html;
 }
 
+// El recordatorio de que un conteo de visitas por placa es un PISO. Vive en
+// un solo lugar porque sale en tres pantallas: si se reescribiera en cada
+// una, en un mes dirían tres cosas distintas.
+function notaPiso() {
+  return '<div class="aviso">Las visitas de una placa son un <b>piso, no un total</b>: ' +
+         'la placa sale de la foto y la foto es opcional, así que si dice 3 visitas, ' +
+         'vino <b>3 veces o más</b>.</div>';
+}
+
 function tarjeta(valor, rotulo, nota) {
   return '<div class="n"><div class="valor">' + escapar(valor == null ? "—" : valor) + "</div>" +
          '<div class="rotulo">' + escapar(rotulo) + "</div>" +
          (nota ? '<div class="nota">' + escapar(nota) + "</div>" : "") + "</div>";
 }
 
-function pintarPlacas(lista) {
+// OJO: esta tabla NO es del día seleccionado. Va debajo del reporte y con
+// el mismo <h2> que sus secciones, así que se lee como si lo fuera; el
+// subtítulo es lo único que lo aclara. Son las 50 placas más vistas de
+// SIEMPRE, y no cambian al mover el selector de arriba.
+function pintarPlacas() {
   var html = "<h2>Historial por placa</h2>";
+  html += '<div class="sub">De toda la historia, no del día de arriba: las placas que más han venido ' +
+          'desde que la app existe. No cambia al escoger otro día.</div>';
   html += '<div class="barra"><input id="buscar" placeholder="Buscar placa…" style="flex:1; min-width:160px"></div>';
   html += '<div id="tablaplacas"></div>';
   return html;
@@ -609,11 +625,27 @@ function secadoresCel(secs) {
   }).join(", ");
 }
 
+// Lo último que se tecleó en el buscador de placas. Es la guardia contra la
+// respuesta vieja: teclear "BVJ113A" son varias consultas en vuelo a la vez,
+// y la de "BV" puede llegar DESPUÉS de la de "BVJ113A" y pintarse encima. El
+// dueño vería resultados que no corresponden a lo que tiene escrito.
+var placasQ = "";
+var placasTimer = null;
+
 function cargarPlacas(q) {
+  placasQ = q || "";
   pedir("/placas" + (q ? "?q=" + encodeURIComponent(q) : ""))
-    .then(function (r) { return r.json(); })
+    .then(function (r) {
+      // Sin esto, un 401 (código vencido) caía en `d.placas || []` y pintaba
+      // "Todavía no hay placas leídas" — que es mentira y suena a que el
+      // negocio no tiene datos.
+      if (r.status === 401) { pedirCodigo(true); throw new Error("codigo"); }
+      return r.json();
+    })
     .then(function (d) {
+      if ((q || "") !== placasQ) return;   // llegó tarde: ya se tecleó otra cosa
       var cont = document.getElementById("tablaplacas");
+      if (!cont) return;
       cont.innerHTML = tablaPlacas(d.placas || []);
       // Cada placa lleva al perfil de la placa (en la vista Clientes).
       cont.querySelectorAll("button[data-placa]").forEach(function (b) {
@@ -628,8 +660,10 @@ function cargarPlacas(q) {
         b.addEventListener("click", function () { irACliente(b.getAttribute("data-cliente")); });
       });
     })
-    .catch(function () {
-      document.getElementById("tablaplacas").innerHTML = '<div class="vacio">No se pudo cargar.</div>';
+    .catch(function (e) {
+      if (e && e.message === "codigo") return;
+      var cont = document.getElementById("tablaplacas");
+      if (cont) cont.innerHTML = '<div class="vacio">No se pudo cargar.</div>';
     });
 }
 
@@ -744,16 +778,21 @@ function avisoRepetidasHTML(reps) {
   return html;
 }
 
-function cargarDia(fecha) { cargarReporte("/reporte?fecha=" + fecha); }
+function cargarDia(fecha) { cargarReporte("/reporte?fecha=" + fecha, false); }
 
 // Un rango NUNCA sale de las filas congeladas: esas son por dia, y los
 // promedios hay que ponderarlos por carro, no promediar promedios. Se
 // calcula al vuelo, que es lo correcto aunque recorra mas datos.
 function cargarRango(desde, hasta) {
-  cargarReporte("/reporte?desde=" + desde + "&hasta=" + hasta);
+  cargarReporte("/reporte?desde=" + desde + "&hasta=" + hasta, true);
 }
 
-function cargarReporte(ruta) {
+// `esRango` lo dice QUIEN llama, no se deduce de la respuesta. Antes se
+// miraba `r.dias > 1`, y un rango de un solo dia (las dos casillas con la
+// misma fecha) devuelve dias = 1 y nunca trae `congelado_en`: el reporte de
+// un dia cerrado hace semanas salia rotulado "Día en curso — todavía puede
+// cambiar". El modo no es una propiedad del resultado; es de la pregunta.
+function cargarReporte(ruta, esRango) {
   document.getElementById("contenido").innerHTML = '<div class="vacio">Cargando…</div>';
   pedir(ruta)
     .then(function (r) {
@@ -762,13 +801,19 @@ function cargarReporte(ruta) {
     })
     .then(function (r) {
       if (r && r.error) {
+        // El mensaje viene del backend y entra a innerHTML: se escapa como
+        // todo lo demas. Era el unico punto del archivo donde faltaba.
         document.getElementById("contenido").innerHTML =
-          '<div class="vacio">' + r.error + "</div>";
+          '<div class="vacio">' + escapar(r.error) + "</div>";
         return;
       }
+      r.es_rango = !!esRango;
       document.getElementById("encabezado").textContent =
-        (r.dias && r.dias > 1)
-          ? r.dias + " días, del " + r.desde + " al " + r.hasta
+        esRango
+          ? (r.dias === 1
+              ? "1 día: " + fechaCorta(r.desde + "T12:00:00")
+              : (r.dias || "?") + " días, del " + fechaCorta(r.desde + "T12:00:00") +
+                " al " + fechaCorta(r.hasta + "T12:00:00"))
           : (r.congelado_en
               ? "Corte cerrado el " + new Date(r.congelado_en).toLocaleString("es-MX")
               : "Día en curso — todavía puede cambiar");
@@ -776,8 +821,15 @@ function cargarReporte(ruta) {
       cargarPlacas("");
       pedirRepetidas(r.desde, r.hasta || r.desde);
       pedirFotosPendientes(r.desde, r.hasta || r.desde);
+      // Con rebote, como los otros dos buscadores del archivo (cli-q y
+      // tik-q). Sin él, teclear una placa de 7 caracteres son 7 consultas
+      // seguidas, y `historial_placas` agrupa la tabla completa.
       var b = document.getElementById("buscar");
-      if (b) b.addEventListener("input", function () { cargarPlacas(b.value.trim()); });
+      if (b) b.addEventListener("input", function () {
+        clearTimeout(placasTimer);
+        var v = b.value.trim();
+        placasTimer = setTimeout(function () { cargarPlacas(v); }, 250);
+      });
     })
     .catch(function (e) {
       if (e && e.message === "codigo") return;
@@ -1012,8 +1064,11 @@ function cliRecientes() {
 // Historial por placa (Operación) menos Visitas, más Ticket al final. Todos
 // los enlaces (placa, cliente, secador, ticket) los cablea cliCablearBotones.
 function tablaLavados(carros) {
+  // "Día", no "Última vez": el rótulo venía copiado del Historial por placa,
+  // donde sí significa la última vez que ESA placa vino. Aquí cada renglón es
+  // un lavado y la columna es la fecha de ese mismo lavado.
   var html = '<table><tr><th>Carro</th><th>Placa</th><th>Cliente</th>' +
-             '<th>Última vez</th><th>Hora de llegada</th><th>Secó</th><th>Ticket</th></tr>';
+             '<th>Día</th><th>Hora de llegada</th><th>Secó</th><th>Ticket</th></tr>';
   carros.forEach(function (c) {
     // Con modelo (la foto reconoció submarca): marca + submarca + color
     // ("MG RX5 Blanca"). Sin él: lo que puso la cajera, tipo + color
@@ -1094,7 +1149,8 @@ function cliResultadosHTML(personas, placas, encabezado) {
   }
 
   if (placas.length) {
-    html += '<h2>Vehículos</h2><div class="lista">';
+    html += '<h2>Vehículos</h2>' + notaPiso();
+    html += '<div class="lista">';
     placas.forEach(function (v) {
       var desc = [v.marca, v.submarca, v.tipo_unidad, v.color].filter(Boolean).join(" ");
       var meta = v.visitas + (v.visitas === 1 ? " visita" : " visitas") + (v.cliente ? " · " + escapar(titulo(v.cliente)) : "");
@@ -1273,6 +1329,11 @@ function perfilPlaca(placa, historial, duenos) {
   }
 
   html += '<div class="sub">' + historial.length + (historial.length === 1 ? " visita" : " visitas") + "</div>";
+  // Va SIEMPRE, no solo cuando faltan fotos. Aquí es donde un número suelto
+  // —"3 visitas"— se lee como el total de veces que vino ese carro, y no lo
+  // es: la placa sale de la foto y la foto es opcional. El aviso completo
+  // existía, pero vivía en la pestaña Operación y era condicional.
+  html += notaPiso();
 
   // Galería: las fotos de esta placa, de la más nueva a la más vieja, con la
   // fecha y hora en que se tomó cada una. Se cargan al tocar el botón (no de
@@ -1473,10 +1534,27 @@ function cargarTrabajadores() {
   });
 }
 
+// El filtro vigente del perfil abierto. El historial completo de una persona
+// con meses de trabajo eran cientos de kB en una sola respuesta (Pablo Cruz:
+// 346 carros = 128 kB, creciendo para siempre), y encima venía todo revuelto:
+// no había forma de mirar "sus completos de esta semana", que es justo lo que
+// el dueño querría preguntar ahora que los minutos ya son honestos.
+var trabFiltro = null;
+
 function abrirTrabajador(id) {
+  trabFiltro = { id: id, desde: "", hasta: "", tipo: "", limite: 50 };
+  cargarTrabajador();
+}
+
+function cargarTrabajador() {
   var cont = document.getElementById("trab-res");
   cont.innerHTML = '<div class="vacio">Cargando…</div>';
-  pedirJSON("/trabajador?id=" + encodeURIComponent(id)).then(function (d) {
+  var f = trabFiltro;
+  var q = "/trabajador?id=" + encodeURIComponent(f.id) + "&limite=" + f.limite;
+  if (f.desde) q += "&desde=" + encodeURIComponent(f.desde);
+  if (f.hasta) q += "&hasta=" + encodeURIComponent(f.hasta);
+  if (f.tipo)  q += "&tipo="  + encodeURIComponent(f.tipo);
+  pedirJSON(q).then(function (d) {
     perfilTrabajador(d.trabajador);
   }).catch(function (e) {
     if (e && e.message === "codigo") return;
@@ -1492,19 +1570,95 @@ function perfilTrabajador(w) {
     document.getElementById("trab-volver").addEventListener("click", cargarTrabajadores);
     return;
   }
+  var f = trabFiltro || { desde: "", hasta: "", tipo: "", limite: 50 };
+  var filtrado = !!(f.desde || f.hasta || f.tipo);
+  var total = (w.total != null) ? w.total : (w.historial || []).length;
+  var mostrados = (w.historial || []).length;
+
   var html = '<button class="volver" id="trab-volver">← Volver a la lista</button>';
   html += '<div class="perfil-nom">' + escapar(titulo(w.nombre_completo || w.nombre)) + "</div>";
   html += '<div class="sub">' + escapar(titulo(w.rol)) + " · " + escapar(estadoTxt(w.estado)) + "</div>";
 
+  // Los tres tipos NO se comparan entre sí (§12.1: peras con manzanas). Por
+  // eso el filtro existe: un promedio mental de esta tabla mezclando express
+  // con completos no significa nada.
+  html += '<div class="switch" id="trab-tipos">';
+  [["", "Todos"], ["con_aspirado", "Completos"], ["sin_aspirado", "Express"], ["encerado", "Encerado"]]
+    .forEach(function (t) {
+      html += '<button data-tipo="' + t[0] + '"' + (f.tipo === t[0] ? ' class="on"' : "") + ">" + t[1] + "</button>";
+    });
+  html += "</div>";
+
+  html += '<div class="barra rango">Del <input type="date" id="trab-desde" value="' + escapar(f.desde) + '">' +
+          ' al <input type="date" id="trab-hasta" value="' + escapar(f.hasta) + '">' +
+          ' <button id="trab-ver">Ver</button>' +
+          (filtrado ? ' <button id="trab-limpiar">Quitar filtros</button>' : "") + "</div>";
+
+  // Los contadores son de lo que se está mirando, no del histórico completo:
+  // un titular que dice 346 sobre una tabla de una semana es la misma
+  // contradicción que la 107 acaba de quitar del reporte del día.
   html += '<div class="tarjeta-lealtad"><div class="tl-fila">';
-  html +=   '<div class="tl-cel"><div class="tl-num">' + (w.lavados || 0) + '</div><div class="tl-rot">Lavados</div></div>';
-  html +=   '<div class="tl-cel"><div class="tl-num">' + (w.rechazos || 0) + '</div><div class="tl-rot">Rechazos</div></div>';
+  html +=   '<div class="tl-cel"><div class="tl-num">' + total + '</div><div class="tl-rot">' +
+            (filtrado ? "Lavados (con el filtro)" : "Lavados") + "</div></div>";
+  html +=   '<div class="tl-cel"><div class="tl-num">' + (w.rechazos || 0) + '</div><div class="tl-rot">' +
+            (filtrado ? "Rechazos (con el filtro)" : "Rechazos") + "</div></div>";
   html += "</div></div>";
 
   html += "<h2>Historial de secado</h2>" + tablaSecados(w.historial || []);
 
+  // Cuánto se está viendo y cuánto falta. Un "mostrando 50" a secas no dice
+  // si quedó algo fuera, y un corte silencioso se lee como "esto es todo".
+  if (mostrados < total) {
+    html += '<div class="barra rango"><span>Mostrando ' + mostrados + " de " + total + " lavados.</span>" +
+            ' <button id="trab-mas">Ver 50 más</button>' +
+            ' <button id="trab-todo">Ver todos</button></div>';
+  } else if (total > 0) {
+    html += '<div class="sub">Los ' + total + (total === 1 ? " lavado" : " lavados") +
+            (filtrado ? " del filtro." : " de esta persona.") + "</div>";
+  }
+
   cont.innerHTML = html;
-  document.getElementById("trab-volver").addEventListener("click", cargarTrabajadores);
+  document.getElementById("trab-volver").addEventListener("click", function () {
+    trabFiltro = null;
+    cargarTrabajadores();
+  });
+
+  cont.querySelectorAll("#trab-tipos button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      trabFiltro.tipo = b.getAttribute("data-tipo");
+      trabFiltro.limite = 50;   // otro filtro, se vuelve a empezar por arriba
+      cargarTrabajador();
+    });
+  });
+  document.getElementById("trab-ver").addEventListener("click", function () {
+    var d = document.getElementById("trab-desde").value;
+    var h = document.getElementById("trab-hasta").value;
+    if (d && h && d > h) { alert("El día inicial es posterior al final."); return; }
+    trabFiltro.desde = d;
+    trabFiltro.hasta = h;
+    trabFiltro.limite = 50;
+    cargarTrabajador();
+  });
+  var lim = document.getElementById("trab-limpiar");
+  if (lim) lim.addEventListener("click", function () {
+    trabFiltro.desde = ""; trabFiltro.hasta = ""; trabFiltro.tipo = ""; trabFiltro.limite = 50;
+    cargarTrabajador();
+  });
+  var mas = document.getElementById("trab-mas");
+  if (mas) mas.addEventListener("click", function () {
+    // Se vuelve a pedir con un tope mayor en vez de pegar páginas en el
+    // navegador: sin estado que mantener, no hay forma de duplicar ni de
+    // perder un renglón. Son decenas de kB en la pantalla del dueño, no en
+    // la del supervisor.
+    trabFiltro.limite = trabFiltro.limite + 50;
+    cargarTrabajador();
+  });
+  var todo = document.getElementById("trab-todo");
+  if (todo) todo.addEventListener("click", function () {
+    trabFiltro.limite = 0;   // 0 = todo
+    cargarTrabajador();
+  });
+
   // Las placas del historial llevan al perfil de la placa (vista Clientes).
   cont.querySelectorAll("button[data-placa]").forEach(function (b) {
     b.addEventListener("click", function () { irAPlaca(b.getAttribute("data-placa")); });
