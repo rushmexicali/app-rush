@@ -34,13 +34,17 @@
 //                     (`leida`), para que una caida del servicio no quede
 //                     disfrazada de "se intento y no se pudo" y el obrero de
 //                     fondo pueda releer la foto solo (migracion 104).
+//  v14 (19/ago/2026) — el SW solo cachea lo de ESTA pagina. Antes dejaba pasar
+//                     el cuadro de la camara de la caja, y si el relay se caia
+//                     servia la foto del carro ANTERIOR como si fuera la de
+//                     ahora, con r.ok en true.
 //  v13 (19/ago/2026) — el corte de peticiones no aplica a /foto (esa ruta
 //                     espera la lectura de placa y tarda mas a proposito).
 //  v12 (19/ago/2026) — arreglos de la auditoria: la cola del supervisor deja
 //                     de vaciarse ante un error, las peticiones tienen corte a
 //                     los 20 s, el candado de pantalla se vuelve a pedir, y la
 //                     caja pinta en rojo un 6to sin saldo antes de tocarlo.
-var CACHE = "rush-v13";
+var CACHE = "rush-v14";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest",
@@ -67,9 +71,17 @@ self.addEventListener("activate", function (ev) {
 self.addEventListener("fetch", function (ev) {
   var url = new URL(ev.request.url);
 
-  // Todo lo que sea de Supabase (la cola, los botones) va SIEMPRE a la
-  // red. Nunca se sirve de cache.
-  if (url.hostname.indexOf("supabase.co") >= 0) return;
+  // ⚠️ SOLO se cachea lo que es de esta misma pagina (el HTML, los iconos).
+  // Antes se exceptuaba nada mas a Supabase, y eso dejaba pasar al cache el
+  // cuadro de la camara de la caja: esa URL es IDENTICA en cada foto, asi que
+  // si el relay se caia, el `catch` devolvia el JPEG GUARDADO —con r.ok en
+  // true— y la caja leia la placa del CARRO ANTERIOR y se la pegaba al cliente
+  // presente. La cajera veia el congelado con el spinner encima y no tenia
+  // forma de saberlo.
+  //
+  // Se compara contra el origen en vez de listar hosts: un host nuevo (otra
+  // camara, otro relay) queda protegido solo, sin que nadie se acuerde.
+  if (url.origin !== self.location.origin) return;
 
   // La pantalla: se intenta la red primero para que un cambio de diseno
   // se vea al instante; si no hay red, se usa la copia guardada.

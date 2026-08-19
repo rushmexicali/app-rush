@@ -127,6 +127,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     const gente = [...porId.values()];
 
+    // ⚠️ Una lista VACIA no se manda a la base. El `if (!rGente.ok)` de arriba
+    // solo protege del fallo duro; un 200 con `{"value":[]}` —por ejemplo si
+    // se reorganizan los grupos de Jibble, cuyos identificadores estan
+    // escritos a mano en este archivo— pasaba de largo, y la RPC marca 'fuera'
+    // a todo el que no venga en la lista: la grilla del supervisor se quedaba
+    // sin nadie a quien asignar, con el taller lleno de gente.
+    //
+    // La base tambien lo rechaza (migracion 106). Esta guarda esta aqui para
+    // que quede REGISTRADO cual fue el problema, en vez de un "lista vacia"
+    // sin contexto.
+    if (gente.length === 0) {
+      console.error("sincronizar-jibble: People devolvio 0 personas en los",
+                    GRUPOS.length, "grupos. No se toca a nadie.");
+      return json({ ok: false, error: "Jibble devolvio la plantilla vacia; no se sincronizo" }, 502);
+    }
+
     // --- 2) Quien checo hoy ------------------------------------------
     const dia = hoyMexicali();
     const urlHojas =

@@ -1442,9 +1442,30 @@ function tablaSecados(lista) {
       : '<span class="tenue">—</span>';
     // secado_seg es nulo mientras la etapa de secado siga abierta (el carro
     // no se ha entregado): se muestra "en curso" en vez de un número falso.
-    var minCel = v.secado_seg != null
-      ? Math.round(v.secado_seg / 60)
-      : (v.entregado ? "—" : '<span class="tenue">en curso</span>');
+    //
+    // ⚠️ Y los dos casos que TODO el resto del reporte excluye de sus
+    // promedios porque son ficción, y que aquí se imprimían crudos: el carro
+    // que cerró el cron a las 8:30 (nadie lo entregó, su hora de fin es
+    // fabricada — así salían 298 minutos a nombre de una persona) y el secado
+    // de menos de 3 minutos (un olvido registrado tarde, que salía como "0" o
+    // "1 minuto", como si hubiera secado un carro en un minuto).
+    //
+    // Ésta es la pantalla donde se evalúa a alguien con NOMBRE. El número se
+    // sigue mostrando, pero dicho como lo que es.
+    var minCel;
+    if (v.secado_seg == null) {
+      minCel = v.entregado ? "—" : '<span class="tenue">en curso</span>';
+    } else if (v.cerrado_solo) {
+      minCel = '<span class="tenue" title="Nadie lo entregó: lo cerró el corte de las 8:30, ' +
+               'así que la hora de fin es fabricada.">' +
+               Math.round(v.secado_seg / 60) + ' · cerrado solo</span>';
+    } else if (v.secado_corto) {
+      minCel = '<span class="tenue" title="Menos de 3 minutos es imposible de secar: ' +
+               'es un carro olvidado y registrado tarde, no trabajo.">' +
+               Math.round(v.secado_seg / 60) + ' · olvido</span>';
+    } else {
+      minCel = Math.round(v.secado_seg / 60);
+    }
     var rech = (v.rechazos && v.rechazos.length)
       ? '<span style="color:#ff7b72">' + escapar(v.rechazos.join(", ")) + "</span>"
       : '<span class="tenue">—</span>';

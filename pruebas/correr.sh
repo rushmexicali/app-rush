@@ -8,6 +8,7 @@
 cd "$(dirname "$0")/.." || exit 1
 
 fallos=0
+
 correr() {
   echo ""
   echo "=============================================================="
@@ -17,7 +18,18 @@ correr() {
   if ! "$@"; then fallos=$((fallos + 1)); fi
 }
 
-# --- Pruebas de JavaScript/TypeScript (Edge Functions y las 3 pantallas) ---
+# Una prueba SQL arma su escenario contra la base REAL y lo revierte con un
+# `raise` al terminar, asi que no ensucia la cola del supervisor. Pasa si el
+# mensaje final dice "PASADA" — que suena al reves, pero es el precio de que la
+# unica forma de revertir sea fallar a proposito.
+sql() {
+  local salida
+  salida=$(bash scripts/releer-fotos/q.sh "$1" 2>&1)
+  echo "$salida" | tr '|' '\n' | head -6
+  echo "$salida" | grep -q "PASADA"
+}
+
+# --- JavaScript / TypeScript ----------------------------------------------
 correr "marcarError - un error se ve como error" \
   cscript //E:JScript //Nologo pruebas/marcar-error.js
 
@@ -28,6 +40,10 @@ correr "marcarError - un error se ve como error" \
 # lo que se busca es que el archivo no este roto antes de publicarlo.
 correr "sintaxis de docs/*.html" \
   bash pruebas/sintaxis-front.sh
+
+# --- Contra la base -------------------------------------------------------
+correr "canje sin saldo (lealtad)"        sql pruebas/canje-sin-saldo.sql
+correr "perfil honesto y Jibble"          sql pruebas/perfil-y-jibble.sql
 
 echo ""
 echo "=============================================================="
