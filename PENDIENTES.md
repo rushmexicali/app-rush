@@ -6,53 +6,61 @@
 
 ---
 
-## ▶️ PARA LA SIGUIENTE SESIÓN — el reporte del dueño (acordado el 19/ago/2026)
+## ⏳ HECHO Y PROBADO, ESPERANDO EL CIERRE PARA DESPLEGAR (19/ago/2026, tarde)
 
-El dueño cerró la sesión del 19/ago diciendo: *"seguiremos en una nueva para seguir
-corrigiendo lo del reporte"*. Esto es lo que queda de esa área, ya priorizado.
+Commit `b3d8efa`. **Nada de esto está en producción todavía**: se terminó con el taller
+abierto y toca la función `app`, que es la que usa el supervisor. Va completo en el corte.
 
-**Antes de tocar nada:** `bash pruebas/correr.sh` (y otra vez antes de desplegar).
-Los cuatro números que ya se arreglaron están en `CLAUDE.md §11.45`; no repetirlos.
+**Los tres pasos, en este orden** (la migración primero: el front nuevo llama a
+`perfil_de_secador` con parámetros que la función vieja no tiene):
 
-### Lo que queda del reporte del dueño (`docs/reporte.html`)
+```bash
+bash scripts/releer-fotos/q.sh supabase/migrations/109_editar_valida_antes_y_foto_no_borra.sql
+bash scripts/releer-fotos/q.sh supabase/migrations/110_perfil_de_secador_paginado.sql
+bash pruebas/correr.sh && supabase functions deploy app --no-verify-jwt
+git push
+```
 
-1. **El perfil de un trabajador baja TODO su historial, sin paginar.** Medido: Pablo Cruz
-   346 carros = **128 kB** en una sola respuesta, y crece lineal para siempre (a un año,
-   ~1.5 MB). Además no hay filtro por fecha ni por tipo de servicio, así que el dueño no
-   puede aislar "sus completos de esta semana" — que es justo la pregunta que querría
-   hacer ahora que los minutos ya son honestos. `perfil_de_secador` acepta paginar como ya
-   lo hace `buscar_tickets`.
-2. **"N visitas" en el perfil de la placa se lee como total.** El aviso de que el historial
-   es un **piso, no un total** existe, pero vive en la pestaña Operación y es condicional.
-   Donde el dueño de verdad lee "3 visitas" —el perfil de la placa y los resultados de
-   búsqueda— no hay ninguna nota. Moverla ahí, incondicional.
-3. **"Historial por placa" es de SIEMPRE, pero se pinta dentro del reporte de un día.**
-   `cargarPlacas("")` trae el top 50 histórico y se dibuja debajo del día seleccionado, con
-   el mismo `<h2>` que las secciones del día y columnas que suenan a un evento puntual. Un
-   subtítulo lo resuelve.
-4. **Un rango de un solo día se etiqueta "Día en curso".** `reporte_del_rango` devuelve
-   `dias = 1` cuando las dos casillas son el mismo día y nunca devuelve `congelado_en`, así
-   que poner "1/ago al 1/ago" muestra un día cerrado hace semanas con el letrero de "en
-   curso — todavía puede cambiar". Hay que distinguir el modo rango con una bandera
-   explícita, no deducirlo de `dias > 1`. En ese modo las fechas además se imprimen crudas
-   ("2026-08-15") en vez de pasar por `fechaCorta`.
-5. **El buscador de placas no tiene rebote ni guardia de respuesta vieja**, a diferencia de
-   los otros dos buscadores del mismo archivo (`cli-q` y `tik-q`, que sí usan 250 ms +
-   verificación). Teclear una placa de 7 caracteres son 7 rondas de 3 consultas, y una
-   respuesta lenta de "BV" puede pintarse encima de la de "BVJ113A".
+> Las dos pruebas nuevas (`editar-y-foto.sql` y `perfil-paginado.sql`) **fallan a propósito
+> mientras las migraciones no estén aplicadas** — es lo que confirma que sí miden algo.
 
-### Menores del mismo archivo
+### Backend (migración 109)
 
-- `reporte.html:683` — el mensaje de error del backend entra a `innerHTML` **sin
-  `escapar()`**; es el único punto del archivo donde falta.
-- `cargarPlacas` no revisa el 401: la respuesta de código malo cae en `d.placas || []` y
-  pinta "Todavía no hay placas leídas", que es falso.
-- Con un rango sin equipos el texto dice "Ningún carro tuvo secador asignado **este día**"
-  aunque se hayan pedido 30 días.
-- En "Últimos lavados" la columna se titula "Última vez" pero muestra el `creado_en` de ese
-  mismo lavado (el rótulo viene copiado del Historial por placa, donde sí significa otra
-  cosa).
-- `pintarPlacas(lista)` recibe un parámetro que nunca usa.
+- ✅ **#17 `editar_carro` escribía antes de validar.** El `update` iba antes de los checks de
+  secadores y un `return` en plpgsql no revierte: el color quedaba guardado mientras la
+  pantalla decía "Deja al menos un secador". La prueba lo reprodujo contra producción antes
+  de tocar el código.
+- ✅ **#18 `guardar_datos_de_foto` borraba lo que no leyó.** Un nulo ya no pisa lo que otra
+  lectura sí vio. Se conserva el caso de la 063 (placa distinta = era otro carro = se
+  reemplaza entero). Lo que **no** cubre queda escrito en la migración.
+- ✅ **#19 `/foto` no limpiaba `placa_en`**, así que una re-toma nunca entraba a la cola de
+  relectura (que exige `placa_en is null`). Era justo el flujo de las pickups.
+
+### El reporte del dueño (migración 110 + `docs/reporte.html`)
+
+- ✅ **El perfil del trabajador se pagina y se filtra.** 50 por página con "Ver 50 más" y
+  "Ver todos", más rango de días y tipo de servicio (Completos / Express / Encerado). Los
+  contadores de arriba respetan el filtro, para que no digan 346 sobre una tabla de una
+  semana. Línea base: la salida sin filtro quedó **idéntica al byte** en los 16 secadores.
+- ✅ **La nota de "piso, no un total"** pasa a donde de verdad se lee un conteo de visitas
+  (perfil de la placa y resultados de búsqueda), incondicional y en un solo lugar del código.
+- ✅ **"Historial por placa" dice que es de siempre**, no del día de arriba.
+- ✅ **Un rango de un solo día ya no se rotula "Día en curso"**: el modo lo dice quien llama,
+  no se deduce de `dias > 1`. Las fechas del rango salen formateadas.
+- ✅ **El buscador de placas tiene rebote (250 ms) y guardia de respuesta vieja.** Verificado
+  en el navegador: teclear 7 caracteres = 1 consulta, y la respuesta lenta de "BV" ya no se
+  pinta encima de la de "BVJ113A".
+- ✅ **Menores:** el error del backend se escapa; un 401 en `cargarPlacas` deja de pintarse
+  como "no hay placas"; "este día" dice "en este periodo" con un rango; la columna "Última
+  vez" de Últimos lavados pasa a "Día"; `pintarPlacas` ya no recibe un parámetro que no usa.
+
+### Y la auditoría queda como skill
+
+`.claude/skills/auditoria-general/` — se dispara diciendo **"corre la auditoría general"**.
+Antes de lanzar nada se obliga a preguntarse si los agentes y el método siguen siendo los
+correctos, o si conviene algo más exhaustivo (encargo del dueño, 19/ago).
+
+---
 
 ### Y lo que sigue esperando decisión del dueño
 
@@ -156,13 +164,13 @@ producción, no solo se leyó.
 
 ### 🔧 Backend
 
-17. **`editar_carro` escribe antes de validar.** El `update` va ANTES de los tres checks de
+17. ✅ **HECHO 19/ago (migración 109, pendiente de desplegar).** `editar_carro` escribía antes de validar. El `update` va ANTES de los tres checks de
     secadores, y un `return` en plpgsql **no revierte**: el color se guarda aunque el guardado
     "falle" por dejar 0 secadores.
-18. **`guardar_datos_de_foto` borra lo que viene nulo**, contradiciendo la "aceptación parcial por
+18. ✅ **HECHO 19/ago (migración 109, pendiente de desplegar).** `guardar_datos_de_foto` borraba lo que venía nulo, contradiciendo la "aceptación parcial por
     campo" de §9: una re-toma que no saca marca **borra la marca buena anterior**. Con el botón
     "tomar foto otra vez" (103) esto se dispara solo.
-19. ✔ **`/foto` no limpia `placa_en`** al subir foto nueva, así que una re-toma **nunca** entra a la
+19. ✅ **HECHO 19/ago (pendiente de desplegar).** `/foto` no limpiaba `placa_en` al subir foto nueva, así que una re-toma **nunca** entra a la
     cola de reintentos (`fotos_por_leer` exige `placa_en is null`). Justo el flujo de las pickups.
 20. ✅ **HECHO 19/ago (se dropeó la vieja).** `buscar_tickets` tenía dos sobrecargas y la llamada de 2 argumentos revienta con `42725`.
     La `098` agregó en vez de reemplazar — la lección exacta de la `052`. *Arreglo:* `drop` la vieja.
