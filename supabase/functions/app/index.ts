@@ -105,8 +105,39 @@ function hoyEnMexicali(): string {
   }).format(new Date());
 }
 
+// Un error TIENE que verse como error del otro lado.
+//
+// Las tres pantallas preguntan lo mismo: `if (d.ok === false) { avisar }`. Una
+// respuesta de error que NO trae ese campo pasa como buena, y entonces la
+// pantalla se cierra como si el trabajo se hubiera hecho. Eso ya producia tres
+// casos reales: la caja decia "listo, siguiente cliente" con la visita SIN
+// registrar (el sello no contado); y el supervisor veia cerrarse "Entregado" y
+// "Empezar a secar" con el carro intacto.
+//
+// La auditoria del 19/ago encontro 57 respuestas asi. Se arregla AQUI y no en
+// cada una: si depende de que quien escriba la ruta 58 se acuerde, la clase
+// vuelve. Ninguna respuesta del archivo manda `ok:true` con codigo de error
+// (verificado), asi que marcar no puede contradecir nada.
+// Se escribe sin azucar moderna (nada de spread) a proposito: asi la prueba
+// puede EXTRAER esta misma funcion del archivo y correrla tal cual, en vez de
+// probar una copia que despues se desincroniza. Ver `pruebas/marcar-error.ps1`.
+function marcarError(cuerpo: unknown, status: number): unknown {
+  if (status < 400) return cuerpo;
+  if (cuerpo === null || typeof cuerpo !== "object" || Array.isArray(cuerpo)) return cuerpo;
+  const obj = cuerpo as Record<string, unknown>;
+  // Si la ruta ya dijo algo sobre `ok`, manda la ruta.
+  if (obj.ok !== undefined) return obj;
+  const salida: Record<string, unknown> = {};
+  const llaves = Object.keys(obj);
+  for (let i = 0; i < llaves.length; i++) salida[llaves[i]] = obj[llaves[i]];
+  // Se asigna DESPUES de copiar. Al reves, una llave `ok` con valor indefinido
+  // en el cuerpo original volveria a borrar la marca al copiarse encima.
+  salida.ok = false;
+  return salida;
+}
+
 function json(cuerpo: unknown, status = 200): Response {
-  return new Response(JSON.stringify(cuerpo), {
+  return new Response(JSON.stringify(marcarError(cuerpo, status)), {
     status,
     headers: {
       ...CORS,
