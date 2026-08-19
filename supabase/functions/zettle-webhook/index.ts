@@ -68,6 +68,42 @@ function aCentavos(valor: unknown): number | null {
   return null;
 }
 
+// Deja constancia de un aviso: los que se descartan (para que dejen de
+// perderse en silencio) y, mientras se aprende el esquema de firma de Zettle,
+// tambien las CABECERAS de los buenos.
+//
+// ⚠️ NUNCA puede tumbar una venta. Va envuelto en try/catch y su fallo se
+// traga a proposito: es una bitacora, no el camino del dinero. La leccion de
+// la fecha en milisegundos (§7 del CLAUDE.md) aplicada al reves — ahi una
+// venta se perdio por un campo secundario; aqui un campo secundario no puede
+// perder una venta.
+async function anotar(
+  db: ReturnType<typeof createClient>,
+  req: Request,
+  motivo: string,
+  evento: string | null,
+  crudo: string | null,
+) {
+  try {
+    const cab: Record<string, string> = {};
+    for (const [k, v] of req.headers) {
+      // El cuerpo ya se guarda aparte; aqui solo interesa el sobre. La firma
+      // se guarda entera a proposito: es justo lo que hace falta ver para
+      // implementar la verificacion sin adivinar.
+      if (k.toLowerCase() === "authorization" || k.toLowerCase() === "cookie") continue;
+      cab[k] = v;
+    }
+    await db.from("webhook_bitacora").insert({
+      motivo,
+      evento,
+      cabeceras: cab,
+      crudo: motivo === "ok" ? null : (crudo ?? "").slice(0, 4000),
+    });
+  } catch (e) {
+    console.error("No se pudo anotar en la bitacora (no afecta la venta):", e);
+  }
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   // Abrir la URL en el navegador cae aqui. Sirve para confirmar
   // "si, la funcion esta viva" sin tener que cobrar nada.
@@ -87,6 +123,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     crudo = await req.text();
   } catch (e) {
     console.error("No se pudo leer el cuerpo del aviso:", e);
+    await anotar(db, req, "cuerpo_ilegible", null, null);
     return responder({ ok: true, nota: "cuerpo ilegible" });
   }
 
@@ -96,6 +133,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   } catch (e) {
     console.error("El aviso no es JSON valido:", e, "| crudo:", crudo.slice(0, 500));
     // 200 a proposito: reintentar no lo va a arreglar. Ver nota al final.
+    await anotar(db, req, "json_invalido", null, crudo);
     return responder({ ok: true, nota: "json invalido" });
   }
 
@@ -159,6 +197,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       "Aviso sin purchaseUUID. evento:", nombreEvento,
       "| crudo:", crudo.slice(0, 500),
     );
+    await anotar(db, req, "sin_purchase_uuid", nombreEvento, crudo);
     return responder({ ok: true, nota: "sin purchase_uuid" });
   }
 
@@ -195,6 +234,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   console.log("Venta guardada:", purchaseUuid, "| monto:", monto);
+
+  // ⏳ TEMPORAL — quitar en cuanto se implemente la verificacion de firma.
+  //
+  // Guarda las CABECERAS de un aviso bueno. Sirve para una sola cosa: ver como
+  // firma Zettle de verdad. La llave `ZETTLE_SIGNING_KEY` esta guardada desde
+  // el dia uno "para verificar firmas mas adelante" y ninguna funcion la lee;
+  // no hay documentacion publica confiable del esquema, y adivinarlo aqui
+  // significaria rechazar ventas reales si me equivoco. Con una venta real
+  // basta para saberlo.
+  //
+  // No guarda el cuerpo (`crudo` va nulo cuando el motivo es 'ok'), asi que no
+  // duplica datos de venta: eso ya vive completo en `ventas.payload`.
+  await anotar(db, req, "ok", nombreEvento, null);
+
   return responder({ ok: true });
 });
 
