@@ -6,6 +6,62 @@
 
 ---
 
+## ▶️ PARA LA SIGUIENTE SESIÓN — el reporte del dueño (acordado el 19/ago/2026)
+
+El dueño cerró la sesión del 19/ago diciendo: *"seguiremos en una nueva para seguir
+corrigiendo lo del reporte"*. Esto es lo que queda de esa área, ya priorizado.
+
+**Antes de tocar nada:** `bash pruebas/correr.sh` (y otra vez antes de desplegar).
+Los cuatro números que ya se arreglaron están en `CLAUDE.md §11.45`; no repetirlos.
+
+### Lo que queda del reporte del dueño (`docs/reporte.html`)
+
+1. **El perfil de un trabajador baja TODO su historial, sin paginar.** Medido: Pablo Cruz
+   346 carros = **128 kB** en una sola respuesta, y crece lineal para siempre (a un año,
+   ~1.5 MB). Además no hay filtro por fecha ni por tipo de servicio, así que el dueño no
+   puede aislar "sus completos de esta semana" — que es justo la pregunta que querría
+   hacer ahora que los minutos ya son honestos. `perfil_de_secador` acepta paginar como ya
+   lo hace `buscar_tickets`.
+2. **"N visitas" en el perfil de la placa se lee como total.** El aviso de que el historial
+   es un **piso, no un total** existe, pero vive en la pestaña Operación y es condicional.
+   Donde el dueño de verdad lee "3 visitas" —el perfil de la placa y los resultados de
+   búsqueda— no hay ninguna nota. Moverla ahí, incondicional.
+3. **"Historial por placa" es de SIEMPRE, pero se pinta dentro del reporte de un día.**
+   `cargarPlacas("")` trae el top 50 histórico y se dibuja debajo del día seleccionado, con
+   el mismo `<h2>` que las secciones del día y columnas que suenan a un evento puntual. Un
+   subtítulo lo resuelve.
+4. **Un rango de un solo día se etiqueta "Día en curso".** `reporte_del_rango` devuelve
+   `dias = 1` cuando las dos casillas son el mismo día y nunca devuelve `congelado_en`, así
+   que poner "1/ago al 1/ago" muestra un día cerrado hace semanas con el letrero de "en
+   curso — todavía puede cambiar". Hay que distinguir el modo rango con una bandera
+   explícita, no deducirlo de `dias > 1`. En ese modo las fechas además se imprimen crudas
+   ("2026-08-15") en vez de pasar por `fechaCorta`.
+5. **El buscador de placas no tiene rebote ni guardia de respuesta vieja**, a diferencia de
+   los otros dos buscadores del mismo archivo (`cli-q` y `tik-q`, que sí usan 250 ms +
+   verificación). Teclear una placa de 7 caracteres son 7 rondas de 3 consultas, y una
+   respuesta lenta de "BV" puede pintarse encima de la de "BVJ113A".
+
+### Menores del mismo archivo
+
+- `reporte.html:683` — el mensaje de error del backend entra a `innerHTML` **sin
+  `escapar()`**; es el único punto del archivo donde falta.
+- `cargarPlacas` no revisa el 401: la respuesta de código malo cae en `d.placas || []` y
+  pinta "Todavía no hay placas leídas", que es falso.
+- Con un rango sin equipos el texto dice "Ningún carro tuvo secador asignado **este día**"
+  aunque se hayan pedido 30 días.
+- En "Últimos lavados" la columna se titula "Última vez" pero muestra el `creado_en` de ese
+  mismo lavado (el rótulo viene copiado del Historial por placa, donde sí significa otra
+  cosa).
+- `pintarPlacas(lista)` recibe un parámetro que nunca usa.
+
+### Y lo que sigue esperando decisión del dueño
+
+- **Retención de fotos**: 90 días → 77% del límite de Storage; 60 días → 51%.
+- **Segundo código de acceso** para el reporte y el CRM, separado del que teclea el
+  supervisor.
+
+---
+
 ## 🔬 AUDITORÍA COMPLETA DEL 19/ago/2026 — 46 hallazgos
 
 > ✅ **Los 7 PRIORIZADOS ya están hechos y desplegados** (migración `105`, commit `9904fe3`).

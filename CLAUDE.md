@@ -714,13 +714,16 @@ para adivinar.
 - **No hubo que subir la resolución.** El `CLAUDE.md` decía que a 1280px la placa quedaría
   con ~130px y habría que subir a 2000px. Se midió con una foto real: la placa medía ~170px
   y se lee perfecto. Incluso a la **cuarta parte** de resolución (placa de ~42px) seguía
-  leyéndola. La foto sigue pesando ~150 KB en vez de ~450 KB — importante con el wifi flojo
+  leyéndola. La foto pesa ~100 KB de promedio (medido sobre el bucket completo el 19/ago;
+  antes aquí decía ~150 KB) en vez de ~450 KB — importante con el wifi flojo
   del taller.
 - **Sonnet 5 y no Opus:** tiene visión de alta resolución (lo que hacía falta) y cuesta un
   tercio. Va con `thinking` apagado y esfuerzo bajo porque esto es OCR, no razonamiento.
   Si algún día las lecturas salen flojas, ahí es donde hay que subirle.
-- **Costo medido:** 1,698 tokens por foto → **~$3.20 USD/mes** con ~30 carros al día
-  (~$4.90 cuando termine el precio de introducción de Sonnet 5 en agosto/2026).
+- **Costo medido (corregido el 19/ago/2026):** **3,101 tokens de entrada por foto** — 1,488 del prompt (crecio al fusionar placa+marca+submarca el 24/jul) y ~1,613 de la imagen. Son **~$17.80 USD/mes** con ~86 lecturas al día, y **~$26.70 desde el 1/sep**
+  al terminar el precio de introducción de Sonnet 5. El desglose vive en la memoria
+  `costo-lectura-de-placa-anthropic`; lo que decía antes esta sección (1,698 tokens,
+  $3.20/mes) contaba **sólo la imagen** y se quedaba corto por más del doble.
 - **Nunca inventa.** Se probó tapando los dígitos centrales de una placa real y dejando
   visibles solo las letras de los extremos: devolvió vacío las tres veces, teniendo toda la
   información para "completarla". Es la misma regla de oro de la nota de caja.
