@@ -37,6 +37,10 @@ const DIAS = 90;
 // storage.remove tiene un tope por llamada; se borra en tandas.
 const TANDA = 500;
 
+// Tope de archivos por corrida. Ver el comentario del paso 1: sin esto, la
+// primera corrida real de octubre intentaria ~7,400 de un golpe.
+const TOPE = 1000;
+
 const db = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: false },
 });
@@ -59,14 +63,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // 1) Los archivos con mas de 3 meses (fotos de carros y capturas de caja).
-  const { data: nombres, error: errSel } = await db.rpc("fotos_viejas", { p_dias: DIAS });
+  //
+  // ⚠️ CON TOPE POR CORRIDA (auditoria del 19/ago). Este camino NUNCA se ha
+  // ejecutado de verdad: 21 corridas, 0 archivos borrados, porque la foto mas
+  // vieja tiene 31 dias y el umbral son 90. La primera corrida real cae por el
+  // 17/oct/2026 y encontraria TODO el atraso junto (~7,400 archivos, unas 15
+  // tandas en una sola invocacion) contra el limite de tiempo de la funcion.
+  // Con ~85 fotos entrando al dia, 1,000 por corrida drena el atraso inicial
+  // en poco mas de una semana y despues el regimen es estable.
+  const { data: nombres, error: errSel } = await db.rpc("fotos_viejas", { p_dias: DIAS, p_tope: TOPE });
   if (errSel) {
     console.error("fotos_viejas:", errSel);
     return json({ ok: false, error: errSel.message }, 500);
   }
 
   const paths: string[] = (nombres ?? []) as string[];
-  let borradas = 0;
+  const quitadasReales: string[] = [];
   const fallos: string[] = [];
 
   // 2) Borrar de verdad via la API de Storage, en tandas.
@@ -78,18 +90,30 @@ Deno.serve(async (req: Request): Promise<Response> => {
       fallos.push(errDel.message);
       continue;
     }
-    borradas += (quitadas ?? []).length;
+    for (const q of (quitadas ?? []) as Array<{ name?: string }>) {
+      if (q?.name) quitadasReales.push(q.name);
+    }
   }
+  const borradas = quitadasReales.length;
 
-  // 3) Olvidar el apuntador en los carros cuya foto ya se borro, para que la
-  // app no muestre una liga muerta. Se hace despues del borrado: si el
-  // borrado fallo, el apuntador se queda y la proxima corrida lo reintenta.
-  const { data: olvidados, error: errOlv } = await db.rpc("olvidar_fotos_viejas", { p_dias: DIAS });
+  // 3) Olvidar el apuntador SOLO de las fotos que de verdad se borraron.
+  //
+  // ⚠️ Antes borraba por EDAD, y el comentario decia que "si el borrado fallo,
+  // el apuntador se queda y la proxima corrida lo reintenta". Era falso: se
+  // llamaba sin mirar los fallos y limpiaba por fecha, asi que una tanda que
+  // fallaba dejaba el archivo en Storage Y el carro sin foto. Con el tope de
+  // arriba eso se volvia seguro: cada corrida limpiaria apuntadores de miles
+  // de archivos que todavia no se alcanzaron a borrar.
+  const { data: olvidados, error: errOlv } = await db.rpc("olvidar_fotos_viejas", {
+    p_dias: DIAS,
+    p_borradas: quitadasReales,
+  });
   if (errOlv) console.error("olvidar_fotos_viejas:", errOlv);
 
   const resumen = {
     ok: fallos.length === 0,
     candidatas: paths.length,
+    quedan_para_manana: paths.length >= TOPE,
     borradas,
     apuntadores_limpiados: olvidados ?? 0,
     fallos: fallos.length,

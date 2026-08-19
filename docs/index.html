@@ -966,8 +966,12 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 });
 
+// ⚠️ La guarda de nulos NO es adorno: sin ella un campo vacio se pinta como
+// el texto "null" o "undefined" en un boton de secador o en la etiqueta de
+// estado. Esta funcion vive IGUAL en los tres HTML y este era el unico que
+// habia divergido; si se toca una, se tocan las tres.
 function escapar(t) {
-  return String(t).replace(/[&<>"']/g, function (c) {
+  return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) {
     return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
   });
 }
@@ -1206,19 +1210,56 @@ function actualizarRelojes() {
   }
 }
 
+// Cuantas consultas seguidas han fallado, y cuando fue la ultima buena.
+var fallosSeguidos = 0;
+var ultimoDatoBueno = 0;
+
 function avisarError(hay) {
-  // Solo se avisa si de plano no hay datos. Un parpadeo del wifi no debe
-  // llenar la pantalla de alarmas: la siguiente consulta lo arregla sola.
   var e = document.getElementById("error");
-  e.style.display = (hay && carros.length === 0) ? "block" : "none";
-  e.textContent = "Sin conexion. Reintentando...";
+
+  if (!hay) { fallosSeguidos = 0; e.style.display = "none"; return; }
+  fallosSeguidos++;
+
+  // Un parpadeo del wifi no debe llenar la pantalla de alarmas: la siguiente
+  // consulta lo arregla sola. Pero SI hay que avisar cuando deja de ser un
+  // parpadeo. Antes el aviso solo salia con la cola vacia, asi que con carros
+  // en pantalla un corte de red no producia ninguna senal: los cronometros
+  // seguian corriendo y las tarjetas se seguian poniendo rojas con datos de
+  // hace media hora, y el supervisor no tenia como saberlo.
+  var duro = fallosSeguidos >= 4;                 // ~12 s de silencio
+  if (!duro && carros.length > 0) { e.style.display = "none"; return; }
+
+  e.style.display = "block";
+  if (duro && ultimoDatoBueno) {
+    var min = Math.floor((Date.now() - ultimoDatoBueno) / 60000);
+    e.textContent = min >= 1
+      ? "Sin conexion. Lo que ves es de hace " + min + (min === 1 ? " minuto." : " minutos.")
+      : "Sin conexion. Reintentando...";
+  } else {
+    e.textContent = "Sin conexion. Reintentando...";
+  }
 }
+
+// Corte a los 20 s. Sin esto, una peticion colgada con el wifi flojo dejaba
+// `ocupado` puesto para siempre y TODOS los botones de la cola dejaban de
+// responder, sin alerta y sin cambio de color: para el supervisor la app se
+// trababa y la unica salida era cerrarla y volverla a abrir.
+var PEDIR_CORTE_MS = 20000;
 
 function pedir(ruta, opciones) {
   opciones = opciones || {};
   opciones.headers = opciones.headers || {};
   opciones.headers["x-codigo"] = CODIGO;
   opciones.cache = "no-store";
+  if (typeof AbortController === "function" && !opciones.signal) {
+    var corta = new AbortController();
+    opciones.signal = corta.signal;
+    var reloj = setTimeout(function () { corta.abort(); }, PEDIR_CORTE_MS);
+    return fetch(API + ruta, opciones).then(
+      function (r) { clearTimeout(reloj); return r; },
+      function (e) { clearTimeout(reloj); throw e; }
+    );
+  }
   return fetch(API + ruta, opciones);
 }
 
@@ -1284,7 +1325,15 @@ var candado = null;
 function mantenerPantallaEncendida() {
   if (!navigator.wakeLock) return;
   navigator.wakeLock.request("screen")
-    .then(function (c) { candado = c; })
+    .then(function (c) {
+      candado = c;
+      // ⚠️ Hay que soltar la variable cuando Android suelta el candado. Sin
+      // esto, `candado` se quedaba con el objeto ya liberado, `!candado` daba
+      // false y NUNCA se volvia a pedir: tras el primer minimizado la pantalla
+      // se apagaba sola el resto del turno, justo lo que el codigo de abajo
+      // dice que evita.
+      c.addEventListener("release", function () { candado = null; });
+    })
     .catch(function () {});
 }
 document.addEventListener("visibilitychange", function () {
@@ -1308,7 +1357,17 @@ function consultar() {
     })
     .then(function (d) {
       if (!d) return;
-      carros = d.carros || [];
+      // ⚠️ Antes era `carros = d.carros || []`, y eso convertia CUALQUIER
+      // respuesta que no fuera la cola —un 500 de la base, un 503 por un
+      // secreto perdido— en "no hay carros en proceso", y en el renglon de
+      // abajo apagaba el aviso de error. Con 15 carros lavandose, la pantalla
+      // decia que ya no habia nada y no daba ninguna senal de falla.
+      if (!d.carros || Object.prototype.toString.call(d.carros) !== "[object Array]") {
+        avisarError(true);
+        return;                       // no se toca la cola: mas vale vieja que falsa
+      }
+      carros = d.carros;
+      ultimoDatoBueno = Date.now();
       avisarCarrosNuevos(carros);
       avisarError(false);
       pintar();

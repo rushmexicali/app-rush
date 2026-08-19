@@ -957,7 +957,15 @@ function procesarImagen(dataURL) {
   mostrarLeyendo(dataURL);
   return postJSON("/leer-placa", { imagen: dataURL }).then(function (d) {
     quitarLeyendo();
-    if (!d || d.ok === false) { est.textContent = "No se pudo leer. Captura la placa a mano."; return; }
+    // ⚠️ Este mensaje decia "Captura la placa a mano", y ese botón se quitó el
+    // 15/ago: mandaba a la cajera a buscar algo que ya no existe, con el
+    // cliente enfrente. Se deja el MISMO texto neutro del otro camino, porque
+    // para ella los dos casos son lo mismo: sigue por el nombre.
+    if (!d || d.ok === false) {
+      est.textContent = "No se pudo tomar la foto. Busca al cliente por su nombre arriba.";
+      document.getElementById("in-top").focus();
+      return;
+    }
     // `leida` viaja hasta el registro de la visita. Distingue "la cámara
     // miró y no vio placa" de "no se alcanzó a mirar" (el servicio de
     // lectura caído). En el segundo caso el carro NO debe quedar marcado
@@ -1366,8 +1374,29 @@ function horaExacta(iso) {
 // El ticket elegido no cuadra con lo que pidió la cajera: prendió "Utilizar
 // Lavado GRATIS" y el ticket no es un 6to lavado. Se pinta rojo y no deja
 // registrar (el backend lo rechaza igual; esto es para que lo vea antes).
+// Devuelve el MOTIVO por el que este ticket no se puede registrar, o null si
+// si se puede. Devolver el texto y no un si/no es lo que permite que el aviso
+// de arriba y el boton de abajo digan LO MISMO sin repetir la regla en dos
+// lugares — y que cada caso diga lo suyo en vez de un mensaje generico.
 function ticketMalo(t) {
-  return document.getElementById("chk-gratis").checked && t.clase !== "canje";
+  if (!t) return null;
+  if (document.getElementById("chk-gratis").checked && t.clase !== "canje") {
+    return "Selecciona un ticket con lavado gratis";
+  }
+  // El otro lado de la misma pregunta, que faltaba: un ticket de 6to cobrado
+  // a quien todavia NO junta sus cinco. Antes pasaba, y el cliente ademas
+  // perdia el gratis que si se iba a ganar. La base tambien lo rechaza
+  // (`sin_saldo`); esto es para que la cajera lo vea ANTES de tocar, con el
+  // cliente enfrente, en vez de recibir un error despues.
+  if (t.clase === "canje" && saldoGratis() <= 0) {
+    return "Este cliente todavía no tiene lavado gratis";
+  }
+  return null;
+}
+
+function saldoGratis() {
+  var l = (personaActual && personaActual.lealtad) || {};
+  return l.disponibles || 0;
 }
 
 // Firma de lo que se está viendo. Si no cambió, NO se vuelve a armar la lista:
@@ -1376,7 +1405,11 @@ function ticketMalo(t) {
 function firmaTickets() {
   return ticketsAhora.map(function (t) { return t.carro_id + "|" + t.ticket + "|" + t.motivo; }).join(",") +
          "#" + (ticketSel ? ticketSel.carro_id : "-") +
-         "#" + (document.getElementById("chk-gratis").checked ? 1 : 0);
+         "#" + (document.getElementById("chk-gratis").checked ? 1 : 0) +
+         // El saldo entra en la firma porque ahora decide de que color sale
+         // cada ticket. Sin esto, registrar un canje dejaria los demas en
+         // verde hasta que cambiara otra cosa.
+         "#" + saldoGratis();
 }
 var tkFirma = null;
 
@@ -1385,7 +1418,9 @@ function pintarTickets() {
   // mueven nada que se pueda tocar). Lo que se salta si nada cambió es armar
   // de nuevo la lista de botones.
   var malo = ticketSel && ticketMalo(ticketSel);
-  document.getElementById("tk-aviso").classList.toggle("on", !!malo);
+  var aviso = document.getElementById("tk-aviso");
+  aviso.classList.toggle("on", !!malo);
+  if (malo && aviso.textContent !== malo) aviso.textContent = malo;
 
   // El botón DICE por qué no se puede tocar todavía, en vez de sólo apagarse.
   // La leyenda se repite con el aviso de arriba a propósito: el aviso está
@@ -1399,7 +1434,7 @@ function pintarTickets() {
   if (!ocupado) {
     var btnReg = document.getElementById("btn-registrar");
     var texto = !ticketSel ? "Selecciona un ticket"
-              : malo      ? "Selecciona un ticket con lavado gratis"
+              : malo      ? malo
                           : "Registrar visita";
     btnReg.disabled = !ticketSel || !!malo;
     btnReg.classList.toggle("falta", btnReg.disabled);
@@ -1419,7 +1454,11 @@ function pintarTickets() {
     ticketsAhora.forEach(function (t) {
       var sinLavado = !t.carro_id;
       var elegido = ticketSel && ticketSel.carro_id === t.carro_id;
-      var malo = elegido && ticketMalo(t);
+      // Rojo en CUALQUIER ticket que no se pueda usar, no solo en el elegido:
+      // el punto es que la cajera lo vea antes de tocarlo, con el cliente
+      // enfrente. Si prendio el switch de gratis, los que no son gratis salen
+      // rojos — que es justo lo que quiso decir al prenderlo.
+      var malo = ticketMalo(t);
       var tag = t.clase === "canje"    ? '<span class="tk-tag gratis">LAVADO GRATIS</span>'
               : t.clase === "cortesia" ? '<span class="tk-tag cort">CORTESÍA · no suma</span>' : "";
       html += '<button class="tk-op' + (elegido ? " sel" : "") + (malo ? " malo" : "") + '"' +
