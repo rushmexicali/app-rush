@@ -97,7 +97,13 @@ async function anotar(
       motivo,
       evento,
       cabeceras: cab,
-      crudo: motivo === "ok" ? null : (crudo ?? "").slice(0, 4000),
+      // ⏳ TEMPORAL: el cuerpo CRUDO de un aviso bueno tambien se guarda, para
+      // poder calcular el HMAC contra la firma real y descubrir QUE es
+      // exactamente lo que Zettle firma (el cuerpo entero? el payload? el
+      // payload mas el timestamp?). Con `ventas.payload` no alcanza: ahi esta
+      // el JSON ya parseado, y volver a serializarlo NO da los mismos bytes.
+      // Se quita en cuanto la verificacion este implementada.
+      crudo: (crudo ?? "").slice(0, 8000),
     });
   } catch (e) {
     console.error("No se pudo anotar en la bitacora (no afecta la venta):", e);
