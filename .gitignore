@@ -28,3 +28,7 @@ build/
 
 # === Archivos temporales del CLI de Supabase ===
 supabase/.temp/
+
+# Cuerpos JSON generados al mandar SQL a la API (artefactos, no fuente)
+*.sql.json
+*.body.json
