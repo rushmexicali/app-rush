@@ -640,12 +640,25 @@ submarca y tipo de carrocería pasan a venir de la foto. Reglas:
   MAZDA3", "CHRYSLER 300"— no queden huérfanos).
 
 Mecánica: `carros.submarca` (columna nueva, migración `061`). La foto se guarda con la RPC
-**`guardar_datos_de_foto`**. ⚠️ **La foto es AUTORITATIVA: sobrescribe placa/marca/submarca**
-(migración `063`, corrige el `coalesce` original de la 061). Así, re-tomar una foto buena
-**limpia** el dato de un carro fotografiado por error — esa re-toma es la vía de corrección que
-faltaba, ya que marca/submarca no se editan a mano. Pero solo se escribe cuando **de verdad hubo
-lectura**: si Anthropic hace timeout o falla, `leerFoto` devuelve `null` y `/foto` **no toca nada**
-(si no, un timeout en una re-subida borraría una lectura buena anterior). `placa_en` se pone
+**`guardar_datos_de_foto`**. ⚠️ **La foto es autoritativa, pero POR CAMPO** (migración `109`,
+que angosta la `063`, que a su vez corrigió el `coalesce` original de la `061`). Dos reglas:
+
+1. **Un campo se escribe cuando la lectura nueva trajo algo. Un nulo NO borra.** La `063` había
+   dejado que el nulo se escribiera igual que el valor, así que una lectura que no alcanzó a ver
+   la marca **borraba la marca que otra lectura sí vio**. Desde que existe el botón "Tomar foto
+   otra vez" (`103`, para las pickups grandes) ese caso se dispara a diario.
+2. **Excepción: si la placa leída es DISTINTA a la guardada, se reemplaza el juego completo**,
+   nulos incluidos. Dos placas distintas son dos carros distintos: lo guardado era de otro carro
+   y no hay nada que conservar. Ahí es donde la `063` tenía razón — re-tomar una foto buena
+   **limpia** el dato de un carro fotografiado por error, y ésa es la única vía de corrección que
+   hay, porque marca/submarca no se editan a mano.
+
+> Lo que **no** cubre, dicho de frente: un carro con datos de otro cuya foto nueva tampoco
+> alcanza a leer la placa se queda como estaba. Se prefiere así porque el otro extremo —borrar
+> en cada lectura muda— estaba costando datos todos los días.
+
+Y solo se escribe cuando **de verdad hubo lectura**: si Anthropic hace timeout o falla,
+`leerFoto` devuelve `null` y `/foto` **no toca nada**. `placa_en` se pone
 siempre; **no toca `datos_de_nota`** (esa mide si la cajera llenó la nota — mismo cuidado que la
 `051`). El `detalle_del_carro` también devuelve submarca (`062`). Probado end-to-end: un carro de
 prueba con tipo `camioneta` + foto de un Corolla quedó `marca=TOYOTA, submarca=COROLLA,
@@ -775,6 +788,89 @@ para adivinar.
 
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
+
+## 11.40 Tercera tanda: lo que escribía antes de validar, y el reporte del dueño (19/ago/2026, migraciones `109`–`110`)
+
+Cierra los tres del backend que quedaban de la auditoría y los cinco puntos del reporte que el
+dueño había pedido seguir en otra sesión. Desplegado el mismo día, con el taller abierto, a
+petición suya.
+
+### Dos escrituras que ocurrían antes de saber si debían ocurrir (`109`)
+
+- 🔴 **`editar_carro` escribía antes de validar.** El `update` de tipo/color/marca/línea iba
+  **antes** de los tres checks de secadores, y en plpgsql **un `return` no revierte** (no abre
+  subtransacción; solo un `exception` lo haría). El caso real: el supervisor abre Corregir de un
+  carro secando, cambia el color, quita todos los secadores y guarda. La pantalla le dice *"Deja
+  al menos un secador"* y él cree que no guardó nada — **pero el color ya quedó cambiado**, y las
+  asignaciones ya se habían apuntado a la línea nueva. Es de las peores formas de fallar: la
+  pantalla dice una cosa y la base guarda otra, sin que nadie pueda notarlo desde afuera. El
+  arreglo no cambia ninguna regla: son las mismas validaciones y las mismas escrituras,
+  reordenadas, con la frontera marcada en el código (`VALIDAR` / `ESCRIBIR`).
+
+  > **La prueba reprodujo el bug contra producción antes de tocar el código**, y ése es el orden
+  > que vale la pena repetir: primero se demuestra que el error existe, después se arregla. Si la
+  > prueba hubiera pasado desde el principio, habría estado midiendo otra cosa.
+
+- 🔴 **`guardar_datos_de_foto` borraba lo que no leyó.** Ver §9: ahora la foto es autoritativa
+  **por campo**, y una placa distinta a la guardada sigue reemplazando el juego completo.
+
+- **`/foto` no limpiaba `placa_en`.** `fotos_por_leer` exige `placa_en is null`, así que una
+  re-toma **nunca** entraba a la cola de reintentos: si la lectura de esa foto se caía, se quedaba
+  sin leer para siempre. Y es justo el flujo de las pickups grandes (`103`), donde el supervisor
+  re-toma **porque** la primera lectura no vio la placa — o sea el caso donde `placa_en` siempre
+  viene estampado. La gracia de 3 minutos de la vista impide que el obrero de fondo le gane a la
+  lectura que `/foto` está haciendo en ese momento.
+
+### El perfil del trabajador se pagina y se filtra (`110`)
+
+Bajaba el historial **completo** en una sola respuesta: 351 carros = **134 kB**, creciendo lineal
+para siempre. Ahora son **19 kB** (50 por página, con "Ver 50 más" y "Ver todos"), más filtro por
+rango de días y por tipo de servicio.
+
+- **El filtro no es comodidad: es la regla de peras con manzanas** (§12.1). Un promedio mental de
+  esa tabla mezclando express con completos no significa nada, y era la única forma de leerla.
+- **Los contadores de arriba respetan el filtro.** Un titular que diga 351 sobre una tabla de una
+  semana es la misma contradicción que la `107` acababa de quitar del reporte del día.
+- **`p_limite = 0` trae todo**, a propósito: así esto no se vuelve un tope silencioso.
+- Cambió la firma, así que la migración **dropea la vieja primero** — un parámetro nuevo crea una
+  **sobrecarga**, no un reemplazo (lección de la `052` y de la `098`).
+- ⚠️ **Comprobado contra línea base:** sin filtro, la salida quedó **idéntica al byte** en los 16
+  secadores (lavados, rechazos e historial completo). El paginado no cambió ningún número.
+
+### Los cinco puntos del reporte, y sus menores
+
+| Qué pasaba | Qué pasa ahora |
+|---|---|
+| Un rango de **un solo día** salía rotulado *"Día en curso — todavía puede cambiar"* | El modo lo dice **quien llama**, no se deduce de `dias > 1`. Las fechas del rango además salen formateadas, no crudas |
+| *"N visitas"* se lee como total donde de verdad se lee | La nota de **piso, no un total** pasa al perfil de la placa y a los resultados de búsqueda, incondicional y en **una sola función** (`notaPiso`) |
+| *"Historial por placa"* se pinta debajo del día y con su mismo `<h2>` | Subtítulo: es de siempre y **no cambia al escoger otro día** |
+| El buscador de placas no tenía rebote ni guardia | 250 ms y verificación de respuesta vieja, como los otros dos del mismo archivo |
+| Menores | El error del backend **se escapa**; un 401 en `cargarPlacas` deja de pintarse como *"no hay placas leídas"*; con un rango, *"este día"* dice *"en este periodo"*; en Últimos lavados la columna *"Última vez"* pasa a *"Día"* (el rótulo venía copiado de otra tabla donde sí significaba otra cosa) |
+
+**Cómo se verificó el front:** en el navegador, con datos falsos y `pedirJSON` interceptado, no
+mirando la pantalla. Se comprobaron las URLs que arma cada filtro, que el estado sobreviva al
+re-render, que teclear 7 caracteres sea **1** consulta, y que una respuesta lenta de `"BV"` ya no
+se pinte encima de la de `"BVJ113A"`.
+
+### El ensayo de una migración completa, sin aplicarla
+
+Las dos migraciones se corrieron **contra producción sin aplicarse**: se concatena el archivo de
+la migración con el de su prueba y se mandan juntos, porque el endpoint de administración los
+ejecuta en **una sola transacción implícita** y el `raise` final revierte también el
+`create or replace function`. Después se confirma con `pg_get_functiondef` que la función viva
+quedó sin tocar. La ventaja sobre envolver el DDL en `execute`: se ensaya **el mismo archivo** que
+después se aplica, byte por byte. Para comparar contra el comportamiento viejo se antepone un
+tercer archivo que guarde la línea base en una `temp table` — dentro de esa transacción la función
+vieja todavía existe.
+
+### Y la auditoría general quedó como skill
+
+`.claude/skills/auditoria-general/`. Se dispara diciendo **"corre la auditoría general"**. Además
+de reproducir los siete frentes, **obliga a cuestionar su propio método antes de correr**: si los
+agentes siguen siendo los correctos, si salió algo nuevo, o si hay una forma más exhaustiva —
+encargo del dueño el 19/ago. El argumento está escrito ahí: la auditoría anterior no tuvo pase
+adversarial, y por eso alcanzó a producir un juicio por escrito sobre dos personas con nombre que
+resultó falso.
 
 ## 11.45 Segunda tanda de la auditoría: el crítico, los tres que muerden solos y los números del reporte (19/ago/2026, migraciones `106`–`108`)
 

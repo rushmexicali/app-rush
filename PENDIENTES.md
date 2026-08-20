@@ -6,61 +6,22 @@
 
 ---
 
-## ⏳ HECHO Y PROBADO, ESPERANDO EL CIERRE PARA DESPLEGAR (19/ago/2026, tarde)
+## ✅ DESPLEGADO el 19/ago/2026 (migraciones `109`–`110`, commit `bef16a5`)
 
-Commit `b3d8efa`. **Nada de esto está en producción todavía**: se terminó con el taller
-abierto y toca la función `app`, que es la que usa el supervisor. Va completo en el corte.
+Se fue completo y verificado en vivo. El detalle y las razones viven en `CLAUDE.md §11.40`; aquí
+sólo queda el rastro para no volver a levantarlo:
 
-**Los tres pasos, en este orden** (la migración primero: el front nuevo llama a
-`perfil_de_secador` con parámetros que la función vieja no tiene):
+- **Backend:** `editar_carro` ya no escribe antes de validar (#17), `guardar_datos_de_foto` ya no
+  borra lo que no leyó (#18), y `/foto` limpia `placa_en` para que una re-toma sí entre a la cola
+  de relectura (#19).
+- **Reporte del dueño:** el perfil del trabajador se pagina (134 kB → 19 kB) y se filtra por días
+  y por tipo de servicio; los otros cuatro puntos y los cinco menores del archivo.
+- **La auditoría general quedó como skill** (`.claude/skills/auditoria-general/`): se dispara
+  diciendo *"corre la auditoría general"* y arranca cuestionando su propio método.
 
-```bash
-bash scripts/releer-fotos/q.sh supabase/migrations/109_editar_valida_antes_y_foto_no_borra.sql
-bash scripts/releer-fotos/q.sh supabase/migrations/110_perfil_de_secador_paginado.sql
-bash pruebas/correr.sh && supabase functions deploy app --no-verify-jwt
-git push
-```
-
-> Las dos pruebas nuevas (`editar-y-foto.sql` y `perfil-paginado.sql`) **fallan a propósito
-> mientras las migraciones no estén aplicadas** — es lo que confirma que sí miden algo.
-
-### Backend (migración 109)
-
-- ✅ **#17 `editar_carro` escribía antes de validar.** El `update` iba antes de los checks de
-  secadores y un `return` en plpgsql no revierte: el color quedaba guardado mientras la
-  pantalla decía "Deja al menos un secador". La prueba lo reprodujo contra producción antes
-  de tocar el código.
-- ✅ **#18 `guardar_datos_de_foto` borraba lo que no leyó.** Un nulo ya no pisa lo que otra
-  lectura sí vio. Se conserva el caso de la 063 (placa distinta = era otro carro = se
-  reemplaza entero). Lo que **no** cubre queda escrito en la migración.
-- ✅ **#19 `/foto` no limpiaba `placa_en`**, así que una re-toma nunca entraba a la cola de
-  relectura (que exige `placa_en is null`). Era justo el flujo de las pickups.
-
-### El reporte del dueño (migración 110 + `docs/reporte.html`)
-
-- ✅ **El perfil del trabajador se pagina y se filtra.** 50 por página con "Ver 50 más" y
-  "Ver todos", más rango de días y tipo de servicio (Completos / Express / Encerado). Los
-  contadores de arriba respetan el filtro, para que no digan 346 sobre una tabla de una
-  semana. Línea base: la salida sin filtro quedó **idéntica al byte** en los 16 secadores.
-- ✅ **La nota de "piso, no un total"** pasa a donde de verdad se lee un conteo de visitas
-  (perfil de la placa y resultados de búsqueda), incondicional y en un solo lugar del código.
-- ✅ **"Historial por placa" dice que es de siempre**, no del día de arriba.
-- ✅ **Un rango de un solo día ya no se rotula "Día en curso"**: el modo lo dice quien llama,
-  no se deduce de `dias > 1`. Las fechas del rango salen formateadas.
-- ✅ **El buscador de placas tiene rebote (250 ms) y guardia de respuesta vieja.** Verificado
-  en el navegador: teclear 7 caracteres = 1 consulta, y la respuesta lenta de "BV" ya no se
-  pinta encima de la de "BVJ113A".
-- ✅ **Menores:** el error del backend se escapa; un 401 en `cargarPlacas` deja de pintarse
-  como "no hay placas"; "este día" dice "en este periodo" con un rango; la columna "Última
-  vez" de Últimos lavados pasa a "Día"; `pintarPlacas` ya no recibe un parámetro que no usa.
-
-### Y la auditoría queda como skill
-
-`.claude/skills/auditoria-general/` — se dispara diciendo **"corre la auditoría general"**.
-Antes de lanzar nada se obliga a preguntarse si los agentes y el método siguen siendo los
-correctos, o si conviene algo más exhaustivo (encargo del dueño, 19/ago).
-
----
+Verificado contra la API en vivo después de subir: `/cola` sana, los tres filtros de
+`/trabajador` responden, la suite completa en verde, y **`docs/index.html` no cambió** — la
+pantalla del supervisor quedó igual, que era la condición para poder subir con el taller abierto.
 
 ### Y lo que sigue esperando decisión del dueño
 
@@ -164,13 +125,13 @@ producción, no solo se leyó.
 
 ### 🔧 Backend
 
-17. ✅ **HECHO 19/ago (migración 109, pendiente de desplegar).** `editar_carro` escribía antes de validar. El `update` va ANTES de los tres checks de
+17. ✅ **HECHO 19/ago (migración 109).** `editar_carro` escribía antes de validar. El `update` va ANTES de los tres checks de
     secadores, y un `return` en plpgsql **no revierte**: el color se guarda aunque el guardado
     "falle" por dejar 0 secadores.
-18. ✅ **HECHO 19/ago (migración 109, pendiente de desplegar).** `guardar_datos_de_foto` borraba lo que venía nulo, contradiciendo la "aceptación parcial por
+18. ✅ **HECHO 19/ago (migración 109).** `guardar_datos_de_foto` borraba lo que venía nulo, contradiciendo la "aceptación parcial por
     campo" de §9: una re-toma que no saca marca **borra la marca buena anterior**. Con el botón
     "tomar foto otra vez" (103) esto se dispara solo.
-19. ✅ **HECHO 19/ago (pendiente de desplegar).** `/foto` no limpiaba `placa_en` al subir foto nueva, así que una re-toma **nunca** entra a la
+19. ✅ **HECHO 19/ago (desplegado).** `/foto` no limpiaba `placa_en` al subir foto nueva, así que una re-toma **nunca** entra a la
     cola de reintentos (`fotos_por_leer` exige `placa_en is null`). Justo el flujo de las pickups.
 20. ✅ **HECHO 19/ago (se dropeó la vieja).** `buscar_tickets` tenía dos sobrecargas y la llamada de 2 argumentos revienta con `42725`.
     La `098` agregó en vez de reemplazar — la lección exacta de la `052`. *Arreglo:* `drop` la vieja.
