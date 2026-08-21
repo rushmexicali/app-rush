@@ -38,7 +38,121 @@ del dueño** — la regla de §2 sigue siendo esperar al corte cuando no lo pide
 - **La caja SÍ se va a usar**, y quiere el CRM bien estructurado — *"incluso se puede usar sin la
   lectura de placas"*. Por eso entraron los índices de búsqueda.
 
-## 🔬 AUDITORÍA COMPLETA DEL 19/ago/2026 — 46 hallazgos
+## 🔬 AUDITORÍA GENERAL DEL 20/ago/2026 — 8 frentes con pase adversarial
+
+Corrida con la skill `auditoria-general` orquestada con `Workflow`: **16 agentes, 53 hallazgos,
+~42 min**. Novedades del método frente a la del 19/ago: un **octavo frente dedicado al código
+escrito ese día** (migraciones 105–117, con instrucción de tratarlo como sospechoso y de no
+creerle a los comentarios), un **verificador adversarial** por hallazgo grave, y un **crítico de
+completitud** que buscó lo que nadie revisó.
+
+**El pase adversarial no refutó ninguno, pero bajó la severidad de 4 de 8 graves** (dos a `baja`,
+dos a `media`). Eso es el pase haciendo su trabajo: sin él, cuatro números inflados habrían
+entrado al informe como urgentes.
+
+### 🔴 LO QUE HAY QUE ATENDER YA
+
+1. **El CRM lleva CUATRO DÍAS sin registrar una sola visita.** La última es del **16/ago**; hoy
+   es 20. Medido: **248 lavados sin sello** y **35 gratis entregados sin descontar** en esos
+   días. Los sellos entran por el import y los canjes se honran en el mostrador, así que
+   `disponibles` (240 hoy) sólo sube: es pasivo contra el negocio, creciendo solo. **Lo encontró
+   el crítico de completitud, no los frentes** — ninguno tuvo como sujeto los datos de la
+   operación.
+2. **🔴 El índice único que se puso el 19/ago (migración `114`) rompe el import del
+   ClientNoteTracker.** Lo hallaron DOS frentes independientes, el escéptico lo reprodujo contra
+   producción y se confirmó a mano: **21 visitas** quedaron con `carro_id` nulo y `caja='import'`,
+   el paso 2 del import las vuelve a ligar, choca con `unique_violation`, y como el script es un
+   `do $$` sin manejador **se cae el bloque entero: no entra nada**. Es la tubería que carga
+   14,804 de las 14,828 visitas. Los dos puntos se juntan: el CRM está muerto y el arreglo para
+   revivirlo está bloqueado por el candado que se puso ayer.
+   *Arreglo:* que el paso de ligado excluya los carros que ya tienen visita activa y desempate
+   cuando dos visitas compiten por el mismo carro — o mejor, que el import llame a
+   `enlazar_visita_a_carro`, que ya trae la comprobación (es justo lo que el encabezado de la
+   `114` dice que faltaba).
+3. **La suite de pruebas no cubre el import.** `bash pruebas/correr.sh` habría dicho TODO PASÓ
+   justo antes de romperlo, porque no hay una sola prueba de la tubería que carga el 99.8% de las
+   visitas. La suite protege lo ya arreglado, no lo que está por romperse.
+
+### 🟠 La clase que hay que arreglar como clase, no como seis bugs
+
+Seis hallazgos en cuatro frentes son **el mismo patrón**: un error del backend se pinta como
+ausencia de datos (`/cola`, `/entregados`, `/secadores`, el buscador de la caja, el reporte del
+dueño, "Ver 50 más"). La migración `105` arregló al **productor** (`json()` marca `ok:false`) y
+dejó intactos a **todos los consumidores**, que siguen leyendo `d.algo || []`. Presentado como
+seis bugs se arreglan seis líneas y el séptimo consumidor nace igual la semana entrante; se
+arregla en el ayudante `pedirJSON` de cada pantalla.
+
+### 🟠 Lo demás, por frente (severidad ya corregida por el escéptico)
+
+- **Base:** `enlazar_visita_a_carro` borra marca/submarca sin la regla "un nulo no borra" que la
+  `109` sí le puso a `guardar_datos_de_foto` — misma causa que el de `desenlazar_visita`;
+  `importar_personas()` es un arma cargada que nadie llama; la regla de cortesía vive en una sola
+  de las dos funciones que registran visitas; **164 tickets siguen reclamados por dos clientes**
+  (334 visitas, ~170 sellos de más) — el pendiente que quedó abierto por decisión.
+- **API:** `/cola` descarta el error de sus dos consultas secundarias y sale 200 incompleta;
+  falta `Access-Control-Max-Age` (la mitad de las invocaciones son preflights); cinco rutas
+  muertas, una de ellas reabre la fuga de lealtad que el rediseño del 15/ago cerró.
+- **Fondo:** el candado de `sincronizar-jibble` que se puso hoy **es inerte** (lock de
+  transacción + llamada asíncrona: nunca puede impedir el solape que dice impedir); si un grupo
+  de Jibble se vacía, 3 de 15 personas desaparecen sin un error; la `108` quedó a medias (la
+  función que cuenta descartes no la llama nadie); la bitácora guarda la firma pero **no los
+  bytes que la firma cubre**, así que el pendiente de la firma de Zettle no se puede cerrar con
+  lo que se está guardando.
+- **Supervisor:** dos respuestas de `/cola` en vuelo y la vieja pisa a la nueva; "Entregar" y
+  "RECHAZAR" no dan señal mientras viaja la petición y tragan los toques; el outbox de fotos se
+  rinde a los ~30 min, borra la foto y sólo lo dice en la consola.
+- **Caja:** sin corte de tiempo (una petición colgada mata todos los botones); si falla la
+  lectura, `captura` conserva la foto y la placa del carro ANTERIOR; la lista de tickets no dice
+  el día, así que al abrir se ven los de ayer; `upsert_persona` sólo deduplica por teléfono y
+  4,917 de 4,918 personas no tienen.
+- **Reporte:** "Devoluciones" cuenta 31 cancelaciones que nunca fueron un reembolso (y la señal
+  que el dueño sí pidió —la devolución DESPUÉS de entregar— no existe); la `107` quedó a medio
+  desplegar (31 de 32 días congelados sin los campos que la arreglan); Trabajadores no aplica el
+  filtro de `tiempo_imposible`.
+- **Costos:** Storage es lo primero que se rompe, punto de quiebre ~171 carros/día — **y hay
+  1.08 fotos por carro, no 1**: 175 archivos (15 MB) que no apunta nadie, del botón "Tomar foto
+  otra vez". `cron.job_run_details` ya es el **21% de toda la base** (16 de 76 MB).
+
+### 🕳️ Lo que el crítico encontró que NADIE revisó
+
+- **No hay respaldo.** `/respaldo` devuelve 94 KB con **una sola llave**: los 32 reportes
+  diarios. No trae carros, etapas, asignaciones, personas ni visitas. El plan de recuperación del
+  §13 es un botón que baja el 0.5% de los datos y que nadie ha apretado nunca.
+- **`carros.placa_dudosa`**: tres funciones la escriben, **cero código la lee**. Hay 14 carros
+  marcados y no hay ninguna vía en el producto para revisarlos. La red caza el problema y
+  entierra la evidencia.
+- **La infraestructura que no es un archivo del repo**: el relay go2rtc+Tailscale, la Reolink, la
+  suscripción del webhook, las credenciales de Jibble. Si el relay se cae, `obtenerStream()` cae
+  **sin aviso** a la cámara del tablet, que no apunta al carro.
+- **El backlog del 3/ago seguía abierto** y predecía exactamente el hallazgo de hoy sobre "el
+  tipo sale de la submarca" duplicado. Una auditoría que no arranca leyendo el backlog vuelve a
+  encontrar lo mismo con otro nombre.
+
+### ✅ Lo comprobado sano (no re-auditar)
+
+0 drift en las 3 columnas generadas sobre 2,724 carros · las 7 `SECURITY DEFINER` con
+`search_path` fijo y `anon` sin alcance a ninguna sensible · 35 tablas con RLS y 5 vistas
+`security_invoker` · 0 sobrecargas ambiguas en 118 funciones · las migraciones 112–117 de verdad
+aplicadas en la base · la cola de relectura en cero por los tres lados · 0 corridas de cron
+fallidas en 7 días · 0 etapas abiertas en carros entregados, 0 negativas, 0 placas sin
+normalizar · el webhook con 61 bitácoras 'ok' contra 61 ventas y **0** `trigger_carro_fallo` ·
+0 no-express en la línea 1.
+
+### 📌 Autocrítica del método (para la próxima corrida)
+
+- **Falta un frente de DATOS DE LA OPERACIÓN.** Los 8 fueron 7 superficies de código más costos,
+  y por eso los cuatro días de CRM muerto los encontró el crítico y no un frente. **Hay que
+  agregarlo a la skill.**
+- **Frentes flojos:** supervisor (3,069 líneas, 6 hallazgos, ninguno alto — la densidad más baja
+  de todos) y costos (4 de 6 hallazgos son ecos de otros frentes).
+- **7 duplicados** entre frentes: el reparto por archivo hace que un bug que cruza dos archivos
+  se cuente dos veces y con severidades distintas.
+- **El escéptico no refutó nada pero corrigió 4 severidades de 8.** Vale la pena; el siguiente
+  paso es que también verifique los `media`, que es donde se acumularon los 53.
+
+---
+
+## 🔬 (ANTERIOR) AUDITORÍA DEL 19/ago/2026 — 46 hallazgos
 
 > ✅ **Los 7 PRIORIZADOS ya están hechos y desplegados** (migración `105`, commit `9904fe3`).
 > Ver `CLAUDE.md §11.50`. Lo que sigue abajo con ✅ ya no requiere trabajo; lo que sigue sin marca
