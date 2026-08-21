@@ -6,7 +6,7 @@
 
 ---
 
-## ✅ DESPLEGADO el 19/ago/2026 (migraciones `109`–`110`, commit `bef16a5`)
+## ✅ DESPLEGADO el 19/ago/2026 (migraciones `109`–`111`, commits `bef16a5` y `8e619e5`)
 
 Se fue completo y verificado en vivo. El detalle y las razones viven en `CLAUDE.md §11.40`; aquí
 sólo queda el rastro para no volver a levantarlo:
@@ -16,6 +16,7 @@ sólo queda el rastro para no volver a levantarlo:
   de relectura (#19).
 - **Reporte del dueño:** el perfil del trabajador se pagina (134 kB → 19 kB) y se filtra por días
   y por tipo de servicio; los otros cuatro puntos y los cinco menores del archivo.
+- **Cuarta tanda (`111`, solo base):** un error creando el carro ya no tumba la VENTA y queda escrito en la bitácora (#24); el índice de `asignaciones` (9.2 ms → 1.6 ms); la caja deja de escribir la placa cruda y respeta el candado de placa repetida; `desenlazar_visita` ya no borra la foto del supervisor ni el cliente de la nota; `cerrar_pendientes` alcanza al carro que entra después del corte.
 - **La auditoría general quedó como skill** (`.claude/skills/auditoria-general/`): se dispara
   diciendo *"corre la auditoría general"* y arranca cuestionando su propio método.
 
@@ -142,16 +143,37 @@ producción, no solo se leyó.
     invisibles** para `buscar_tickets`, `tickets_recientes` y `ticket_detalle` (su carro sí se creó).
 23. ✅ **HECHO 19/ago (migración 108).** El webhook descartaba en silencio por tres caminos (cuerpo ilegible, JSON inválido, sin
     `purchase_uuid`): responde 200 y el único rastro son logs de ~1 día que nadie mira.
-24. **`crear_carro_desde_venta` no tiene `exception when others`**: un error en el trigger **tumba
+24. ✅ **HECHO 19/ago (migración 111).** `crear_carro_desde_venta` no tenía `exception when others`: un error en el trigger **tumba
     la venta completa**. Es la lección de §7 un nivel más abajo.
-25. **Menores:** falta índice en `asignaciones(empleado_id)` (3 funciones hacen seq scan) e índices
-    trigram para las búsquedas; `encimados` escanea toda la historia (18 ms/día consultado, crece
-    cuadrático); `cerrar_pendientes` no alcanza carros creados después de las 20:30;
-    `enlazar_visita_a_carro` escribe placa cruda y brinca el candado de la `100`; `desenlazar_visita`
-    borra la foto y el `cliente` que puso la nota de caja; no hay unique parcial en
-    `visitas(carro_id) where estado='activa'`; `iniciales_de` repite (Jaime Gallegos y Jesús Gil = JG);
-    `sincronizar-jibble` no tiene candado (a diferencia de `limpiar-fotos`);
-    **`Gratis`+`6to Express` ya son 10 casos, no 5.**
+25. 🟠 **PARCIAL — migración `111`.**
+    ✅ Índice en `asignaciones(empleado_id, carro_id)` (9.2 ms → 1.6 ms, Index Only Scan);
+    ✅ `enlazar_visita_a_carro` normaliza la placa y respeta el candado de la `100`;
+    ✅ `desenlazar_visita` ya no borra la foto del supervisor ni el cliente de la nota;
+    ✅ `cerrar_pendientes` alcanza al carro creado después del corte (medido: 0 casos hasta hoy);
+    ✅ `Gratis`+`6to Express` (resuelto el 19/ago con la decisión del dueño).
+    **Queda:** índices trigram para las búsquedas; `encimados` escanea toda la historia (18 ms/día
+    consultado, crece cuadrático); `iniciales_de` repite (Jaime Gallegos y Jesús Gil = JG);
+    `sincronizar-jibble` no tiene candado (a diferencia de `limpiar-fotos`); y el **unique parcial
+    en `visitas(carro_id) where estado='activa'`, que NO se puede crear todavía** — ver abajo.
+
+### 🟠 NUEVO (salió al ir por ese unique): 16 lavados con dos clientes
+
+Hay **16 carros con dos visitas activas**, y en 14 son **dos personas distintas**. Todos entraron
+por `caja = 'import'` (ClientNoteTracker); dos mezclan import con la caja en vivo. Medido antes de
+alarmar:
+
+- **NO infla la lealtad**: `lealtad_por_persona` no mira `carro_id`, cuenta visitas, y cada persona
+  sí vino.
+- **NO le dio a nadie el historial de otro**: de los 14 con placa leída, **ninguno** tiene su placa
+  ligada a dos personas.
+- **Sí está mal** el campo `cliente` del carro y lo que muestra el reporte: uno de los dos nombres
+  no es el dueño de ese lavado.
+
+Es un hueco latente (el import liga `carro_id` sin la comprobación que sí hace
+`enlazar_visita_a_carro`), no un daño hecho. **Espera decisión del dueño** —cuál visita se queda
+con cada lavado— porque son personas con nombre y aplica su regla de *1000% o nada*. El unique
+entra después.
+
 
 ### 📱 Estabilidad del supervisor
 

@@ -789,6 +789,98 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 11.35 Cuarta tanda: la venta que se caía con el carro (19/ago/2026, migración `111`)
+
+Cierra `#24` y cuatro de los menores del `#25`. **Es sólo base de datos**: no toca la función
+`app` ni ninguna de las tres pantallas, así que se pudo aplicar sin esperar el corte.
+
+### 🔴 Un error creando el carro tumbaba la VENTA
+
+`ventas_crear_carro` es un trigger **AFTER INSERT**. Si la función revienta, revienta el
+`insert` de la venta — o sea que un producto con una forma que no esperábamos no dejaba un carro
+sin crear: dejaba la **venta sin guardar**, y el webhook le respondía 500 a Zettle.
+
+Es la lección de §7 un nivel más abajo. Allá una venta real se perdió porque la fecha venía en
+milisegundos y Postgres tumbó la fila completa; la regla que salió de eso —*"si un dato
+secundario no se entiende, se guarda en blanco; la venta nunca se pierde por un campo que no era
+esencial"*— vale igual aquí. **El carro es importante; la venta es el dinero.**
+
+> **La prueba reprodujo el bug contra producción antes de tocar el código**: una restricción
+> temporal que hace fallar el `insert` del carro, y el `insert` de la venta se cae con él. Es el
+> mismo orden de la `109` — primero se demuestra que el error existe.
+
+⚠️ **Tragarse el error no puede ser descartar en silencio**, que es el hallazgo `#23` que la `108`
+acababa de cerrar. Por eso el error va a **`webhook_bitacora`** con motivo `trigger_carro_fallo`
+y el payload completo: si un día el catálogo cambia y ninguna venta crea carro, la cola amanece
+vacía **pero queda escrito por qué**, y el carro se puede recrear desde ahí. Y la bitácora va en
+su propio bloque con su fallo tragado: tampoco ella puede tumbar una venta.
+
+### El índice que faltaba, medido
+
+Las tres funciones que buscan por empleado —`perfil_de_secador`, `trabajadores` y el auto-join de
+encimados— hacían **Seq Scan** sobre las 2,706 asignaciones.
+
+```
+antes:   Seq Scan on asignaciones a   ...  9.219 ms
+después: Index Only Scan using asignaciones_empleado_idx  ...  1.570 ms
+```
+
+Se indexa **`(empleado_id, carro_id)`** y no sólo `empleado_id`: las tres consultas piden justo
+ese par, así que el índice las cubre sin volver a la tabla — de ahí el *Only*.
+
+### La caja escribía la placa cruda y se saltaba su propio candado
+
+`enlazar_visita_a_carro` guardaba `v.placa` tal como la tecleó la cajera, mientras el camino de la
+foto guarda la **normalizada** en `placa` y lo crudo en `placa_display`. Dos formatos en la misma
+columna: la misma placa contaría como dos carros en el historial. Y no preguntaba por el candado
+de placa repetida del día (`100`) — o sea que **el camino que se saltaba la protección era el de
+la caja**, donde el dato entra a nombre de un cliente con nombre y apellido.
+
+La regla de *"esta placa ya está en otro carro de hoy"* pasa a vivir en **una sola función**,
+`placa_repetida_hoy`, que consultan los dos caminos. Estaba escrita dentro de
+`guardar_datos_de_foto`; copiarla habría sido el error que este proyecto ya cometió seis veces.
+Cuando choca, tampoco se le liga la placa al cliente: sería pegarle el carro de otro.
+
+### Deshacer un enlace ya no borra lo que ese enlace nunca puso
+
+`desenlazar_visita` limpiaba dos cosas que casi nunca eran suyas:
+
+- **`cliente`** — lo pone la **nota de la cajera** al crear el carro, mucho antes de que exista la
+  visita. Ahora sólo se quita si es exactamente el nombre que puso ese enlace.
+- **`foto_path`** — casi siempre es la foto que tomó el **supervisor** al asignar. Borrarla dejaba
+  al carro sin su única imagen y sin forma de releer la placa. Ahora sólo se quita si es la misma
+  ruta que aportó esa visita.
+
+### `cerrar_pendientes` alcanza al que entró tarde
+
+Corre a las 20:30 y sólo miraba los carros creados **ese día**. Un carro que entra a las 20:45 no
+existía cuando corrió, y la corrida de mañana ya filtra por el día de mañana: se quedaba abierto
+para siempre. Se le quitó el piso a la ventana.
+
+> **Medido antes de tocar: 0 carros entrados después de las 20:30 en toda la historia, y 0
+> abiertos de días anteriores.** El hueco nunca se ha disparado; se destapa solo el día que el
+> turno se alargue, que es justo lo que §12.1 ya advierte del corte.
+
+### 🟠 Y salió un hallazgo nuevo: 16 lavados con dos clientes
+
+Al ir por el índice único que faltaba en `visitas(carro_id) where estado='activa'`, resultó que
+**no se puede crear todavía**: hay **16 carros con dos visitas activas**, y en 14 de ellos son
+**dos personas distintas**. Todos entraron por `caja = 'import'` (el ClientNoteTracker); dos
+mezclan import con la caja en vivo.
+
+Lo que **sí** y lo que **no** rompe, medido antes de decir nada:
+
+| | |
+|---|---|
+| ¿Infla la lealtad? | **No.** `lealtad_por_persona` no mira `carro_id`: cuenta visitas. Cada persona vino de verdad |
+| ¿Le dio a alguien el historial de otro? | **No.** De los 14 con placa leída, **ninguno** tiene su placa ligada a dos personas |
+| ¿Qué sí está mal? | El campo `cliente` del carro y lo que muestra el reporte: uno de los dos nombres no es el dueño de ese lavado |
+
+O sea que es un hueco **latente**, no un daño hecho: el camino del import liga `carro_id` sin
+pasar por la comprobación que sí hace `enlazar_visita_a_carro`. **Queda esperando decisión del
+dueño** —cuál de las dos visitas se queda con cada lavado— porque son personas con nombre y aquí
+aplica su regla de *1000% o nada*. El índice único entra después de eso.
+
 ## 11.40 Tercera tanda: lo que escribía antes de validar, y el reporte del dueño (19/ago/2026, migraciones `109`–`110`)
 
 Cierra los tres del backend que quedaban de la auditoría y los cinco puntos del reporte que el
