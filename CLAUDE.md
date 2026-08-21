@@ -861,25 +861,92 @@ para siempre. Se le quitó el piso a la ventana.
 > abiertos de días anteriores.** El hueco nunca se ha disparado; se destapa solo el día que el
 > turno se alargue, que es justo lo que §12.1 ya advierte del corte.
 
-### 🟠 Y salió un hallazgo nuevo: 16 lavados con dos clientes
+### ✅ Y salió un hallazgo nuevo: 16 lavados con dos clientes (resuelto, migraciones `112`–`114`)
 
 Al ir por el índice único que faltaba en `visitas(carro_id) where estado='activa'`, resultó que
-**no se puede crear todavía**: hay **16 carros con dos visitas activas**, y en 14 de ellos son
-**dos personas distintas**. Todos entraron por `caja = 'import'` (el ClientNoteTracker); dos
-mezclan import con la caja en vivo.
+**no se podía crear**: había **16 carros con dos visitas activas**. Todos entraron por
+`caja = 'import'` (el ClientNoteTracker), que escribe `carro_id` directo **sin pasar por
+`enlazar_visita_a_carro`** — o sea sin la comprobación que esa función sí hace. La regla vivía
+sólo dentro de una función, y el camino que no la llamaba se la brincaba sin enterarse.
 
-Lo que **sí** y lo que **no** rompe, medido antes de decir nada:
+#### La regla, dicha por el dueño (19/ago/2026)
+
+> *"Puede que la mamá lleve a lavar el carro y tenga su cuenta, y también el hijo lo vaya a lavar
+> y tenga su propia cuenta. **La placa sí puede estar ligada a dos personas diferentes, pero cada
+> visita solo se asigna una vez a una persona.**"*
+
+Son **dos reglas distintas** y hay que no confundirlas:
 
 | | |
 |---|---|
-| ¿Infla la lealtad? | **No.** `lealtad_por_persona` no mira `carro_id`: cuenta visitas. Cada persona vino de verdad |
-| ¿Le dio a alguien el historial de otro? | **No.** De los 14 con placa leída, **ninguno** tiene su placa ligada a dos personas |
-| ¿Qué sí está mal? | El campo `cliente` del carro y lo que muestra el reporte: uno de los dos nombres no es el dueño de ese lavado |
+| Placa ↔ persona | **muchos a muchos** (carro compartido). Ya estaba bien: `persona_placas` y el reporte que dice "Clientes en lealtad" en plural |
+| Lavado ↔ visita | **uno a uno**. Un cobro, un cliente |
 
-O sea que es un hueco **latente**, no un daño hecho: el camino del import liga `carro_id` sin
-pasar por la comprobación que sí hace `enlazar_visita_a_carro`. **Queda esperando decisión del
-dueño** —cuál de las dos visitas se queda con cada lavado— porque son personas con nombre y aquí
-aplica su regla de *1000% o nada*. El índice único entra después de eso.
+#### 🔑 Quitar el LAVADO no es lo mismo que quitar la VISITA
+
+Es el principio que ordenó toda la limpieza. Las dos personas **sí vinieron**: cada una tiene su
+visita real y su sello. Lo que no puede ser es que las dos reclamen el **mismo cobro**. Así que lo
+que se quita es el `carro_id` —el reclamo sobre ese lavado—, **no la visita**. Nadie perdió un
+sello ni un lavado gratis en toda la corrección.
+
+Y **donde no hay evidencia, el lavado no se le adjudica a nadie.** Adivinar al 50% y dejarlo
+escrito como un hecho es peor que dejarlo sin dueño: es la regla de §9 —*"un dato inventado es
+peor que uno faltante, porque el que lo ve confía en él"*— aplicada a personas con nombre.
+
+#### Lo que se encontró midiendo, y lo que cambió al medir bien
+
+- **No inflaba la lealtad por el lado que yo creía.** `lealtad_por_persona` no mira `carro_id`:
+  cuenta visitas. Y ninguna de las 14 placas quedó ligada a dos personas, así que el CRM tampoco
+  le había dado a nadie el historial de otro.
+- 🔴 **Pero sí había sellos dobles, por otro lado.** Buscando por **ticket** en vez de por carro
+  salieron **6 visitas duplicadas** (misma persona, mismo ticket, mismo minuto, ids consecutivos
+  del import): dos sellos por un solo lavado. Se descartaron (`estado='descartada'`, la fila se
+  conserva). Ninguna de las seis personas perdió un gratis disponible.
+- ⚠️ **El sexto se me escapó por un error de criterio mío**, y vale escribirlo: agrupé por ticket
+  con `count(distinct persona_id) = 1`, que sólo encuentra el duplicado cuando en el ticket no hay
+  nadie más. El ticket 26723 tenía **tres** visitas (una persona dos veces + otra) y cayó del lado
+  equivocado. El criterio correcto agrupa por el **par** `(ticket, persona_id)`. **Se encontró
+  leyendo la lista cruda, no revisando la consulta** — el mismo nombre aparecía dos veces en un
+  renglón.
+- **Los tickets 0 al 5 no son tickets.** Eran los seis valores más repetidos del campo: **440
+  visitas de 404 personas repartidas en un año entero**. Un número que aparece en 280 días
+  distintos no es una venta. Quedaron en nulo (con respaldo, porque `stg_cnt` sólo conserva las
+  195 filas de la última tanda del import, no el año).
+
+#### Cómo se resolvieron los 14
+
+Cinco tienen evidencia, y ahí gana la evidencia:
+
+| Lavado | Se queda | Por qué |
+|---|---|---|
+| 989 | Alejandro Morales | la placa del lavado ya estaba ligada a él |
+| 868 | Laura Topete | igual |
+| 1814 | Leonel Gallardo | es la única que trae el ticket real de Zettle |
+| 716 | Marta Montoya | igual |
+| 670 | Maximiliano Martínez | ticket **y** placa |
+
+Los otros **nueve no tienen ninguna pista** y quedaron sin dueño, con las dos visitas intactas.
+
+Y las **dos visitas del dueño** sobre lavados de clientes reales (26 y 27/jul, `caja='principal'`,
+los dos días en que se estrenaba la app de la caja) se deshicieron con `desenlazar_visita` —la
+función de siempre, ya corregida por la `111` para que sólo quite lo que ese enlace puso— y
+quedaron `descartada` + `es_prueba`. Mismo trato que la prueba de la cámara Reolink.
+
+> **Medido antes de aplicar: la única lealtad que se movió fue la del dueño** (7 → 5 lavados, sus
+> dos pruebas). Las otras 4,917 personas quedaron idénticas.
+
+#### El candado, que es el punto
+
+`visitas_un_lavado_un_cliente`: índice único parcial sobre `(carro_id) where estado='activa'`.
+La regla deja de depender de que alguien llame a la función correcta.
+
+La prueba (`pruebas/un-lavado-un-cliente.sql`) comprueba además que **no estorba lo legítimo**:
+muchas visitas por persona, visitas sin lavado ligado, corregir un enlace descartando el anterior,
+y una placa ligada a **dos** personas — la mamá y el hijo.
+
+> 💡 Y el índice cachó de inmediato un escenario inválido en `pruebas/trigger-y-enlaces.sql`, que
+> armaba dos visitas activas sobre el mismo carro. La prueba estaba construyendo algo que en
+> producción ya no puede existir.
 
 ## 11.40 Tercera tanda: lo que escribía antes de validar, y el reporte del dueño (19/ago/2026, migraciones `109`–`110`)
 

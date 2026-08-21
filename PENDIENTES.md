@@ -6,7 +6,7 @@
 
 ---
 
-## ✅ DESPLEGADO el 19/ago/2026 (migraciones `109`–`111`, commits `bef16a5` y `8e619e5`)
+## ✅ DESPLEGADO el 19/ago/2026 (migraciones `109`–`114`)
 
 Se fue completo y verificado en vivo. El detalle y las razones viven en `CLAUDE.md §11.40`; aquí
 sólo queda el rastro para no volver a levantarlo:
@@ -17,6 +17,7 @@ sólo queda el rastro para no volver a levantarlo:
 - **Reporte del dueño:** el perfil del trabajador se pagina (134 kB → 19 kB) y se filtra por días
   y por tipo de servicio; los otros cuatro puntos y los cinco menores del archivo.
 - **Cuarta tanda (`111`, solo base):** un error creando el carro ya no tumba la VENTA y queda escrito en la bitácora (#24); el índice de `asignaciones` (9.2 ms → 1.6 ms); la caja deja de escribir la placa cruda y respeta el candado de placa repetida; `desenlazar_visita` ya no borra la foto del supervisor ni el cliente de la nota; `cerrar_pendientes` alcanza al carro que entra después del corte.
+- **Quinta tanda (`112`–`114`):** un lavado, un cliente. Se resolvieron los 14 lavados reclamados por dos clientes, se quitaron 6 sellos dobles y 440 tickets que no eran tickets, y el candado quedó en la base (`visitas_un_lavado_un_cliente`). Ver `CLAUDE.md §11.35`.
 - **La auditoría general quedó como skill** (`.claude/skills/auditoria-general/`): se dispara
   diciendo *"corre la auditoría general"* y arranca cuestionando su propio método.
 
@@ -153,27 +154,17 @@ producción, no solo se leyó.
     ✅ `Gratis`+`6to Express` (resuelto el 19/ago con la decisión del dueño).
     **Queda:** índices trigram para las búsquedas; `encimados` escanea toda la historia (18 ms/día
     consultado, crece cuadrático); `iniciales_de` repite (Jaime Gallegos y Jesús Gil = JG);
-    `sincronizar-jibble` no tiene candado (a diferencia de `limpiar-fotos`); y el **unique parcial
-    en `visitas(carro_id) where estado='activa'`, que NO se puede crear todavía** — ver abajo.
+    `sincronizar-jibble` no tiene candado (a diferencia de `limpiar-fotos`); y ✅ el **unique parcial
+    en `visitas(carro_id) where estado='activa'`** (migración `114`, ver abajo).
 
-### 🟠 NUEVO (salió al ir por ese unique): 16 lavados con dos clientes
+### ✅ RESUELTO — los 14 lavados con dos clientes (migraciones `112`–`114`)
 
-Hay **16 carros con dos visitas activas**, y en 14 son **dos personas distintas**. Todos entraron
-por `caja = 'import'` (ClientNoteTracker); dos mezclan import con la caja en vivo. Medido antes de
-alarmar:
-
-- **NO infla la lealtad**: `lealtad_por_persona` no mira `carro_id`, cuenta visitas, y cada persona
-  sí vino.
-- **NO le dio a nadie el historial de otro**: de los 14 con placa leída, **ninguno** tiene su placa
-  ligada a dos personas.
-- **Sí está mal** el campo `cliente` del carro y lo que muestra el reporte: uno de los dos nombres
-  no es el dueño de ese lavado.
-
-Es un hueco latente (el import liga `carro_id` sin la comprobación que sí hace
-`enlazar_visita_a_carro`), no un daño hecho. **Espera decisión del dueño** —cuál visita se queda
-con cada lavado— porque son personas con nombre y aplica su regla de *1000% o nada*. El unique
-entra después.
-
+Salió al ir por ese unique y ya está cerrado. Ver `CLAUDE.md §11.35`. En corto: se quitó el
+**reclamo sobre el lavado**, no la visita, así que nadie perdió un sello; cinco se resolvieron con
+evidencia (placa o ticket real), nueve quedaron sin dueño porque no había ninguna pista, y las dos
+visitas de prueba del dueño se deshicieron. De paso salieron **6 sellos dobles** (misma persona,
+mismo ticket) y **440 visitas con tickets que no eran tickets** (0 al 5). El candado ya está
+puesto: `visitas_un_lavado_un_cliente`.
 
 ### 📱 Estabilidad del supervisor
 
