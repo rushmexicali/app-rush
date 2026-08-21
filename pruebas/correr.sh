@@ -46,6 +46,7 @@ correr "canje sin saldo (lealtad)"        sql pruebas/canje-sin-saldo.sql
 correr "perfil honesto y Jibble"          sql pruebas/perfil-y-jibble.sql
 correr "editar valida antes de escribir"  sql pruebas/editar-y-foto.sql
 correr "perfil del trabajador paginado"   sql pruebas/perfil-paginado.sql
+correr "el trigger no tumba la venta"     sql pruebas/trigger-y-enlaces.sql
 
 echo ""
 echo "=============================================================="
