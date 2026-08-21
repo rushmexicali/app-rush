@@ -19,6 +19,7 @@ declare
   c_placa   bigint;   -- ya trae la placa de hoy
   c_choca   bigint;   -- el que va a intentar repetirla
   c_limpio  bigint;
+  c_desenl  bigint;   -- carro aparte para probar desenlazar (114: un lavado, una visita)
   vis       bigint;
   vis2      bigint;
   vis3      bigint;
@@ -142,12 +143,19 @@ begin
   -- ==================================================================
   -- El carro trae el cliente de la NOTA de la cajera y la foto del
   -- SUPERVISOR; la visita no aporto ninguna de las dos.
-  update public.carros
-     set cliente = 'JUAN DE LA NOTA', foto_path = 'supervisor/prueba-111.jpg'
-   where id = c_limpio;
+  --
+  -- ⚠️ Va en un carro APARTE, no en c_limpio: ese ya tiene la visita `vis`
+  -- pegada, y desde la 114 un lavado no puede tener dos visitas activas. El
+  -- indice unico cacho esta prueba cuando se creo — la prueba estaba armando
+  -- un escenario que en produccion ya no puede existir.
+  insert into public.carros (purchase_uuid, venta_id, producto, variante, monto, creado_en,
+                             cliente, foto_path)
+  values ('prueba-111-desenl-' || gen_random_uuid(), v_venta, 'Completo RUSH', 'Chico', 270, now(),
+          'JUAN DE LA NOTA', 'supervisor/prueba-111.jpg')
+  returning id into c_desenl;
 
   insert into public.visitas (persona_id, es_gratis, estado, caja, es_prueba, carro_id, enlazada_en)
-  values (p_uno, false, 'activa', 'prueba', false, c_limpio, now())
+  values (p_uno, false, 'activa', 'prueba', false, c_desenl, now())
   returning id into vis3;
 
   r := public.desenlazar_visita(vis3);
@@ -155,23 +163,23 @@ begin
     raise exception 'FALLA: no dejo desenlazar';
   end if;
 
-  select cliente into v_txt from public.carros where id = c_limpio;
+  select cliente into v_txt from public.carros where id = c_desenl;
   if v_txt is distinct from 'JUAN DE LA NOTA' then
     raise exception 'FALLA (#25): borro el cliente que puso la nota de caja (quedo %)', coalesce(v_txt, '<nulo>');
   end if;
-  select foto_path into v_txt from public.carros where id = c_limpio;
+  select foto_path into v_txt from public.carros where id = c_desenl;
   if v_txt is distinct from 'supervisor/prueba-111.jpg' then
     raise exception 'FALLA (#25): borro la foto del supervisor (quedo %)', coalesce(v_txt, '<nulo>');
   end if;
   v_msg := v_msg || 'desenlazar respeta lo ajeno OK. ';
 
   -- Y la foto que SI aporto la visita si se quita.
-  update public.visitas set carro_id = c_limpio, enlazada_en = now(), foto_path = 'caja/prueba-111.jpg'
+  update public.visitas set carro_id = c_desenl, enlazada_en = now(), foto_path = 'caja/prueba-111.jpg'
    where id = vis3;
-  update public.carros set foto_path = 'caja/prueba-111.jpg' where id = c_limpio;
+  update public.carros set foto_path = 'caja/prueba-111.jpg' where id = c_desenl;
 
   r := public.desenlazar_visita(vis3);
-  select foto_path into v_txt from public.carros where id = c_limpio;
+  select foto_path into v_txt from public.carros where id = c_desenl;
   if v_txt is not null then
     raise exception 'FALLA: no quito la foto que SI era de la visita (quedo %)', v_txt;
   end if;
