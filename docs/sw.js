@@ -44,7 +44,9 @@
 //                     el cuadro de la camara de la caja, y si el relay se caia
 //                     servia la foto del carro ANTERIOR como si fuera la de
 //                     ahora, con r.ok en true.
-var CACHE = "rush-v14";
+//  v15 (19/ago/2026) — del rechazo de entrega ya hay regreso: el que le pica
+//                     por error vuelve a la decision sin cerrar la pantalla.
+var CACHE = "rush-v15";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest",

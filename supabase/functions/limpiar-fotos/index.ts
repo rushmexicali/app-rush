@@ -1,8 +1,8 @@
 // =====================================================================
 // RUSH Car Wash — Edge Function: limpiar-fotos
 //
-// Las fotos que se toman y se suben se borran despues de 3 MESES (decision
-// del dueno, 29/jul/2026). El plan gratis de Supabase da 1 GB de Storage y
+// Las fotos que se toman y se suben se borran despues de 2 MESES (decision
+// del dueno, 19/ago/2026; antes eran 3). El plan gratis de Supabase da 1 GB de Storage y
 // las fotos crecen ~230 MB/mes; sin una regla, en unos meses se llena.
 //
 // POR QUE UN EDGE FUNCTION Y NO PURO SQL: borrar la fila de storage.objects
@@ -31,8 +31,15 @@ const SUPABASE_KEY =
 // proposito: mas vale que la limpieza no corra a que corra abierta.
 const TOKEN = Deno.env.get("LIMPIEZA_TOKEN") ?? "";
 
-// 3 meses. Se deja como constante por si algun dia el dueno lo cambia.
-const DIAS = 90;
+// 2 meses. Decision del dueno (19/ago/2026), sobre el hallazgo #8 de la
+// auditoria: a 90 dias el Storage llega al 77% del limite de 1 GB en
+// regimen; a 60 baja al 51%. Es la unica palanca real y las fotos viejas
+// no le sirven de nada.
+//
+// ⚠️ El otro lado del numero es el default de `olvidar_fotos_viejas` (115).
+// Manda ESTE, porque la funcion siempre recibe el suyo desde aqui; el de la
+// base es el respaldo para una llamada suelta. Se cambian los dos juntos.
+const DIAS = 60;
 
 // storage.remove tiene un tope por llamada; se borra en tandas.
 const TANDA = 500;
@@ -62,12 +69,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ ok: false, error: "no autorizado" }, 401);
   }
 
-  // 1) Los archivos con mas de 3 meses (fotos de carros y capturas de caja).
+  // 1) Los archivos con mas de 2 meses (fotos de carros y capturas de caja).
   //
   // ⚠️ CON TOPE POR CORRIDA (auditoria del 19/ago). Este camino NUNCA se ha
   // ejecutado de verdad: 21 corridas, 0 archivos borrados, porque la foto mas
-  // vieja tiene 31 dias y el umbral son 90. La primera corrida real cae por el
-  // 17/oct/2026 y encontraria TODO el atraso junto (~7,400 archivos, unas 15
+  // vieja tiene 33 dias y el umbral son 60. La primera corrida real cae por el
+  // 17/sep/2026 y encontraria TODO el atraso junto (~7,400 archivos, unas 15
   // tandas en una sola invocacion) contra el limite de tiempo de la funcion.
   // Con ~85 fotos entrando al dia, 1,000 por corrida drena el atraso inicial
   // en poco mas de una semana y despues el regimen es estable.

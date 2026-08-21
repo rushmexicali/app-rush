@@ -48,6 +48,7 @@ correr "editar valida antes de escribir"  sql pruebas/editar-y-foto.sql
 correr "perfil del trabajador paginado"   sql pruebas/perfil-paginado.sql
 correr "el trigger no tumba la venta"     sql pruebas/trigger-y-enlaces.sql
 correr "un lavado, un cliente"            sql pruebas/un-lavado-un-cliente.sql
+correr "payload y busquedas"              sql pruebas/payload-y-busquedas.sql
 
 echo ""
 echo "=============================================================="

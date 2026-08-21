@@ -492,6 +492,10 @@
      completo y separado de la rejilla para que no se confunda con un
      motivo mas. */
   #ent-rechazar { width:100%; margin-top:18px; }
+  /* Va ARRIBA de los motivos, no abajo: es la salida de "me equivoque", y
+     tiene que verse antes de empezar a marcar. Sin el margen grande de
+     .opcion.volver, que esta pensado para un boton de hasta abajo. */
+  #ent-volver { margin-top:0; margin-bottom:18px; }
 
   /* Tarjeta de un entregado: mucho mas sencilla que la de la cola. Aqui
      no hay cronometro ni etapas, solo reconocerlo y poder restaurarlo. */
@@ -760,6 +764,12 @@
     <!-- Se pueden marcar VARIOS. No se rechaza al tocar uno: hay que
          confirmar con el boton de abajo. Toca de nuevo un motivo para
          quitarlo. -->
+    <!-- Del rechazo SI hay regreso. Antes, el que le picaba a "Rechazar"
+         por error solo tenia "Cancelar", que cierra TODA la pantalla y lo
+         devuelve a la cola: para el supervisor eso se lee como que el
+         boton no sirve. Sospecha de la auditoria de por que esta pantalla
+         llevaba 25 dias sin un solo uso. -->
+    <button id="ent-volver" class="opcion volver">← No, sí quedó bien</button>
     <div class="seccion">¿Qué le faltó? <span class="pendiente">— marca todo lo que aplique</span></div>
     <div class="rejilla motivos" id="ent-lista-motivos"></div>
     <button id="ent-rechazar" class="opcion malo" disabled>RECHAZAR</button>
@@ -2116,6 +2126,18 @@ document.getElementById("entrega").addEventListener("click", function (ev) {
       .then(function (d) { if (d && d.ok === false) alert(d.error || "No se pudo"); cerrarPantalla(); })
       .catch(function () { alert("Sin conexión. Intenta otra vez."); })
       .then(function () { ocupado = false; consultar(); });
+    return;
+  }
+
+  if (b.id === "ent-volver") {
+    // Regresa a la decision, sin cerrar la pantalla ni tocar el carro. Lo
+    // ya marcado se borra: si el supervisor se arrepintio, no debe quedar
+    // nada apuntado esperandolo.
+    motivosElegidos = [];
+    pintarMotivos();
+    document.getElementById("ent-motivos").style.display = "none";
+    document.getElementById("ent-decidir").style.display = "block";
+    if (navigator.vibrate) navigator.vibrate(15);
     return;
   }
 
