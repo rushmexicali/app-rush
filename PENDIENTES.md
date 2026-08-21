@@ -6,7 +6,7 @@
 
 ---
 
-## ✅ DESPLEGADO el 19/ago/2026 (migraciones `109`–`114`)
+## ✅ DESPLEGADO el 19/ago/2026 (migraciones `109`–`117`)
 
 Se fue completo y verificado en vivo. El detalle y las razones viven en `CLAUDE.md §11.40`; aquí
 sólo queda el rastro para no volver a levantarlo:
@@ -18,20 +18,25 @@ sólo queda el rastro para no volver a levantarlo:
   y por tipo de servicio; los otros cuatro puntos y los cinco menores del archivo.
 - **Cuarta tanda (`111`, solo base):** un error creando el carro ya no tumba la VENTA y queda escrito en la bitácora (#24); el índice de `asignaciones` (9.2 ms → 1.6 ms); la caja deja de escribir la placa cruda y respeta el candado de placa repetida; `desenlazar_visita` ya no borra la foto del supervisor ni el cliente de la nota; `cerrar_pendientes` alcanza al carro que entra después del corte.
 - **Quinta tanda (`112`–`114`):** un lavado, un cliente. Se resolvieron los 14 lavados reclamados por dos clientes, se quitaron 6 sellos dobles y 440 tickets que no eran tickets, y el candado quedó en la base (`visitas_un_lavado_un_cliente`). Ver `CLAUDE.md §11.35`.
+- **Sexta tanda (`115`–`117`):** retención de fotos a 60 días; `ventas_indexar` deja de desarmar el payload a mano (ventas invisibles 1 → 0); las búsquedas del CRM de 898 ms a 59 ms; `sincronizar-jibble` con candado y cada 5 min; `encimados` con ventana de 24 h; y del rechazo de entrega ya hay regreso. Ver `CLAUDE.md §11.30`.
 - **La auditoría general quedó como skill** (`.claude/skills/auditoria-general/`): se dispara
   diciendo *"corre la auditoría general"* y arranca cuestionando su propio método.
 
-Verificado contra la API en vivo después de subir: `/cola` sana, los tres filtros de
-`/trabajador` responden, la suite completa en verde, y **`docs/index.html` no cambió** — la
-pantalla del supervisor quedó igual, que era la condición para poder subir con el taller abierto.
+Verificado contra la API en vivo después de cada tanda: `/cola`, `/reporte`, `/tickets` y
+`/personas` en 200, y la suite completa en verde. La última tanda SÍ toca la pantalla del
+supervisor (el botón de regreso del rechazo) y se subió con el taller abierto **a pedido expreso
+del dueño** — la regla de §2 sigue siendo esperar al corte cuando no lo pide.
 
-### Y lo que sigue esperando decisión del dueño
+### ✅ Las decisiones del dueño, tomadas el 19/ago/2026
 
-- **Retención de fotos**: 90 días → 77% del límite de Storage; 60 días → 51%.
-- **Segundo código de acceso** para el reporte y el CRM, separado del que teclea el
-  supervisor.
-
----
+- **Retención de fotos → 60 días.** Aplicado en los tres lugares donde vivía el número.
+- **Segundo código de acceso → se queda igual** (*"no importa"*). Cerrado por decisión.
+- **Los tres días de abandono (6, 10, 11/ago)** → *"solo había un supervisor y estaba en su hora
+  de comida"*. No es captura ni entrenamiento: es cobertura. Nada que arreglar.
+- **El rechazo de entrega** → *"haré énfasis, pero es raro que se rechace"*. Se arregló el botón
+  de todos modos: si el número va a ser cero, que sea porque no hubo rechazos.
+- **La caja SÍ se va a usar**, y quiere el CRM bien estructurado — *"incluso se puede usar sin la
+  lectura de placas"*. Por eso entraron los índices de búsqueda.
 
 ## 🔬 AUDITORÍA COMPLETA DEL 19/ago/2026 — 46 hallazgos
 
@@ -89,7 +94,7 @@ producción, no solo se leyó.
    corridas, 0 archivos (la más vieja tiene 31 días, el umbral 90). Primera real ~**17/oct/2026**:
    ~15 tandas en una invocación contra el límite de tiempo. Si se corta, quedan ligas muertas.
    *Arreglo:* tope por corrida y **probarlo antes de octubre**.
-8. ✔ **Storage es el límite que se rompe primero.** 251 MB hoy, +8.5 MB/día → **765 MB en régimen
+8. ✅ **HECHO 19/ago (60 días, decisión del dueño; migraciones 115 y 117).** Storage es el límite que se rompe primero.** 251 MB hoy, +8.5 MB/día → **765 MB en régimen
    (77% de 1 GB)**. A 150-200 carros/día **no cabe**. Bajar la retención de 90 a 60 días lo deja en
    510 MB — decisión del dueño (¿para qué sirven las fotos viejas?).
 9. ✅ **HECHO 19/ago (rechazado en los dos lados).** Un 200 con lista vacía de Jibble marcaba a TODA la plantilla como "fuera". El guard solo
@@ -104,7 +109,7 @@ producción, no solo se leyó.
     `historial_placas` (placas+clientes+dinero de 2,641 carros) y `lealtad_por_persona` (4,919
     saldos). **Atenuante: la llave `anon` NO está en el repo.** *Arreglo:* `revoke execute` +
     `security_invoker=on`. No afecta a la app (usa `service_role`).
-11. **Un solo código abre las tres apps.** El del supervisor alcanza `/respaldo` (todo el
+11. ✅ **CERRADO POR DECISIÓN DEL DUEÑO 19/ago: se queda igual** (*"no importa"*). Un solo código abre las tres apps. El del supervisor alcanza `/respaldo` (todo el
     histórico), `/personas` (4,871 con teléfono), `/tickets` (todas las ventas) y editar clientes.
     Vive en el `localStorage` de un teléfono que rota entre turnos.
 12. 🟠 **PARCIAL 19/ago.** Se cerró el descarte en silencio (bitácora, migración 108) y se están guardando las cabeceras de un aviso bueno para aprender el esquema. **La verificación NO se implementó**: no hay documentación pública confiable y adivinarla rechazaría ventas reales. El webhook de Zettle no verifica la firma. La URL se deduce del repo público → se pueden
@@ -140,7 +145,7 @@ producción, no solo se leyó.
 21. ✅ **HECHO 19/ago.** `trabajadores()` y `perfil_de_secador()` contaban rechazos con `count(*)`; el reporte con
     `count(distinct grupo)`. Un rechazo con 2 motivos dará 2 en un lado y 1 en el otro (bug de la
     `036`, arreglado solo en el reporte).
-22. **7 sitios desenvuelven `payload` a mano** en vez de usar `detalle_venta()`. Ya hay **2 ventas
+22. ✅ **HECHO 19/ago (migración 115).** `ventas_indexar` desenvolvía el `payload` a mano y dejaba ventas invisibles para la caja (medido: 1 → 0). Quedan otros sitios con el mismo patrón, ninguno con daño medido. en vez de usar `detalle_venta()`. Ya hay **2 ventas
     invisibles** para `buscar_tickets`, `tickets_recientes` y `ticket_detalle` (su carro sí se creó).
 23. ✅ **HECHO 19/ago (migración 108).** El webhook descartaba en silencio por tres caminos (cuerpo ilegible, JSON inválido, sin
     `purchase_uuid`): responde 200 y el único rastro son logs de ~1 día que nadie mira.
@@ -152,10 +157,12 @@ producción, no solo se leyó.
     ✅ `desenlazar_visita` ya no borra la foto del supervisor ni el cliente de la nota;
     ✅ `cerrar_pendientes` alcanza al carro creado después del corte (medido: 0 casos hasta hoy);
     ✅ `Gratis`+`6to Express` (resuelto el 19/ago con la decisión del dueño).
-    **Queda:** índices trigram para las búsquedas; `encimados` escanea toda la historia (18 ms/día
-    consultado, crece cuadrático); `iniciales_de` repite (Jaime Gallegos y Jesús Gil = JG);
-    `sincronizar-jibble` no tiene candado (a diferencia de `limpiar-fotos`); y ✅ el **unique parcial
-    en `visitas(carro_id) where estado='activa'`** (migración `114`, ver abajo).
+    ✅ Índices trigram para las búsquedas (898 ms → 59 ms, migración `115`);
+    ✅ `encimados` ya no escanea toda la historia (ventana de 24 h, migración `116`);
+    ✅ `sincronizar-jibble` ya tiene candado (migración `115`);
+    ✅ el **unique parcial en `visitas(carro_id)`** (migración `114`).
+    **Queda sólo:** `iniciales_de` repite (Jaime Gallegos y Jesús Gil = JG) — medido hoy: **0
+    iniciales repetidas** entre los secadores activos, así que no muerde.
 
 ### ✅ RESUELTO — los 14 lavados con dos clientes (migraciones `112`–`114`)
 
@@ -176,7 +183,7 @@ puesto: `visitas_un_lavado_un_cliente`.
 28. ✔ **El `wakeLock` nunca se vuelve a pedir**: `candado` no se re-inicializa a `null`, así que tras
     el primer minimizado la pantalla se apaga sola el resto del turno.
 29. ✔ **`escapar()` divergió**: `index.html:970` es el único de los tres sin la guarda de nulos.
-30. **Del rechazo no hay regreso** (solo "Cancelar", que cierra todo) — posible causa de que la
+30. ✅ **HECHO 19/ago.** Del rechazo ya hay regreso (botón "No, sí quedó bien"). La fuga de temporizador NO existe (se limpia al abrir y al cerrar, verificado). Queda: re-tomar una foto mientras se sube la anterior. (solo "Cancelar", que cierra todo) — posible causa de que la
     pantalla lleve 25 días sin uso. Fuga de temporizador en el desglose en vivo. Re-tomar una foto
     mientras se sube la anterior puede perder la nueva.
 
@@ -186,7 +193,7 @@ puesto: `visitas_un_lavado_un_cliente`.
     sobre una foto real: **3,101 tokens de entrada**, no 1,698. Real: **$17.80 USD/mes**, y
     **$26.70 desde el 1/sep** al terminar el precio de introducción. A 200 carros/día, $61. También
     está mal el peso de la foto: **100 KB**, no 150.
-32. **Los dos crones por minuto son el mayor desperdicio**: 44% del CPU de la base, 24% de las
+32. 🟠 **PARCIAL 19/ago.** `sincronizar-jibble` pasó a cada 5 min (y con candado). `calentar-webhook` se queda en cada minuto A PROPÓSITO: ahorra $0 y arriesga un 502 en el camino del dinero — ver `CLAUDE.md §11.30`. Los dos crones por minuto eran el mayor desperdicio: 44% del CPU de la base, 24% de las
     invocaciones, 4,800 llamadas/día a Jibble para refrescar 19 personas. A cada 5 min: −46,600
     invocaciones/mes y −80% de las llamadas. En dinero, $0 (el plan gratis aguanta).
 33. **NO tocar, con su razón:** el sondeo de 3 s (medido **5,939 llamadas/día reales, no 28,800** —

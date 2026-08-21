@@ -789,6 +789,112 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 11.30 Quinta tanda: las decisiones del dueño y el resto de la auditoría (19/ago/2026, migraciones `115`–`117`)
+
+El dueño contestó las preguntas abiertas y pidió subirlo todo el mismo día, sin esperar el corte.
+Esto cierra el hallazgo `#22`, cuatro de los menores del `#25` y el `#30`.
+
+### Las respuestas del dueño, y qué se hizo con cada una
+
+| Pregunta | Respuesta | Qué se hizo |
+|---|---|---|
+| Retención de fotos | **60 días** | Migraciones `115` y `117` + la constante de `limpiar-fotos` |
+| Segundo código de acceso | *"déjalo igual, no importa"* | Nada. El hallazgo `#11` se cierra por decisión, no por arreglo |
+| Los tres días de abandono (6, 10, 11/ago) | *"solo había un supervisor y estaba en su hora de comida"* | Nada que arreglar: es cobertura, no captura. **La conclusión de §11.75 —que era entrenamiento o proceso— era falsa** |
+| El rechazo de entrega sin usar | *"haré énfasis, pero es raro que se rechace; no me sorprende"* | Se arregla el `#30` de todos modos: el botón no puede ser la razón |
+| ¿La caja se va a usar? | **Sí**, y quiere el CRM bien estructurado — *"incluso se puede usar sin la lectura de placas"* | Por eso entran los índices de búsqueda: era lo más lento del CRM |
+
+### 🔑 La retención vivía en TRES lugares
+
+El número no estaba en un lado: la constante `DIAS` de `limpiar-fotos` (la que de verdad manda,
+porque la Edge Function siempre pasa la suya), el default de `olvidar_fotos_viejas` y el de
+`fotos_viejas` — que se había quedado en 90 mientras los otros dos bajaban. **Dos números para la
+misma regla es exactamente como se desfasan las cosas en este proyecto**, y aquí el que decide
+cuáles fotos se borran era justo el que se quedaba viejo. Los tres quedaron en 60.
+
+> Medido: la foto más vieja tiene **33 días**, así que a 60 días **no se borra nada todavía**. La
+> primera corrida real se adelanta de ~17/oct a **~17/sep**. El tope de 1,000 por corrida sigue.
+
+### 🔴 `ventas_indexar` desarmaba el payload a mano — y por eso la caja no encontraba tickets
+
+Es el hallazgo `#22` con nombre y apellido. Miraba **una sola forma** del aviso:
+
+```
+pj := (NEW.payload->>'payload')::jsonb
+```
+
+O sea que sólo funcionaba con el evento envuelto en una llave `payload`. Cuando Zettle lo manda
+sin envolver, `pj` queda nulo y **no se indexa nada**: ni `ticket_num`, ni `cajero`, ni `prods`,
+ni `busqueda`. La venta se guarda —el dinero no se pierde— pero se vuelve **invisible** para
+`buscar_tickets`, `tickets_recientes` y `ticket_detalle`: la cajera no la encuentra aunque el
+cliente traiga el ticket en la mano.
+
+`detalle_venta()` ya sabía desenvolver las dos formas, y es la que usa el trigger que crea el
+carro. **Por eso el carro sí se creaba y el ticket no aparecía**: la misma pregunta contestada de
+dos maneras distintas en dos lugares. Ahora las dos le preguntan a la misma función. Las ventas
+que ya habían entrado torcidas se re-indexaron con `update ... set payload = payload`, que dispara
+el trigger sin cambiar el dato: **invisibles 1 → 0**.
+
+### Las búsquedas del CRM, 15× más rápidas
+
+Medido antes: `buscar_tickets('completo')` **898 ms** y `buscar_personas('gonz')` **251 ms**. Las
+cuatro son de subcadena (`%algo%`), que ningún índice normal puede servir. Con `pg_trgm` y cuatro
+índices GIN quedan en **59 ms las dos**.
+
+⚠️ **Para que el índice se pueda usar hubo que cambiar `strpos(x, q) > 0` por `x like '%q%'`, y por
+eso se escapan los comodines.** Son equivalentes salvo que la búsqueda traiga `%` o `_`, que en
+LIKE significan otra cosa: sin escaparlos, una cajera buscando `50%` cambiaría el sentido de la
+consulta. Vive en `como_literal()`.
+
+> **Comprobado contra línea base:** las 7 búsquedas de muestra devuelven resultados **idénticos**
+> antes y después del cambio de motor.
+
+### `sincronizar-jibble`: candado y cada 5 minutos
+
+Si una corrida se atoraba (la API de Jibble tarda; el corte son 20 s pero el cron disparaba cada
+minuto), la siguiente entraba encima: dos barridas simultáneas marcando `fuera` y `activo` sobre
+la misma tabla. Ahora hay un candado de sesión que **no bloquea** — si no lo consigue, se va y la
+próxima corrida lo intenta. Y el cron pasa a `*/5`: refrescar quién está checado son 19 personas y
+el dato cambia dos o tres veces al día.
+
+⚠️ **`calentar-webhook` se queda en cada minuto, a propósito**, aunque la auditoría proponía
+moverlo también. Su único trabajo es que la función del webhook no esté fría cuando Zettle avise
+una venta, y las ventas llegan a cualquier hora. El ahorro sería de **$0** —29 mil invocaciones al
+mes contra un límite de 500 mil— y a cambio se arriesga un 502 en el camino por donde entra el
+dinero. Mal trato. Su guardia de horario ya le quita las 8 horas de la noche.
+
+### `encimados` deja de recorrer toda la historia
+
+El auto-join de `asignaciones` tenía acotado el lado izquierdo a los carros del rango, pero el
+**derecho** miraba toda la historia de esa persona. Ventana de 24 horas: un carro que te agarró
+ocupado no puede haber arrancado hace tres semanas.
+
+> Verificado sobre toda la base antes de aplicarlo: **856 encimados con la ventana y 856 sin
+> ella**, diferencia 0, y los reportes del 10 al 19/ago quedan idénticos campo por campo.
+
+**Y la forma de aplicarlo vale más que el cambio:** la función son ~300 líneas de reglas con sus
+razones escritas, y reescribirlas para cambiar una línea es el movimiento que ya salió mal en este
+proyecto (§11.45). Así que la migración **no copia la función**: le pide a Postgres su propia
+definición con `pg_get_functiondef`, le inserta la línea, comprueba que el ancla existía y la
+vuelve a crear. Si el ancla no aparece, se cae con un mensaje claro en vez de aplicar algo a medias.
+
+### 🔴 Del rechazo de entrega ya hay regreso
+
+El que le picaba a **Rechazar** por error sólo tenía **Cancelar**, que cierra **toda** la pantalla
+y lo devuelve a la cola. Para el supervisor —de la tercera edad— eso se lee como *"el botón no
+sirve"*, y era la sospecha de por qué la pantalla llevaba 25 días sin un solo uso.
+
+Ahora, arriba de los motivos, va **"← No, sí quedó bien"**: vuelve a la decisión **sin cerrar la
+pantalla** y **sin dejar marcado** lo que ya se había tocado. Va arriba y no abajo a propósito: es
+la salida de *"me equivoqué"* y tiene que verse antes de empezar a marcar.
+
+> El dueño avisó que **es raro que haya rechazos** y que no le sorprende el cero. Aun así se
+> arregla: si el número va a ser cero, tiene que ser porque no hubo rechazos, no porque la
+> pantalla no dejaba salir.
+
+Verificado en el navegador recorriendo el flujo completo: se marca, se toca Volver, la pantalla
+sigue abierta, los motivos quedan en cero, y al volver a entrar el botón RECHAZAR está apagado.
+
 ## 11.35 Cuarta tanda: la venta que se caía con el carro (19/ago/2026, migración `111`)
 
 Cierra `#24` y cuatro de los menores del `#25`. **Es sólo base de datos**: no toca la función
@@ -1794,9 +1900,15 @@ martes 11 con 31 carros tuvo 46%.
 olvidos son **49.4 y 33.3**. O sea que el día "más lento del periodo" es en su mayoría captura,
 no taller. Los demás días la diferencia es menor a 1.5 min.
 
-👉 **La pregunta que hay que hacerle al dueño, porque el dato no la contesta: quién estaba de
-supervisor el 6, el 10 y el 11 de agosto.** La app no guarda quién la opera. Si es la misma
-persona, es entrenamiento; si son distintas, es proceso.
+✅ **RESUELTO — y no era ni entrenamiento ni proceso.** Aquí se preguntaba quién estaba de
+supervisor esos tres días, suponiendo que la respuesta sería "entrenamiento o proceso". El dueño
+contestó el 19/ago: *"esos días son veces que solo había un supervisor y estaba en su hora de
+comida o algo similar"*. O sea que la app no se abandonó: **no había nadie que la operara**. Es
+cobertura de personal, no captura, y no hay nada que arreglar en el código.
+
+> La lección se repite: el dato mostraba el hueco con precisión pero no su causa, y las dos
+> explicaciones que yo tenía a mano estaban equivocadas. Mismo patrón que la métrica de
+> `datos_de_nota` (§9) y el contador de encimados (§11.50).
 
 ### ✅ Lo que mejoró y hay que reconocer
 
