@@ -6,15 +6,41 @@
 
 ---
 
-## 🔍 AUDITORÍA GENERAL del 21–22/ago/2026 — 75 hallazgos, 63 verificados adversarialmente
+## 🔍 AUDITORÍA GENERAL del 21–22/ago/2026 — 79 hallazgos, 68 veredictos de refutación
 
 Corrida con `Workflow`: 11 frentes en paralelo, **cada hallazgo atacado por refutadores
 independientes** (dos lentes en los graves, una en los medianos), más un crítico de completitud.
 El método y la decisión de modelos viven en `.claude/skills/auditoria-general/SKILL.md`.
 
-> 🔑 **Lo que el pase adversarial cambió, y es la razón de tenerlo:** de **17 hallazgos marcados
+> ### 👉 POR DÓNDE RETOMAR (sesión del 22/ago cerrada; se sigue el lunes 24)
+>
+> **Nada de esta auditoría se desplegó.** Todo lo de abajo está pendiente; el árbol de trabajo
+> quedó limpio y el informe publicado en
+> <https://claude.ai/code/artifact/014aca39-2c86-4724-98b9-f982a64ef119>.
+>
+> **Lo primero, en este orden:** (1) las «Devoluciones» del reporte — una línea, y es el único
+> número falso que el dueño está leyendo hoy; (2) la guarda de error y el corte de tiempo del
+> reporte, que van en el mismo despliegue; (3) la cortesía del import; (4) los permisos de la llave
+> pública; (5) el índice del ticket y los comodines; (6) la prueba del import que no puede fallar.
+>
+> **Los 1–2 tocan la pantalla del dueño**, así que van con front y back juntos y en el corte
+> (`CLAUDE.md §2`). Los 4–6 son sólo base y pueden ir antes.
+>
+> **Antes de subir cualquier cosa:** `bash pruebas/correr.sh`, y sumarle un caso por cada hallazgo
+> que se arregle.
+>
+> ⚠️ **No arreglar a ciegas los hallazgos del front** (supervisor atrapado en Finalizados,
+> cronómetro que no se apaga, foto que se borra sola, aviso de "sin conexión"): **nadie los
+> reprodujo en un navegador**, son lectura de código. Reproducirlos primero.
+>
+> **Esperan respuesta del dueño:** el servicio de `Faros` de $600 que no crea carro; si la caja
+> parte servicios en dos cobros; qué debe contar «Devoluciones»; si los avisos del sistema deben
+> poder marcarse como atendidos; y si se recongela el 19/jul.
+
+
+> 🔑 **Lo que el pase adversarial cambió, y es la razón de tenerlo:** de **18 hallazgos marcados
 > `alta` por quien los encontró, sólo 2 sobrevivieron como altas** — y son el mismo bug visto desde
-> dos frentes distintos. **8 se refutaron por completo.** Sin este pase, quince números inflados
+> dos frentes distintos. **9 se refutaron por completo.** Sin este pase, dieciséis números inflados
 > habrían entrado a esta lista como urgentes.
 
 ### 🔴 Lo único confirmado como ALTA — y por los cuatro refutadores que lo atacaron
