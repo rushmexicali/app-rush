@@ -16,7 +16,16 @@ declare
   g_dos   uuid := gen_random_uuid();
 begin
   select id into v_venta from public.ventas order by id desc limit 1;
-  select id into emp from public.empleados where estado <> 'fuera' order by id limit 1;
+  -- ⚠️ Se pide NO MANUAL, y no "el que no este fuera".
+  --
+  -- Antes decia `where estado <> 'fuera'` y eso hacia la prueba dependiente de
+  -- LA HORA: despues del cierre todos los de Jibble estan 'fuera' y el unico
+  -- que queda es Guillermo, que es `manual` — y a los manuales
+  -- `sincronizar_empleados` los exceptua a proposito (para eso existe la
+  -- columna). Con un manual de sujeto, el grupo 5 de esta prueba contaba 0
+  -- donde esperaba 1 y fallaba sin que nada estuviera roto. Se cacho el
+  -- 21/ago a las 20:25, corriendo la suite despues del cierre.
+  select id into emp from public.empleados where not manual order by id limit 1;
   if emp is null then raise exception 'no hay empleados para la prueba'; end if;
 
   -- ---------- escenario ----------
