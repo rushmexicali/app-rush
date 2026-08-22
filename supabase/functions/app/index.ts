@@ -32,6 +32,14 @@ const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "content-type, x-codigo",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  // El navegador pregunta "¿me dejas?" (preflight OPTIONS) ANTES de cada POST
+  // con cabecera propia, y sin esto pregunta CADA VEZ. Medido en la auditoria:
+  // la mitad de las invocaciones de esta funcion son preflights que no hacen
+  // nada. Con 24 horas de permiso, el navegador pregunta una vez al dia.
+  //
+  // No abre nada: `Max-Age` solo dice cuanto vale la respuesta del preflight,
+  // que ya era permisiva. Lo que cambia es cuantas veces se pide.
+  "Access-Control-Max-Age": "86400",
 };
 
 // ---------------------------------------------------------------------
@@ -500,9 +508,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     // Carros cuyo secador ya se poncho. Se consulta aparte para no
     // complicar la consulta principal, que es la que corre cada 3s.
-    const { data: huerfanos } = await db
+    //
+    // ⚠️ Su error NO se descarta. Antes se ignoraba (`const { data: huerfanos }`
+    // a secas) y la cola salia 200 con el aviso de "marco salida" faltando en
+    // TODAS las tarjetas: el supervisor no se entera de que a un carro se le
+    // fue el secador, y la respuesta se ve perfectamente sana. Una cola
+    // incompleta que se ve completa es peor que una que falla.
+    const { data: huerfanos, error: errHuerfanos } = await db
       .from("carros_sin_secador")
       .select("carro_id, ausentes");
+    if (errHuerfanos) {
+      console.error("Fallo al leer carros_sin_secador:", errHuerfanos);
+      return json({ error: errHuerfanos.message }, 500);
+    }
     const sinSecador = new Map<number, string[]>();
     for (const h of huerfanos ?? []) sinSecador.set(h.carro_id, h.ausentes ?? []);
 
@@ -516,14 +534,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // viajando al telefono cada 3 segundos. Ya se arreglo la raiz
     // (avanzar_etapa las cierra), pero el filtro se queda: hace la
     // consulta barata sin importar lo que pase con los años.
+    // Su error tampoco se descarta: sin esta consulta la pantalla de
+    // confirmar entrega no sabe A QUIEN le va a registrar el rechazo, y salia
+    // vacia como si el carro no tuviera secador asignado.
     const idsEnCola = (data ?? []).map((c: any) => c.id);
-    const { data: asignados } = idsEnCola.length
+    const { data: asignados, error: errAsignados } = idsEnCola.length
       ? await db
           .from("asignaciones")
           .select("carro_id, secador, empleado_id")
           .is("fin", null)
           .in("carro_id", idsEnCola)
-      : { data: [] as any[] };
+      : { data: [] as any[], error: null };
+    if (errAsignados) {
+      console.error("Fallo al leer las asignaciones de la cola:", errAsignados);
+      return json({ error: errAsignados.message }, 500);
+    }
     const secadoresDe = new Map<number, string[]>();
     // Los ids van EN EL MISMO ORDEN que los nombres, para que la pantalla de
     // Corregir pueda preseleccionar en la rejilla (que empareja por id).
@@ -1321,6 +1346,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ repetidas: data ?? [] });
   }
 
+  // --- Carros con placa DUDOSA (el candado atajo una placa repetida) ---
+  //
+  // Tres funciones escriben `carros.placa_dudosa` y hasta el 21/ago/2026
+  // CERO codigo la leia: 20 carros marcados y ninguna via en el producto
+  // para revisarlos. La red cazaba el problema y enterraba la evidencia.
+  if (ruta === "/placas-dudosas") {
+    const desde = url.searchParams.get("desde");
+    const hasta = url.searchParams.get("hasta") ?? desde;
+    if (!desde) return json({ error: "falta desde" }, 400);
+    const { data, error } = await db.rpc("placas_dudosas_del_rango", { p_desde: desde, p_hasta: hasta });
+    if (error) { console.error("placas_dudosas_del_rango:", error); return json({ error: error.message }, 500); }
+    return json({ dudosas: data ?? [] });
+  }
+
   // --- Fotos que todavia no se han leido ------------------------------
   // No es una alarma que exija accion: el obrero de fondo las reintenta
   // solo. Sirve para que un problema PERMANENTE se vea — si el numero baja
@@ -1524,26 +1563,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
-  // --- Registrar una visita (cuenta lealtad; auto-liga la placa) -------
-  if (ruta === "/visita") {
-    if (req.method !== "POST") return json({ error: "usa POST" }, 405);
-    let cuerpo: any;
-    try { cuerpo = await req.json(); } catch { return json({ ok: false, error: "cuerpo invalido" }, 400); }
-    if (!cuerpo?.persona) return json({ ok: false, error: "falta persona" }, 400);
-    const { data, error } = await db.rpc("registrar_visita", {
-      p_persona: Number(cuerpo.persona),
-      p_placa: cuerpo?.placa ?? null,
-      p_marca: cuerpo?.marca ?? null,
-      p_submarca: cuerpo?.submarca ?? null,
-      p_tipo: cuerpo?.tipo ?? null,
-      p_color: cuerpo?.color ?? null,
-      p_foto_path: cuerpo?.foto_path ?? null,
-      p_es_gratis: cuerpo?.es_gratis ?? false,
-      p_caja: cuerpo?.caja ?? "principal",
-    });
-    if (error) { console.error("registrar_visita:", error); return json({ error: error.message }, 500); }
-    return json(data);
-  }
+  // ⛔ La ruta `/visita` se BORRO el 21/ago/2026 junto con su RPC
+  // `registrar_visita` (migracion 119). Era la caja VIEJA, la de antes del
+  // rediseno del 15/ago: registraba una visita SIN lavado ligado, que es
+  // exactamente la fuga de lealtad que ese rediseno cerro. Ninguna pantalla
+  // la llamaba desde entonces. La que se usa es /visita-con-ticket, aqui abajo.
 
   // --- Caja: registrar la visita Y enlazarla a su ticket, en un paso ---
   // La cajera elige el ticket ANTES, así que no existe el hueco donde una
@@ -1583,49 +1607,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ tickets: data ?? [] });
   }
 
-  // --- Descartar una visita (no hubo venta) ---------------------------
-  if (ruta === "/descartar-visita") {
-    if (req.method !== "POST") return json({ error: "usa POST" }, 405);
-    let cuerpo: any;
-    try { cuerpo = await req.json(); } catch { return json({ ok: false, error: "cuerpo invalido" }, 400); }
-    if (!cuerpo?.visita) return json({ ok: false, error: "falta visita" }, 400);
-    const { data, error } = await db.rpc("descartar_visita", { p_visita: Number(cuerpo.visita) });
-    if (error) { console.error("descartar_visita:", error); return json({ error: error.message }, 500); }
-    return json(data);
-  }
-
-  // --- Enlazar una visita al carro de su venta (autoritativo) ---------
-  if (ruta === "/enlazar") {
-    if (req.method !== "POST") return json({ error: "usa POST" }, 405);
-    let cuerpo: any;
-    try { cuerpo = await req.json(); } catch { return json({ ok: false, error: "cuerpo invalido" }, 400); }
-    if (!cuerpo?.visita || !cuerpo?.carro) return json({ ok: false, error: "falta visita o carro" }, 400);
-    const { data, error } = await db.rpc("enlazar_visita_a_carro", {
-      p_visita: Number(cuerpo.visita), p_carro: Number(cuerpo.carro),
-    });
-    if (error) { console.error("enlazar_visita_a_carro:", error); return json({ error: error.message }, 500); }
-    return json(data);
-  }
-
-  // --- Desenlazar (soltar el carro; no descuenta lealtad) -------------
-  if (ruta === "/desenlazar") {
-    if (req.method !== "POST") return json({ error: "usa POST" }, 405);
-    let cuerpo: any;
-    try { cuerpo = await req.json(); } catch { return json({ ok: false, error: "cuerpo invalido" }, 400); }
-    if (!cuerpo?.visita) return json({ ok: false, error: "falta visita" }, 400);
-    const { data, error } = await db.rpc("desenlazar_visita", { p_visita: Number(cuerpo.visita) });
-    if (error) { console.error("desenlazar_visita:", error); return json({ error: error.message }, 500); }
-    return json(data);
-  }
-
-  // --- Candidatos para enlazar (carros recien nacidos + visitas) ------
-  if (ruta === "/pendientes") {
-    const caja = url.searchParams.get("caja") ?? "principal";
-    const mins = Number(url.searchParams.get("minutos") ?? 20);
-    const { data, error } = await db.rpc("candidatos_para_enlazar", { p_caja: caja, p_minutos: mins });
-    if (error) { console.error("candidatos_para_enlazar:", error); return json({ error: error.message }, 500); }
-    return json(data);
-  }
+  // ⛔ Aqui vivian CUATRO rutas muertas, borradas el 21/ago/2026:
+  // `/descartar-visita`, `/enlazar`, `/desenlazar` y `/pendientes`. Son el
+  // flujo de DOS pantallas de la caja, el que el rediseno del 15/ago cambio
+  // por uno solo (registrar y enlazar en una operacion atomica). Ninguna
+  // pantalla las llamaba.
+  //
+  // Sus funciones de la base SIGUEN existiendo y se usan: `enlazar_visita_a_carro`
+  // la llama la caja por dentro, y `desenlazar_visita` se corre a mano para
+  // deshacer un enlace mal puesto. Lo que se quito es la puerta HTTP, no la regla.
 
   // --- Historial de un cliente (visitas: carro, entrada, salida, secadores) --
   if (ruta === "/historial") {

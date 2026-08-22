@@ -576,19 +576,65 @@ function cargarCodigo() {
   }
   try { CODIGO = localStorage.getItem("rush_codigo") || ""; } catch (e) { CODIGO = ""; }
 }
+// Toda petición corta a los 20 s. Sin esto, una petición colgada con el wifi
+// del taller deja el botón esperando para siempre: la cajera no ve error, ve
+// una app trabada, y el cliente enfrente. Es el mismo corte que ya tiene la
+// pantalla del supervisor.
+var PEDIR_CORTE_MS = 20000;
+
 function pedir(ruta, opciones) {
   opciones = opciones || {};
   opciones.headers = opciones.headers || {};
   opciones.headers["x-codigo"] = CODIGO;
   opciones.cache = "no-store";
+  var reloj = null;
+  if (typeof AbortController === "function" && !opciones.signal) {
+    var corta = new AbortController();
+    opciones.signal = corta.signal;
+    reloj = setTimeout(function () { corta.abort(); }, PEDIR_CORTE_MS);
+  }
   return fetch(API + ruta, opciones).then(function (r) {
+    if (reloj) clearTimeout(reloj);
     if (r.status === 401) {
       try { localStorage.removeItem("rush_codigo"); } catch (e) {}
       CODIGO = ""; pedirCodigo(true); throw new Error("codigo");
     }
     return r;
+  }, function (e) {
+    if (reloj) clearTimeout(reloj);
+    throw e;
   });
 }
+
+// --- Un error del backend se tiene que VER como error -----------------
+//
+// La migración `105` hizo que el servidor marque `ok:false` en TODA respuesta
+// de error, y los consumidores se quedaron leyendo `d.algo || []`. Con eso un
+// 500 se pinta exactamente igual que "no hay resultados": la cajera busca a un
+// cliente que sí existe, no aparece, y da de alta una ficha duplicada.
+//
+// Se arregla AQUÍ y no en cada consumidor a propósito. Como clase son seis
+// líneas y el séptimo consumidor nace igual la semana entrante.
+function pedirJSON(ruta, opciones) {
+  return pedir(ruta, opciones).then(function (r) {
+    if (!r.ok) throw new Error("El servidor respondió " + r.status);
+    return r.json();
+  }).then(function (d) {
+    if (!d || d.ok === false) {
+      throw new Error((d && d.error) || "El servidor respondió con error");
+    }
+    return d;
+  });
+}
+
+// Una LISTA que no llegó no es una lista vacía: es un error. Devolver `[]`
+// aquí es justamente lo que convierte una falla en "no hay nada".
+function lista(d, campo) {
+  var v = d && d[campo];
+  if (!Array.isArray(v)) throw new Error("La respuesta no trae la lista `" + campo + "`");
+  return v;
+}
+
 function postJSON(ruta, cuerpo) {
   return pedir(ruta, {
     method: "POST", headers: { "Content-Type": "application/json" },
@@ -951,8 +997,27 @@ function resumenLectura(d) {
 
 // Manda una imagen ya lista (dataURL) a leer la placa. La usan el feed y el
 // respaldo del tablet.
+// Deja la captura en cero: sin placa en pantalla y sin datos guardados.
+function limpiarCaptura() {
+  captura = null;
+  var caja = document.getElementById("placa-lista");
+  if (caja) caja.style.display = "none";
+}
+
 function procesarImagen(dataURL) {
   var est = document.getElementById("estado-captura");
+  // 🔴 Se limpia ANTES de pedir, no después de que salga bien.
+  //
+  // Si la lectura fallaba —`ok:false`, o la red— la función se salía por su
+  // camino de error y `captura` se quedaba con la foto y la placa DEL CARRO
+  // ANTERIOR. La cajera veía "Sin conexión", volvía a intentar, y si el
+  // segundo intento tampoco leía, registraba la visita con el `foto_path` y
+  // la placa del cliente de hace un rato: la foto de otro carro pegada a otro
+  // cliente, que es justo lo que el candado de placa repetida existe para
+  // evitar.
+  //
+  // En cuanto se toma una foto nueva, lo de antes está viejo. Punto.
+  limpiarCaptura();
   est.textContent = "Leyendo la placa…";
   mostrarLeyendo(dataURL);
   return postJSON("/leer-placa", { imagen: dataURL }).then(function (d) {
@@ -1033,10 +1098,9 @@ document.getElementById("btn-otra").addEventListener("click", function () {
 document.getElementById("btn-buscar").addEventListener("click", function () {
   if (!captura || !captura.placa) return;
   var placa = captura.placa;
-  pedir("/personas?placa=" + encodeURIComponent(placa))
-    .then(function (r) { return r.json(); })
+  pedirJSON("/personas?placa=" + encodeURIComponent(placa))
     .then(function (d) {
-      var arr = d.personas || [];
+      var arr = lista(d, "personas");
       mostrar("p-cliente", true);
       pintarEncabezado("Placa: " + placa, arr.length);
       pintarClientes(arr, "resultados");
@@ -1067,11 +1131,10 @@ function buscarTop(q) {
   document.getElementById("top-limpiar").classList.toggle("on", q.length > 0);
   if (q.length < 2) { cerrarBuscadorTop(); return; }   // 1 letra no filtra nada util
   var miToken = ++topToken;
-  pedir("/personas?q=" + encodeURIComponent(q))
-    .then(function (r) { return r.json(); })
+  pedirJSON("/personas?q=" + encodeURIComponent(q))
     .then(function (d) {
       if (miToken !== topToken) return;                 // respuesta vieja
-      var arr = d.personas || [];
+      var arr = lista(d, "personas");
       var html = "";
       arr.forEach(function (p, i) {
         var l = p.lealtad || {};
@@ -1105,8 +1168,17 @@ function buscarTop(q) {
         mostrar("p-nueva", true);
       });
     })
-    // En vivo no se alerta: si falla la red simplemente no salen resultados.
-    .catch(function (e) { if (e && e.message === "codigo") return; });
+    // Falla la búsqueda: se DICE. Antes se tragaba en silencio y el resultado
+    // en pantalla era idéntico a "no existe ese cliente" — con lo que la
+    // cajera daba de alta una ficha duplicada de alguien que sí estaba.
+    // Se comprueba el token también aquí: una falla vieja no puede tapar un
+    // resultado nuevo.
+    .catch(function (e) {
+      if (e && e.message === "codigo") return;
+      if (miToken !== topToken) return;
+      abrirBuscadorTop('<div class="top-vacio">No se pudo buscar. ' +
+        'Revisa la conexión e intenta otra vez.</div>');
+    });
 }
 
 document.getElementById("in-top").addEventListener("input", function () {
@@ -1148,17 +1220,21 @@ function buscarNombre(q) {
   var cont = document.getElementById("resultados-nombre");
   if (q.length < 2) { cont.innerHTML = ""; return; }   // 1 letra no filtra nada util
   var miToken = ++buscaNombreToken;
-  pedir("/personas?q=" + encodeURIComponent(q))
-    .then(function (r) { return r.json(); })
+  pedirJSON("/personas?q=" + encodeURIComponent(q))
     .then(function (d) {
       if (miToken !== buscaNombreToken) return;   // respuesta vieja: se ignora
-      var arr = d.personas || [];
+      var arr = lista(d, "personas");
       if (!arr.length) cont.innerHTML = '<div class="nota">Nadie con ese nombre. Regístralo como cliente nuevo.</div>';
       else pintarClientes(arr, "resultados-nombre");
     })
-    // En vivo no se alerta: si falla la red, no aparecen resultados y ya;
-    // el codigo se maneja como siempre (relanza el candado del acceso).
-    .catch(function (e) { if (e && e.message === "codigo") return; });
+    // Igual que el buscador de arriba: una falla se DICE, no se disfraza de
+    // "nadie con ese nombre".
+    .catch(function (e) {
+      if (e && e.message === "codigo") return;
+      if (miToken !== buscaNombreToken) return;
+      cont.innerHTML = '<div class="nota aviso">No se pudo buscar. ' +
+        'Revisa la conexión e intenta otra vez.</div>';
+    });
 }
 
 document.getElementById("btn-nombre").addEventListener("click", function () {
@@ -1366,9 +1442,25 @@ function cargarTickets() {
     .catch(function (e) { if (e && e.message === "codigo") pararTickets(); });
 }
 
+// 🔴 El DÍA se dice cuando no es hoy, y en mayúsculas cuando es ayer.
+//
+// La lista muestra los últimos 5 tickets, y al abrir la caja en la mañana los
+// cinco son de AYER: en pantalla se veían idénticos a los de hoy, porque sólo
+// salía la hora. Registrar una visita contra el lavado de ayer le pega el
+// cobro equivocado a un cliente que está enfrente.
+//
+// Los de hoy siguen viéndose igual que siempre — que es el caso normal y no
+// se le agrega ruido.
 function horaExacta(iso) {
-  return iso ? new Date(iso).toLocaleTimeString("es-MX",
-    { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
+  if (!iso) return "";
+  var d = new Date(iso);
+  var hora = d.toLocaleTimeString("es-MX",
+    { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  var hoy = new Date();
+  if (d.toDateString() === hoy.toDateString()) return hora;
+  var ayer = new Date(hoy.getTime() - 86400000);
+  if (d.toDateString() === ayer.toDateString()) return "AYER · " + hora;
+  return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short" }) + " · " + hora;
 }
 
 // El ticket elegido no cuadra con lo que pidió la cajera: prendió "Utilizar
@@ -1551,9 +1643,8 @@ document.getElementById("btn-historial").addEventListener("click", function () {
   document.getElementById("hist-nombre").textContent = "Historial de " + p.nombre;
   document.getElementById("hist-lista").innerHTML = '<div class="nota">Cargando…</div>';
   mostrar("p-historial", true);
-  pedir("/historial?persona=" + p.id)
-    .then(function (r) { return r.json(); })
-    .then(function (d) { pintarHistorial(d.historial || []); })
+  pedirJSON("/historial?persona=" + p.id)
+    .then(function (d) { pintarHistorial(lista(d, "historial")); })
     .catch(function (e) {
       if (e && e.message !== "codigo")
         document.getElementById("hist-lista").innerHTML = '<div class="nota">Sin conexión.</div>';

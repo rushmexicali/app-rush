@@ -343,7 +343,7 @@ function pintarReporte(r) {
   var asp = r.aspirado || {};
   // Aviso de placas repetidas el mismo día: se llena aparte (pedirRepetidas),
   // va hasta arriba porque es algo que hay que ir a revisar.
-  var html = '<div id="repetidas"></div><div id="fotos-pendientes"></div>';
+  var html = '<div id="repetidas"></div><div id="dudosas"></div><div id="fotos-pendientes"></div>';
 
   html += '<div class="numeros">';
   html +=   tarjeta(r.vehiculos_lavados, "Vehículos lavados",
@@ -747,6 +747,69 @@ function pedirRepetidas(desde, hasta) {
     .catch(function () { /* es un extra: si falla, el reporte no se cae */ });
 }
 
+// --- Placas que el candado ATAJÓ -------------------------------------
+//
+// Cuando la app va a escribirle a un carro una placa que otro carro del
+// mismo día ya tiene, no la escribe: la guarda aparte en
+// `carros.placa_dudosa` (migración 100). Eso lleva funcionando desde el
+// 15/ago y **nadie lo podía ver**: tres funciones escribían esa columna y
+// cero código la leía. Al 21/ago había 20 carros marcados.
+//
+// Es distinto de la alerta de arriba, y por eso va aparte: aquélla son
+// placas que SÍ se escribieron dos veces (el pegado ya ocurrió); ésta son
+// las que se detuvieron a tiempo. Aquí no hay nada roto que arreglar — hay
+// una foto que se le iba a pegar al carro equivocado y hay que decidir de
+// quién era.
+function pedirDudosas(desde, hasta) {
+  if (!desde) return;
+  pedir("/placas-dudosas?desde=" + desde + "&hasta=" + hasta)
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var cont = document.getElementById("dudosas");
+      if (!cont) return;
+      var arr = (d && d.dudosas) || [];
+      if (!arr.length) { cont.innerHTML = ""; return; }
+      cont.innerHTML = avisoDudosasHTML(arr);
+      cont.querySelectorAll("button[data-placa]").forEach(function (b) {
+        b.addEventListener("click", function () { irAPlaca(b.getAttribute("data-placa")); });
+      });
+      cont.querySelectorAll("button[data-ticket]").forEach(function (b) {
+        b.addEventListener("click", function () { abrirTicket(b.getAttribute("data-ticket")); });
+      });
+    })
+    .catch(function () { /* es un extra: si falla, el reporte no se cae */ });
+}
+
+function avisoDudosasHTML(arr) {
+  var n = arr.length;
+  var html = '<div class="aviso alerta"><b>⚠ ' + n +
+             (n === 1 ? " placa que se atajó" : " placas que se atajaron") + "</b> — " +
+             "la app iba a escribirlas en estos carros, pero ese mismo día ya eran de otro carro, " +
+             "así que no se escribieron. Casi siempre es una foto tomada al carro equivocado: " +
+             "abre la placa para comparar las fotos y ver de quién era.";
+  arr.forEach(function (c) {
+    var desc = c.submarca
+      ? [c.marca, c.submarca, c.color].filter(Boolean).join(" ")
+      : [c.tipo_unidad, c.color, c.marca].filter(Boolean).join(" ");
+    var linea = escapar(fechaCorta(c.dia + "T12:00:00")) + " " + escapar(hora(c.hora)) +
+                " — " + (desc ? escapar(titulo(desc)) : "sin datos") +
+                (c.cliente ? " · " + escapar(titulo(c.cliente)) : "");
+    linea += ' · se atajó <button class="enlace" data-placa="' + escapar(c.placa_dudosa) + '"><b>' +
+             escapar(c.placa_dudosa) + "</b></button>";
+    // La que sí se le quedó al carro. Compararlas es lo que resuelve el caso.
+    if (c.placa) {
+      linea += ' · el carro quedó con <button class="enlace" data-placa="' + escapar(c.placa) + '">' +
+               escapar(c.placa) + "</button>";
+    } else {
+      linea += " · el carro quedó SIN placa";
+    }
+    if (c.choca_con) linea += " · chocaba con el carro " + escapar(c.choca_con);
+    if (c.ticket) linea += ' · <button class="enlace" data-ticket="' + escapar(c.ticket) + '">ticket ' + escapar(c.ticket) + "</button>";
+    html += '<div class="rep-carro">' + linea + "</div>";
+  });
+  return html + "</div>";
+}
+
 // Cada grupo: una placa que salió en 2+ carros el mismo día. Los colores o
 // tipos casi siempre difieren en un pegado, así que se muestra la descripción
 // de cada carro para cachar cuál es el intruso.
@@ -820,6 +883,7 @@ function cargarReporte(ruta, esRango) {
       document.getElementById("contenido").innerHTML = pintarReporte(r) + pintarPlacas();
       cargarPlacas("");
       pedirRepetidas(r.desde, r.hasta || r.desde);
+      pedirDudosas(r.desde, r.hasta || r.desde);
       pedirFotosPendientes(r.desde, r.hasta || r.desde);
       // Con rebote, como los otros dos buscadores del archivo (cli-q y
       // tik-q). Sin él, teclear una placa de 7 caracteres son 7 consultas

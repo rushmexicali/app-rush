@@ -488,6 +488,11 @@
   .opcion.bueno { background:#3fb950; border-color:#3fb950; color:#08090b; min-height:96px; font-size:24px; }
   .opcion.malo  { background:transparent; border-color:#ff4d4f; color:#ff7875; min-height:96px; font-size:24px; }
   .opcion.volver { width:100%; margin-top:26px; min-height:66px; font-size:19px; }
+  /* Mientras viaja la peticion. Se APAGA visualmente y el texto dice que
+     esta haciendo: el candado `ocupado` ya evitaba el doble toque, pero sin
+     nada en pantalla el supervisor cree que el boton no sirve y sigue
+     picandole. Va atenuado y no gris del todo para que no parezca roto. */
+  .opcion.enviando { opacity:.55; }
   /* El boton que confirma el rechazo, debajo de los motivos. Del ancho
      completo y separado de la rejilla para que no se confunda con un
      motivo mas. */
@@ -1043,7 +1048,7 @@ function pintar() {
   var firma = JSON.stringify(carros.map(function (c) {
     return [c.id, c.estado, c.linea, c.es_express, c.producto, c.variante,
             c.aviso, c.a_mano, c.tipo_unidad, c.color, c.marca, c.submarca, c.placa,
-            c.foto, (c.ausentes || []).join(","), (c.secadores || []).join(",")];
+            c.foto, (c.ausentes || []).join(","), (c.secadores || []).join(","), !!FOTOS_RENDIDAS[c.id]];
   }));
   if (firma === firmaRender && document.querySelector("#lista .carro")) {
     return;
@@ -1159,6 +1164,16 @@ function pintar() {
     if (c.ausentes && c.ausentes.length) {
       html += '<div class="ausente">&#9888; ' + escapar(c.ausentes.join(", ")) +
               ' marcó salida.<br>Asigna a otro secador</div>';
+    }
+
+    // La foto se rindio tras ~35 min de reintentos. Antes esto solo salia en
+    // la CONSOLA —que nadie mira en un telefono— y la foto se borraba: el
+    // supervisor la habia tomado, la daba por hecha, y el carro se quedaba
+    // sin ella para siempre. Ahora se le dice en la tarjeta del carro, que
+    // es donde esta el boton para volver a tomarla.
+    if (FOTOS_RENDIDAS[c.id]) {
+      html += '<div class="ausente">&#9888; La foto no se pudo subir.' +
+              '<br>Tómala otra vez</div>';
     }
 
     html +=   '<div class="acciones">';
@@ -1359,11 +1374,26 @@ document.addEventListener("visibilitychange", function () {
   if (document.visibilityState === "visible" && !candado) mantenerPantallaEncendida();
 });
 
+// 🔴 La respuesta VIEJA no puede pisar a la nueva.
+//
+// El poll dispara cada 3 s sin esperar a que la anterior conteste. Con el wifi
+// del taller flojo eso deja dos (o cinco) respuestas en vuelo, y llegan en el
+// orden que se les da la gana: una de hace 20 segundos aterriza DESPUES de la
+// recien pedida y repinta la cola con carros que ya se entregaron, tarjetas
+// que ya no estan rojas y secadores que ya se reasignaron. El supervisor ve
+// la cola "brincar" hacia atras sin explicacion.
+//
+// El contador es el mismo patron que ya usan los buscadores de la caja y del
+// reporte: cada consulta se lleva su numero y solo se pinta la ultima.
+var consultaToken = 0;
+
 function consultar() {
   if (!CODIGO) { pedirCodigo(false); return; }
+  var miToken = ++consultaToken;
 
   pedir("/cola")
     .then(function (r) {
+      if (miToken !== consultaToken) return null;   // llego tarde: se tira
       if (r.status === 401) {
         // Codigo malo: se olvida para que no siga fallando en silencio.
         try { localStorage.removeItem("rush_codigo"); } catch (e) {}
@@ -1393,7 +1423,10 @@ function consultar() {
       // toca reintentar alguna. Casi siempre sale sin subir nada (candados).
       flushOutbox();
     })
-    .catch(function () { avisarError(true); });
+    // La falla vieja tampoco cuenta: si una consulta de hace 20 s se corta
+    // DESPUES de que la nueva ya pinto bien, encender el aviso seria mentir
+    // al reves.
+    .catch(function () { if (miToken === consultaToken) avisarError(true); });
 }
 
 // --- Asignar linea y secadores ---------------------------------------
@@ -1440,12 +1473,24 @@ var ROLES = {
 
 function cargarSecadores() {
   return pedir("/secadores")
-    .then(function (r) { return r.json(); })
+    .then(function (r) {
+      if (!r.ok) throw new Error("El servidor respondio " + r.status);
+      return r.json();
+    })
     .then(function (d) {
-      SECADORES = d.secadores || [];
+      // Misma regla que la cola: una respuesta que NO es una lista de
+      // secadores no es "hoy no hay nadie checado" — es una falla. Con
+      // `d.secadores || []` la grilla de asignar salia VACIA y el supervisor
+      // se quedaba sin nadie a quien asignar, con el taller lleno de gente y
+      // sin ninguna senal de que algo se rompio.
+      if (!d || d.ok === false ||
+          Object.prototype.toString.call(d.secadores) !== "[object Array]") {
+        throw new Error("La respuesta no trae la lista de secadores");
+      }
+      SECADORES = d.secadores;
       FUERA = d.fuera || 0;
     })
-    .catch(function () { /* se conserva la lista anterior */ });
+    .catch(function () { /* se conserva la lista anterior, que es mejor que ninguna */ });
 }
 
 // Una sola pantalla con DOS modos. asig.modo dice cual:
@@ -2110,12 +2155,34 @@ function pintarMotivos() {
     : "RECHAZAR";
 }
 
+// 🔴 Mientras la peticion viaja, el boton lo DICE.
+//
+// `ocupado` ya impedia el doble toque, pero EN SILENCIO: el supervisor tocaba
+// "Entregar", el boton se quedaba igualito, y con el wifi flojo pasaban hasta
+// 20 segundos (el corte) sin una sola senal. Para el —que es de la tercera
+// edad— eso se lee como "el boton no sirve", asi que volvia a tocarlo tres
+// veces y los tres toques se los tragaba el candado.
+//
+// Devuelve la funcion que lo deja como estaba.
+function enEnvio(b, texto) {
+  var antes = b.textContent;
+  b.textContent = texto;
+  b.classList.add("enviando");
+  b.disabled = true;
+  return function () {
+    b.textContent = antes;
+    b.classList.remove("enviando");
+    b.disabled = false;
+  };
+}
+
 document.getElementById("entrega").addEventListener("click", function (ev) {
   var b = ev.target.closest("button");
   if (!b || !entrega || ocupado) return;
 
   if (b.dataset.entregar) {
     ocupado = true;
+    var listoEntregar = enEnvio(b, "Entregando…");
     if (navigator.vibrate) navigator.vibrate(30);
     pedir("/avanzar", {
       method: "POST",
@@ -2125,7 +2192,7 @@ document.getElementById("entrega").addEventListener("click", function (ev) {
       .then(function (r) { return r.json(); })
       .then(function (d) { if (d && d.ok === false) alert(d.error || "No se pudo"); cerrarPantalla(); })
       .catch(function () { alert("Sin conexión. Intenta otra vez."); })
-      .then(function () { ocupado = false; consultar(); });
+      .then(function () { listoEntregar(); ocupado = false; consultar(); });
     return;
   }
 
@@ -2168,6 +2235,7 @@ document.getElementById("entrega").addEventListener("click", function (ev) {
   if (b.id === "ent-rechazar") {
     if (!motivosElegidos.length) return;
     ocupado = true;
+    var listoRechazar = enEnvio(b, "Registrando…");
     if (navigator.vibrate) navigator.vibrate([30, 60, 30]);
     // Se mandan TODOS los motivos marcados. La base los guarda como UN
     // solo rechazo (mismo grupo) con varias filas: cuenta como un evento,
@@ -2183,7 +2251,15 @@ document.getElementById("entrega").addEventListener("click", function (ev) {
         cerrarPantalla();
       })
       .catch(function () { alert("Sin conexión. Intenta otra vez."); })
-      .then(function () { ocupado = false; consultar(); });
+      .then(function () {
+        listoRechazar();
+        // Se vuelve a calcular el rotulo: `pintarMotivos` es quien decide si
+        // dice "RECHAZAR" o "RECHAZAR (3)" y si va apagado. Restaurar el
+        // texto viejo a secas lo dejaria desfasado.
+        pintarMotivos();
+        ocupado = false;
+        consultar();
+      });
     return;
   }
 });
@@ -2255,9 +2331,20 @@ function abrirEntregados(yaAbierta) {
   cargarDiasDisponibles();
 
   pedir("/entregados" + (diaEntregados ? "?fecha=" + encodeURIComponent(diaEntregados) : ""))
-    .then(function (r) { return r.json(); })
+    .then(function (r) {
+      if (!r.ok) throw new Error("El servidor respondio " + r.status);
+      return r.json();
+    })
     .then(function (d) {
-      var lista = d.carros || [];
+      // Misma regla que la cola y que los secadores: si no viene una lista,
+      // es un error, no un dia sin entregas. Con `d.carros || []` la pantalla
+      // decia "Todavia no se ha entregado ningun carro hoy" despues de 80
+      // entregas, y el supervisor buscaba a mano el que queria restaurar.
+      if (!d || d.ok === false ||
+          Object.prototype.toString.call(d.carros) !== "[object Array]") {
+        throw new Error("La respuesta no trae la lista de entregados");
+      }
+      var lista = d.carros;
       // Se guarda para que "Corregir" pueda abrir la pantalla con los
       // datos que ya vinieron, sin pedirlos otra vez.
       ENTREGADOS = lista;
@@ -2618,6 +2705,9 @@ var ultimoIntentoFoto = 0;       // piso global entre intentos
 var FOTO_GAP_MS = 4000;          // nunca mas de 1 intento cada 4s (toda la cola junta)
 var FOTO_MAX_INTENTOS = 12;      // ~35 min de reintentos con backoff, luego se rinde
 var FOTO_BACKOFF_TOPE = 300000;  // 5 min
+// Los carros cuya foto se rindio. Se pinta un aviso en SU tarjeta; antes esto
+// solo iba a la consola del telefono, o sea a ningun lado.
+var FOTOS_RENDIDAS = {};
 
 function fotoDB() {
   if (FOTO_DB) return Promise.resolve(FOTO_DB);
@@ -2642,6 +2732,8 @@ function idbReq(r) {
 // /asignar ok (para no subir la foto de un carro que no se asigno); desde
 // la tarjeta/visor se llama de una vez (esos carros ya son reales).
 function guardarPendiente(id, imagen) {
+  // Foto nueva, cuenta nueva: se apaga el aviso de "no se pudo subir".
+  delete FOTOS_RENDIDAS[id];
   return fotoStore("readwrite")
     .then(function (st) { return idbReq(st.put({ id: id, imagen: imagen, intentos: 0, proximo: 0 })); })
     .catch(function (e) { console.error("No se pudo encolar la foto del carro", id, e); });
@@ -2673,7 +2765,14 @@ function intentarSubir(entry) {
     entry.intentos = (entry.intentos || 0) + 1;
     if (entry.intentos >= FOTO_MAX_INTENTOS) {
       console.error("Foto no subio tras", entry.intentos, "intentos; se rinde. Carro", entry.id);
-      quitarPendiente(entry.id);   // la tarjeta seguira sin foto: re-toma manual
+      // 🔴 Se rinde, pero LO DICE. Antes solo quedaba este `console.error`
+      // —que en un telefono no lo lee nadie— y la foto se borraba: el
+      // supervisor la habia tomado, la daba por hecha, y el carro se quedaba
+      // sin foto y sin placa para siempre.
+      FOTOS_RENDIDAS[entry.id] = true;
+      if (navigator.vibrate) navigator.vibrate([60, 80, 60]);
+      quitarPendiente(entry.id);   // la tarjeta lo pide de nuevo: re-toma manual
+      pintar();
       return;
     }
     var espera = Math.min(5000 * Math.pow(2, entry.intentos - 1), FOTO_BACKOFF_TOPE);
