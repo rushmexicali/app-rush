@@ -7,13 +7,24 @@
 -- Dedup: una visita YA está si hay un import con el mismo ticket, o con la
 -- misma persona + misma hora (creado_en). Cubre notas sin ticket.
 --
--- ⚠️ LA HORA SALE DE LA ZONA QUE DECLARA EL EXPORT (columna stg_cnt.tz).
--- El export del 21/ago/2026 vino en America/Ciudad_Juarez y todos los
--- anteriores en America/Tijuana: una hora de diferencia. Medido contra las
--- ventas de Zettle de esos mismos tickets — 235 de 239 notas caían exactas
--- 60 minutos adelante. Clavar 'America/Tijuana' aquí guardaría cada visita
--- una hora tarde y además rompería el dedup del siguiente import, que
--- compara `creado_en` al segundo. Sin `tz`, se asume Tijuana.
+-- ⚠️ TODO SE GUARDA EN HORA DE TIJUANA. Siempre: el negocio está en Mexicali
+-- y no hay un solo dato de este proyecto que viva en otra zona.
+--
+-- Pero las horas del export no siempre VIENEN en Tijuana: el
+-- ClientNoteTracker las escribe con la zona del TELÉFONO del dueño, y el
+-- 21/ago/2026 se le descompuso el horario — el PDF salió en
+-- America/Ciudad_Juarez, una hora adelante. Medido contra las ventas de
+-- Zettle de esos mismos tickets: 235 de 239 notas caían exactas 60 minutos
+-- adelante.
+--
+-- Por eso `stg_cnt.tz` guarda la zona en que RESULTARON estar escritas las
+-- horas —medida contra Zettle, no leída del encabezado del PDF, que no es
+-- fuente confiable—. Sin `tz`, se asume Tijuana. Clavar Tijuana cuando no lo
+-- es guardaría cada visita una hora tarde y rompería el dedup del siguiente
+-- import, que compara `creado_en` al segundo.
+--
+-- Cotejo gratis después de importar: SIEMPRE se cierra a las 8 PM, así que
+-- una nota pasada de las 20:00 hora de Tijuana significa desfase mal puesto.
 --
 -- El LIGADO a los carros vive en public.ligar_visitas_de_import()
 -- (migración 118), no aquí: los tres scripts del import lo llamaban copiado.

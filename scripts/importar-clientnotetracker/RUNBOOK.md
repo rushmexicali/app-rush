@@ -90,22 +90,36 @@ Sea `$W` una carpeta de trabajo. Todo intermedio vive ahí.
 pdftotext.exe -enc UTF-8 -layout "client_note_tracker_*.pdf" "$W/notas_utf8.txt"
 ```
 
-🔴 **LEE EL ENCABEZADO DEL EXPORT. La zona horaria CAMBIA.** Las primeras líneas traen
-`Timezone (…)`, y no siempre dice lo mismo:
+🔴 **LA HORA DEL EXPORT NO ES DE FIAR: sale del TELÉFONO del dueño.** Las primeras líneas traen
+`Timezone (…)`:
 
 ```
 head -8 notas_utf8.txt | grep -i "timezone\|start date\|end date"
 ```
 
-Todos los exports hasta el 17/ago/2026 venían en **America/Tijuana**; el del **21/ago vino en
-America/Ciudad_Juarez**, que va **una hora adelante**. Se comprobó contra las ventas de Zettle de
-esos mismos tickets: **235 de 239 notas caían exactas 60 minutos después** de su venta. Sin
-corregirlo, cada visita se guarda una hora tarde **y** el dedup del siguiente import —que compara
-`creado_en` al segundo— deja de reconocerlas y las mete duplicadas.
+Todos los exports hasta el 17/ago/2026 decían **America/Tijuana**; el del **21/ago dijo
+America/Ciudad_Juarez**, una hora adelante. **No fue que el app cambiara** — lo explicó el dueño
+el 21/ago: *"mi teléfono se jodió con el horario y creo que eso causó el error"*. El ClientNoteTracker
+escribe la hora con la zona del teléfono, así que ese encabezado puede decir cualquier cosa.
 
-Por eso la zona **viaja con el dato**, en la columna `stg_cnt.tz`, y el import convierte con
-`at time zone coalesce(s.tz,'America/Tijuana')`. Se carga en el paso 3.4 con el valor que **diga
-el PDF**, no el que uno se acuerde.
+👉 **La regla, y no admite excepción: TODO se guarda en la hora de Tijuana.** El negocio está en
+Mexicali y no hay un solo dato en este proyecto que viva en otra zona.
+
+**Por eso la zona NO se toma del encabezado: se MIDE contra Zettle.** El ticket de cada nota es el
+`purchaseNumber` de una venta cuya hora sí es confiable, así que el desfase se calcula y se
+corrige. La columna `stg_cnt.tz` guarda la zona en que resultaron estar escritas las horas (no la
+que diga el PDF), y el import convierte con `at time zone coalesce(s.tz,'America/Tijuana')`.
+
+**Y hay un segundo cotejo, gratis: SIEMPRE se cierra a las 8 PM.** Si después de convertir
+aparecen notas pasadas de las ~20:00 hora de Tijuana, el desfase está mal — no es que hayan
+trabajado hasta tarde.
+
+```sql
+select count(*) as notas_despues_de_cerrar
+from public.stg_cnt
+where extract(hour from (dt_local::timestamp at time zone coalesce(tz,'America/Tijuana')
+                         at time zone 'America/Tijuana')) >= 20;
+```
 
 **Cómo se verifica después de cargar** (debe dar ~0 min con la zona correcta):
 

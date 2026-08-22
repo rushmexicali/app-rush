@@ -163,9 +163,12 @@ begin
   msg := msg || 'las visitas sobreviven OK. ';
 
   -- ------------------------------------------------------------------
-  -- 6) La ZONA HORARIA sale del export, no clavada. El export del
-  --    21/ago/2026 vino en America/Ciudad_Juarez, una hora adelante de
-  --    Tijuana; clavar Tijuana guardaria cada visita una hora tarde.
+  -- 6) TODO se guarda en hora de TIJUANA, pero el export no siempre VIENE en
+  --    Tijuana: el CNT escribe con la zona del telefono del dueno, y el
+  --    21/ago/2026 se le descompuso el horario (el PDF salio en
+  --    America/Ciudad_Juarez, una hora adelante). Por eso la zona de origen
+  --    viaja en `stg_cnt.tz` — medida contra Zettle, no leida del PDF.
+  --    Clavar Tijuana cuando no lo es guardaria cada visita una hora tarde.
   -- ------------------------------------------------------------------
   if ('2026-08-20 18:45:00'::timestamp at time zone 'America/Ciudad_Juarez')
      <> ('2026-08-20 17:45:00'::timestamp at time zone 'America/Tijuana') then

@@ -1019,17 +1019,32 @@ Y el `update` va en su propio sub-bloque con manejador: **si aun así chocara se
 ENLACES, nunca las VISITAS**. Lo que no se liga queda en `imp_ligado_conflictos` con su motivo —
 no descartado en silencio (lección de la `108`).
 
-### 🔴 Y el export cambió de zona horaria sin avisar
+### 🔴 El export vino con la hora corrida — y la culpa era del teléfono
 
-El PDF del 21/ago viene en **`America/Ciudad_Juarez`**; todos los anteriores decían
-**`America/Tijuana`**. Es **una hora** de diferencia. Se midió contra las ventas de Zettle de esos
-mismos tickets: **235 de 239 notas caían exactas 60 minutos después** de su venta.
+El PDF del 21/ago decía **`America/Ciudad_Juarez`**; todos los anteriores decían
+**`America/Tijuana`**. Una hora de diferencia. Se midió contra las ventas de Zettle de esos mismos
+tickets: **235 de 239 notas caían exactas 60 minutos después** de su venta.
+
+**No fue que el app cambiara de zona.** Lo explicó el dueño el mismo día: *"mi teléfono se jodió
+con el horario y creo que eso causó el error"*. El ClientNoteTracker escribe la hora con la zona
+del teléfono, así que **ese encabezado puede decir cualquier cosa** y no sirve como fuente.
+
+De ahí salen dos reglas, las dos en el `RUNBOOK.md §3.1`:
+
+1. 👉 **TODO se guarda en hora de Tijuana. Siempre.** El negocio está en Mexicali y no hay un solo
+   dato de este proyecto que viva en otra zona.
+2. **La zona del export no se lee: se MIDE contra Zettle.** Cada nota trae el `purchaseNumber` de
+   una venta cuya hora sí es confiable, así que el desfase se calcula y se corrige. `stg_cnt.tz`
+   guarda la zona en que **resultaron** estar escritas las horas, no la que declara el PDF.
 
 Sin corregirlo, cada visita se guardaba una hora tarde **y** el dedup del siguiente import —que
-compara `creado_en` al segundo— habría dejado de reconocerlas y las habría metido duplicadas. Ahora
-la zona **viaja con el dato** (`stg_cnt.tz`) y el import convierte con
-`at time zone coalesce(s.tz,'America/Tijuana')`. Comprobado después de importar: la última visita
-del 20/ago quedó en **17:45**, el minuto exacto de su venta.
+compara `creado_en` al segundo— habría dejado de reconocerlas y las habría metido duplicadas.
+
+> 🔑 **Y hay un cotejo que sale gratis: SIEMPRE se cierra a las 8 PM.** Si después de convertir
+> quedan notas pasadas de las 20:00, el desfase está mal — no es que hayan trabajado tarde.
+> Comprobado sobre lo importado: **0 notas después de las 8** en los cuatro días, con las últimas
+> en 19:21, 19:18, 19:22 y 17:45. Sin la corrección habrían quedado en 20:21, 20:18 y 20:22, o sea
+> que **esta sola comprobación habría cachado el error**.
 
 ### Lo que entró
 
