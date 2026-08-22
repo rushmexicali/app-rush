@@ -88,7 +88,15 @@ completitud** que buscó lo que nadie revisó.
 dos a `media`). Eso es el pase haciendo su trabajo: sin él, cuatro números inflados habrían
 entrado al informe como urgentes.
 
-### 🔴 LO QUE HAY QUE ATENDER YA
+### ✅ LO QUE HABÍA QUE ATENDER YA — LOS TRES, HECHOS EL 21/ago (migración `118`)
+
+> Detalle y razones en `CLAUDE.md §11.25`; el flujo, en el `RUNBOOK.md §4e`. Resumen: el ligado
+> del import vive ahora en una sola función que respeta el candado de la `114`; se importaron las
+> 240 visitas del 17 al 20/ago (cotejo día por día exacto); y la suite ya cubre el import con
+> `pruebas/import-cnt.sql` más el dry-run real. Salieron dos hallazgos nuevos de paso: el export
+> cambió de zona horaria y el ligado leía sólo el aviso envuelto de Zettle.
+>
+> Lo de abajo se conserva **tal como lo reportó la auditoría**, para no perder el diagnóstico.
 
 1. **El CRM lleva CUATRO DÍAS sin registrar una sola visita.** La última es del **16/ago**; hoy
    es 20. Medido: **248 lavados sin sello** y **35 gratis entregados sin descontar** en esos
