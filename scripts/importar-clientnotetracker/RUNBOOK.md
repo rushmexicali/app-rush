@@ -89,6 +89,33 @@ Sea `$W` una carpeta de trabajo. Todo intermedio vive ahí.
 ```
 pdftotext.exe -enc UTF-8 -layout "client_note_tracker_*.pdf" "$W/notas_utf8.txt"
 ```
+
+🔴 **LEE EL ENCABEZADO DEL EXPORT. La zona horaria CAMBIA.** Las primeras líneas traen
+`Timezone (…)`, y no siempre dice lo mismo:
+
+```
+head -8 notas_utf8.txt | grep -i "timezone\|start date\|end date"
+```
+
+Todos los exports hasta el 17/ago/2026 venían en **America/Tijuana**; el del **21/ago vino en
+America/Ciudad_Juarez**, que va **una hora adelante**. Se comprobó contra las ventas de Zettle de
+esos mismos tickets: **235 de 239 notas caían exactas 60 minutos después** de su venta. Sin
+corregirlo, cada visita se guarda una hora tarde **y** el dedup del siguiente import —que compara
+`creado_en` al segundo— deja de reconocerlas y las mete duplicadas.
+
+Por eso la zona **viaja con el dato**, en la columna `stg_cnt.tz`, y el import convierte con
+`at time zone coalesce(s.tz,'America/Tijuana')`. Se carga en el paso 3.4 con el valor que **diga
+el PDF**, no el que uno se acuerde.
+
+**Cómo se verifica después de cargar** (debe dar ~0 min con la zona correcta):
+
+```sql
+with z as (select (public.detalle_venta(payload)->>'purchaseNumber') recibo,
+                  creado_en from public.ventas)
+select round(extract(epoch from ((s.dt_local::timestamp at time zone coalesce(s.tz,'America/Tijuana'))
+                                 - z.creado_en))/60.0) dif_min, count(*)
+from public.stg_cnt s join z on z.recibo = s.ticket group by 1 order by 2 desc limit 5;
+```
 Anota la línea donde empieza la sección de notas:
 `NL = grep -n "^ *Notes *$" notas_utf8.txt` (la primera).
 
@@ -104,7 +131,34 @@ Con el corte mal puesto, `padron.awk` **trunca el padrón** y el diff reporta co
 a personas que sí están. Comprueba siempre que `wc -l padron.tsv` sea del orden del total de
 clientes (≈4,900 al 15/ago/2026), no menos.
 
-### 3.2 Jalar Zettle con la bandera "Gratis"  (PowerShell)
+### 3.2 Jalar Zettle con la bandera "Gratis"
+
+**Atajo que funciona desde el 19/jul/2026: sacarlo de nuestra propia tabla `ventas`** en vez de
+pegarle a la API. `ventas.payload` **es** el aviso crudo de Zettle, así que es la misma fuente sin
+token de 2 horas ni paginación. Sólo hay que comprobar antes que no falte ninguna venta del
+periodo — si la secuencia de `purchaseNumber` no tiene huecos, está completa:
+
+```sql
+with v as (select (public.detalle_venta(payload)->>'purchaseNumber')::bigint n,
+                  (creado_en at time zone 'America/Tijuana')::date f
+           from public.ventas
+           where public.detalle_venta(payload)->>'purchaseNumber' ~ '^[0-9]+$')
+select count(*) from (
+  select generate_series(min(n), max(n)) g from v where f between :desde and :hasta
+  except select n from v) h;   -- 0 = no falta ninguna
+```
+
+El 21/ago dio **27008..27264, 257 ventas, 0 huecos** para el 17–20/ago.
+
+El TSV se arma con `purchaseNumber, amount, fecha, gz`, donde `gz=1` si algún producto se llama
+`(?i)gratis` — igual que lo hacía el jalón de la API.
+
+⚠️ Y **usa `detalle_venta(payload)`, nunca `payload->>'purchaseNumber'` a secas**: Zettle manda el
+aviso envuelto en la llave `payload` unas veces y plano otras, y leer una sola forma devuelve
+nulos en silencio (es el bug que la migración `115` le corrigió a `ventas_indexar` y la `118` al
+ligado del import).
+
+#### 3.2-bis  El jalón por la API (si algún día `ventas` no alcanza)  (PowerShell)
 Paginar `purchases/v2` (cursor `lastPurchaseHash`), y por cada compra escribir
 `purchaseNumber \t amount \t YYYY-MM-DD \t gz` donde `gz=1` si algún producto se
 llama (regex `(?i)gratis`). → `$W/zettle_gratis.tsv`.
@@ -123,7 +177,10 @@ Debe dar ~13,312 filas (una por bloque `Name:`, incluidas las sin ticket).
 drop table if exists public.stg_cnt;
 create table public.stg_cnt (nombre text, dt_local text, es_gratis boolean, monto_cent integer, ticket text);
 ```
-Insertar `display, fecha_24h, es_gratis(true/false), monto_cent|null, ticket|null`.
+Insertar `display, fecha_24h, es_gratis(true/false), monto_cent|null, ticket|null`, **más `tz`
+con la zona que declara el PDF** (paso 3.1). La columna se agrega sola:
+`alter table public.stg_cnt add column if not exists tz text;` — los tres scripts del import la
+crean si falta, así que no puede quedar a medias.
 Verificar: `select count(*), count(*) filter (where es_gratis), sum(monto_cent)/100
 from stg_cnt;` — debe cuadrar con el staging.
 
@@ -353,6 +410,65 @@ un candidato evidente por la secuencia horaria (los tickets suben con la hora): 
 `26907`→`26909`, los dos libres y encajando entre sus vecinos. Se dejaron **sin ticket** de todos
 modos, y se le reportó la hipótesis al dueño. Costo: $530 de gasto sin atribuir en 2 visitas de
 14,810. Inventar un número es exactamente el error que este proyecto ya pagó caro.
+
+---
+
+## 4e. 🔴 El LIGADO vive en UNA función, y por qué (21/ago/2026, migración `118`)
+
+**El candado que se puso el 19/ago mató al import el mismo día, y el CRM pasó CINCO DÍAS sin
+registrar una sola visita** (17 al 21/ago): 248 lavados sin sello y 35 gratis entregados sin
+descontar.
+
+Cómo: la migración `114` creó el índice único `visitas_un_lavado_un_cliente` — un lavado no puede
+estar a nombre de dos clientes. El paso de ligado del import hacía un `update ... set carro_id`
+**sin preguntar si ese carro ya tenía visita activa**, chocaba con el índice, y como el import es
+un `do $$` sin manejador **se caía el bloque entero: no entraba NI UNA visita**. El encabezado de
+la propia `114` ya decía que al import le faltaba esa comprobación; lo que faltaba era ponérsela.
+
+Ahora el ligado es **`public.ligar_visitas_de_import()`** y los tres scripts (`import.sql`,
+`import-incremental.sql`, el dryrun) la llaman. Antes traían el mismo `update` **copiado tres
+veces** — tres copias de la misma regla es exactamente como se desfasan las cosas en este proyecto.
+
+Los tres candados que pone, uno por cada error ya pagado:
+
+| | Qué hace | Por qué |
+|---|---|---|
+| **a** | El número de venta sale de `detalle_venta()` | Los scripts leían `(payload->>'payload')::jsonb->>'purchaseNumber'`, o sea **sólo el aviso envuelto**. Zettle también lo manda plano, y esas ventas se quedaban sin ligar **en silencio**. Mismo error que la `115` le corrigió a `ventas_indexar` |
+| **b** | Un carro que ya tiene visita activa **no se toca** | La regla de la `114`, ahora preguntada ANTES de escribir en vez de descubierta al chocar |
+| **c** | Si dos visitas se pelean el mismo carro, gana **una** y de forma determinista: la más cercana en el tiempo a ese carro | Es el mismo criterio de "Zettle desempata por fecha" del §4d. En la base ya hay 164 tickets reclamados por dos clientes, así que el empate no es hipotético |
+
+Y el `update` va en su propio sub-bloque con manejador: **si aun así chocara se pierden los
+ENLACES, nunca las VISITAS**. Un enlace se rehace; una visita que no entró hay que volver a
+sacarla del export.
+
+**Lo que no se liga queda ANOTADO, no descartado en silencio** (la lección de la `108`): la tabla
+**`public.imp_ligado_conflictos`** dice carro, visita, ticket, cliente y motivo. Revísala después
+de cada import:
+
+```sql
+select motivo, count(*) from public.imp_ligado_conflictos group by 1;
+```
+
+El 21/ago dejó **11**: 9 "dos visitas se pelean el mismo lavado" y 2 "ese lavado ya está asignado
+a otro cliente", **todos de visitas viejas** (jul y principios de ago), ninguno del export nuevo.
+
+⚠️ **A propósito NO llama a `enlazar_visita_a_carro`**, aunque esa función ya trae la comprobación.
+Además escribe `carros.cliente`, la foto y la placa **de la visita** sobre el carro, y una visita de
+import no trae nada de eso: le pisaría al carro el nombre que puso la cajera en su nota. El import
+liga; no reescribe el carro.
+
+**Se prueba**, y ésa es la otra mitad del arreglo: `pruebas/import-cnt.sql` está en
+`pruebas/correr.sh`. Reproduce el bug viejo contra producción antes de comprobar el nuevo — si esa
+primera parte dejara de reventar, la prueba avisa que dejó de medir el bug. La suite también corre
+el **dry-run de verdad** (revierte por diseño), que es la única forma de ejercitar el archivo
+completo en vez de una copia de su lógica.
+
+> ⚠️ **Trampa de SQL que salió midiendo esto, y que vale para cualquier consulta del proyecto:**
+> `creado_en >= (date '2026-08-17' at time zone 'America/Tijuana')` **NO** es "desde la medianoche
+> de Mexicali". Postgres castea la `date` a `timestamptz` y aplica la conversión al revés, así que
+> el corte queda en **2026-08-16 17:00 UTC** — casi 7 horas antes. Contando lavados, eso metió 87
+> carros de más y me hizo reportar 407 donde eran 248. La forma correcta es
+> `(creado_en at time zone 'America/Tijuana')::date >= date '2026-08-17'`.
 
 ---
 

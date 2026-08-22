@@ -789,6 +789,93 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 11.25 El CRM revivió: los cinco días muertos y el candado que los causó (21/ago/2026, migración `118`)
+
+Cierra los tres puntos rojos de la auditoría del 20/ago. **El CRM llevaba cinco días sin registrar
+una sola visita** (última: 16/ago) y la tubería para revivirlo estaba tapada por el candado que se
+había puesto dos días antes.
+
+### 🔴 La migración `114` mató al import el mismo día que se aplicó
+
+El candado *"un lavado, un cliente"* (índice único `visitas_un_lavado_un_cliente`, 19/ago) hizo
+que el paso de ligado del import chocara con `unique_violation`. Como el import es un `do $$` sin
+manejador, **se caía el bloque entero: no entraba NI UNA visita**. No era que se perdieran los
+enlaces conflictivos — se perdía el import completo.
+
+Lo más incómodo: **el encabezado de la propia `114` ya decía que al import le faltaba justo esa
+comprobación**. Se documentó el hueco y no se tapó.
+
+**El arreglo es una función, no un parche en tres archivos.** El mismo `update` estaba **copiado**
+en `import.sql`, `import-incremental.sql` y el dryrun. Ahora los tres llaman a
+`ligar_visitas_de_import()`, con tres candados:
+
+| | Qué | Por qué |
+|---|---|---|
+| **a** | El número de venta sale de `detalle_venta()` | Los scripts leían `(payload->>'payload')::jsonb->>'purchaseNumber'` — **sólo el aviso envuelto**. Zettle también lo manda plano, y esas ventas quedaban sin ligar **en silencio**. Es palabra por palabra el error que la `115` le corrigió a `ventas_indexar` |
+| **b** | Un carro con visita activa no se toca | La regla de la `114`, preguntada ANTES de escribir en vez de descubierta al chocar |
+| **c** | Si dos visitas se pelean un carro, gana la más cercana en el tiempo | Mismo criterio de "Zettle desempata por fecha". En la base ya hay 164 tickets con dos dueños: el empate no es hipotético |
+
+Y el `update` va en su propio sub-bloque con manejador: **si aun así chocara se pierden los
+ENLACES, nunca las VISITAS**. Lo que no se liga queda en `imp_ligado_conflictos` con su motivo —
+no descartado en silencio (lección de la `108`).
+
+### 🔴 Y el export cambió de zona horaria sin avisar
+
+El PDF del 21/ago viene en **`America/Ciudad_Juarez`**; todos los anteriores decían
+**`America/Tijuana`**. Es **una hora** de diferencia. Se midió contra las ventas de Zettle de esos
+mismos tickets: **235 de 239 notas caían exactas 60 minutos después** de su venta.
+
+Sin corregirlo, cada visita se guardaba una hora tarde **y** el dedup del siguiente import —que
+compara `creado_en` al segundo— habría dejado de reconocerlas y las habría metido duplicadas. Ahora
+la zona **viaja con el dato** (`stg_cnt.tz`) y el import convierte con
+`at time zone coalesce(s.tz,'America/Tijuana')`. Comprobado después de importar: la última visita
+del 20/ago quedó en **17:45**, el minuto exacto de su venta.
+
+### Lo que entró
+
+**240 visitas del 17 al 20/ago**, 36 canjes, 229 ligadas a su lavado. El cotejo día por día contra
+el export **cuadra exacto en los cuatro días** (82 · 65 · 69 · 24). Las 11 que no ligaron están
+explicadas: 4 sin ticket, 6 con el carro cancelado (borrado de supervisor) y 1 sin carro.
+
+- **30 renombres por prefijo** aplicados sin preguntar — cumplían los tres ceros del §4c
+  (0 viejos ambiguos, 0 nuevos ambiguos, 0 chocan con persona existente). Son "la cajera le agregó
+  el apellido": nadie se fusionó ni se borró, y ninguna visita cambió de dueño.
+- **3 tickets repetidos dentro del export** resueltos con la hora de Zettle (§4d): la nota que cae
+  al minuto exacto se queda el ticket, la otra pierde ticket y monto pero **sí entra como visita**.
+- **+53 placas corroboradas** (160 → 213 confirmadas) y **+1,452 sugeridas** por el helper de la
+  `086` — ver "Lo que falta decidir".
+- Lealtad: **236 gratis por honrar en 236 personas**.
+
+### 🔴 Y una corrección de método que hay que leer
+
+Al abrir la sesión reporté **407 lavados sin sello**. Eran **248**. El error fue mío y de una
+trampa de SQL que vale documentar:
+
+```sql
+creado_en >= (date '2026-08-17' at time zone 'America/Tijuana')   -- ❌ NO es la medianoche local
+```
+
+Postgres castea la `date` a `timestamptz` y aplica la conversión **al revés**: el corte queda en
+`2026-08-16 17:00 UTC`, casi siete horas antes. Metió 87 carros de más. La forma correcta es
+`(creado_en at time zone 'America/Tijuana')::date >= date '2026-08-17'`. Es la misma lección de
+siempre —el número que sorprende es sospechoso— aplicada a un número mío.
+
+### La prueba, que es la mitad del arreglo
+
+`pruebas/import-cnt.sql`, ya en `pruebas/correr.sh`. **Reproduce el bug viejo contra producción
+antes de comprobar el nuevo**: si esa primera parte dejara de reventar, la prueba avisa que dejó de
+medir el bug. Ocho grupos: el bug viejo, el carro ocupado, el aviso plano, el desempate, que las
+visitas sobreviven, la zona horaria, el dedup y que el ligado siga viviendo en un solo lugar.
+
+La suite corre además el **dry-run de verdad** (revierte por diseño, así que se puede correr contra
+producción) — es la única forma de ejercitar el archivo completo en vez de una copia de su lógica.
+Eso cierra el hallazgo `#3` de la auditoría: la suite habría dicho TODO PASÓ justo antes de romper
+el import.
+
+> 💡 La prueba encontró un bug en el arreglo mientras se escribía: la función no se podía llamar
+> dos veces en la misma transacción (`_cand ya existe`, porque `on commit drop` sólo limpia al
+> commit). Se arregló antes de aplicar nada.
+
 ## 11.30 Quinta tanda: las decisiones del dueño y el resto de la auditoría (19/ago/2026, migraciones `115`–`117`)
 
 El dueño contestó las preguntas abiertas y pidió subirlo todo el mismo día, sin esperar el corte.

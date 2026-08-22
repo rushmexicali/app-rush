@@ -6,6 +6,43 @@
 
 ---
 
+## ✅ HECHO el 21/ago/2026 — el CRM revivió (migración `118`)
+
+Los **tres puntos rojos** de la auditoría del 20/ago están cerrados. Detalle y razones en
+`CLAUDE.md §11.25`; el flujo actualizado, en `scripts/importar-clientnotetracker/RUNBOOK.md §4e`.
+
+- ✅ **El índice de la `114` ya no rompe el import.** El ligado vive en
+  `ligar_visitas_de_import()`, una sola función que los tres scripts llaman: respeta el candado
+  de "un lavado, un cliente", desempata determinista cuando dos visitas se pelean un lavado, lee
+  el `purchaseNumber` con `detalle_venta()` (antes se perdía en silencio el aviso plano), y si
+  algo chocara pierde los **enlaces**, nunca las **visitas**. Lo no ligado queda en
+  `imp_ligado_conflictos`, no en silencio.
+- ✅ **El CRM está al día hasta el 20/ago.** 240 visitas, 36 canjes, 229 ligadas; el cotejo día
+  por día cuadra exacto. Falta el 21 (el día no había cerrado cuando el dueño mandó el export).
+- ✅ **La suite ya cubre el import.** `pruebas/import-cnt.sql` (8 grupos, reproduce el bug viejo
+  antes de comprobar el nuevo) + el dry-run real corriendo dentro de `pruebas/correr.sh`.
+- 🔴 **Hallazgo nuevo: el export cambió de zona horaria** (`America/Ciudad_Juarez` en vez de
+  `America/Tijuana`, una hora adelante). La zona ahora viaja en `stg_cnt.tz`.
+
+### Lo que quedó para el dueño de esta misma tanda
+
+1. **11 lavados que dos clientes reclaman** (`select * from imp_ligado_conflictos`) — todos de
+   julio y principios de agosto, ninguno del export nuevo. Las visitas están intactas; lo único
+   que falta es decidir de quién es cada lavado. Es la misma clase de los **164 tickets** que
+   siguen abiertos.
+2. **12 posibles renombres por esqueleto de consonantes** (10 con un solo destino, §4c-bis) que **no** se aplicaron
+   porque no cumplen "1000% o nada". Ej.: `hector figeroa` → `HECTOR FIGUEROA DAUTO` (13 visitas),
+   `Arizona Guadalupe Ramos` → `GUADALUPE RAMOS ARIZONA`. Hay uno claramente falso en la lista
+   (`ARTURO CONTRERAS` → `VICENTE ARTURO CHAVARI CONTRERAS`) y uno ambiguo (`JAVIER MEZA`, dos
+   candidatos). Mientras no se decidan, esos clientes tienen su historia partida en dos.
+3. **Las 1,452 placas "por confirmar"** que agregó el helper de la `086` (`persona_placas` pasó de
+   166 a 1,671 filas; las **213 confirmadas** salen de corroboración de 2+ fotos y ésas no están a
+   discusión). El RUNBOOK lo manda como paso de cada import, pero nunca se había corrido a esta
+   escala. Si el dueño prefiere "1000% o nada" también aquí, se quitan con un solo `delete` — el
+   respaldo `bak_persona_placas_0821` está tomado.
+4. **El 20/ago sólo tuvo 28 lavados** (contra 84, 64 y 72 los tres días anteriores), con la última
+   venta a las 17:45. Se pregunta, no se consulta.
+
 ## ✅ DESPLEGADO el 19/ago/2026 (migraciones `109`–`117`)
 
 Se fue completo y verificado en vivo. El detalle y las razones viven en `CLAUDE.md §11.40`; aquí

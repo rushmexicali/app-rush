@@ -49,6 +49,13 @@ correr "perfil del trabajador paginado"   sql pruebas/perfil-paginado.sql
 correr "el trigger no tumba la venta"     sql pruebas/trigger-y-enlaces.sql
 correr "un lavado, un cliente"            sql pruebas/un-lavado-un-cliente.sql
 correr "payload y busquedas"              sql pruebas/payload-y-busquedas.sql
+correr "el import del ClientNoteTracker" sql pruebas/import-cnt.sql
+
+# El dry-run del import REVIERTE por diseno (termina en `raise`), asi que se
+# puede correr contra produccion: es la unica prueba que ejercita el archivo
+# de verdad, de punta a punta, en vez de una copia de su logica.
+correr "el dry-run del import corre" \
+  bash -c 'bash scripts/releer-fotos/q.sh scripts/importar-clientnotetracker/import-incremental-dryrun.sql | grep -q DRYRUN'
 
 echo ""
 echo "=============================================================="

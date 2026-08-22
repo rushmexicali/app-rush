@@ -7,9 +7,22 @@
 -- Dedup: una visita YA está si hay un import con el mismo ticket, o con la
 -- misma persona + misma hora (creado_en). Cubre notas sin ticket.
 --
+-- ⚠️ LA HORA SALE DE LA ZONA QUE DECLARA EL EXPORT (columna stg_cnt.tz).
+-- El export del 21/ago/2026 vino en America/Ciudad_Juarez y todos los
+-- anteriores en America/Tijuana: una hora de diferencia. Medido contra las
+-- ventas de Zettle de esos mismos tickets — 235 de 239 notas caían exactas
+-- 60 minutos adelante. Clavar 'America/Tijuana' aquí guardaría cada visita
+-- una hora tarde y además rompería el dedup del siguiente import, que
+-- compara `creado_en` al segundo. Sin `tz`, se asume Tijuana.
+--
+-- El LIGADO a los carros vive en public.ligar_visitas_de_import()
+-- (migración 118), no aquí: los tres scripts del import lo llamaban copiado.
+--
 -- Para DRY-RUN (ver cuántas agregaría sin escribir), correr import-incremental-
 -- dryrun.sql (mismo cuerpo + raise al final).
 -- =====================================================================
+alter table public.stg_cnt add column if not exists tz text;
+
 do $$
 begin
   -- Personas: alta de las nuevas (idempotente); no toca el seed de las que ya
@@ -24,20 +37,17 @@ begin
   -- Visitas: solo las que NO existen ya (por ticket, o por persona+hora).
   insert into public.visitas (persona_id, es_gratis, estado, caja, es_prueba, creado_en, monto, ticket)
   select p.id, s.es_gratis, 'activa', 'import', false,
-         (s.dt_local::timestamp at time zone 'America/Tijuana'), (s.monto_cent::numeric/100), s.ticket
+         (s.dt_local::timestamp at time zone coalesce(s.tz, 'America/Tijuana')),
+         (s.monto_cent::numeric/100), s.ticket
   from public.stg_cnt s
   join public.personas p on p.nombre_norm = public.normalizar_nombre(s.nombre) and p.origen='import'
   where not exists (
     select 1 from public.visitas v where v.caja='import'
       and ( (s.ticket is not null and v.ticket = s.ticket)
-         or (v.persona_id = p.id and v.creado_en = (s.dt_local::timestamp at time zone 'America/Tijuana')) )
+         or (v.persona_id = p.id
+             and v.creado_en = (s.dt_local::timestamp at time zone coalesce(s.tz, 'America/Tijuana'))) )
   );
 
-  -- Overlap: ligar a su carro real por ticket == purchaseNumber (solo las
-  -- que aún no estén ligadas).
-  update public.visitas vi set carro_id = m.carro_id
-  from (select c.id as carro_id, ((v.payload->>'payload')::jsonb->>'purchaseNumber') as recibo
-        from public.carros c join public.ventas v on v.purchase_uuid = c.purchase_uuid
-        where not c.es_prueba and c.cancelado_en is null) m
-  where vi.caja='import' and vi.ticket = m.recibo and vi.carro_id is null;
+  -- Overlap: ligar a su carro real por ticket == purchaseNumber.
+  perform public.ligar_visitas_de_import();
 end $$;

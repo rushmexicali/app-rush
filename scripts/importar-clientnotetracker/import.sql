@@ -6,7 +6,16 @@
 -- Un do-$$ para que si algo truena, se revierte TODO (nada a medias).
 -- Para probar sin escribir: agregar al final, antes del END,
 --     raise exception 'DRY-RUN, revertido';
+--
+-- ⚠️ La hora sale de la zona que declara el export (stg_cnt.tz); sin ella se
+-- asume America/Tijuana. Ver la nota de import-incremental.sql: el export del
+-- 21/ago/2026 vino en America/Ciudad_Juarez, una hora adelante.
+--
+-- El LIGADO a los carros vive en public.ligar_visitas_de_import()
+-- (migración 118), no aquí.
 -- =====================================================================
+alter table public.stg_cnt add column if not exists tz text;
+
 do $$
 begin
   -- 1) Idempotencia: borra cualquier import previo (re-corrida limpia).
@@ -23,21 +32,15 @@ begin
   on conflict (nombre_norm) where origen = 'import'
   do update set nombre = excluded.nombre, visitas_seed = 0, sellos_iniciales = 0, actualizado_en = now();
 
-  -- 3) Visitas: fecha local (America/Tijuana) -> UTC; monto en PESOS.
+  -- 3) Visitas: fecha local del export -> UTC; monto en PESOS.
   insert into public.visitas (persona_id, es_gratis, estado, caja, es_prueba, creado_en, monto, ticket)
   select p.id, s.es_gratis, 'activa', 'import', false,
-         (s.dt_local::timestamp at time zone 'America/Tijuana'),
+         (s.dt_local::timestamp at time zone coalesce(s.tz, 'America/Tijuana')),
          (s.monto_cent::numeric / 100), s.ticket
   from public.stg_cnt s
   join public.personas p
     on p.nombre_norm = public.normalizar_nombre(s.nombre) and p.origen = 'import';
 
-  -- 4) Overlap: ligar a su carro REAL por ticket == purchaseNumber de Zettle
-  --    (solo las visitas del periodo en que ya existia el webhook).
-  update public.visitas vi set carro_id = m.carro_id
-  from (select c.id as carro_id, ((v.payload->>'payload')::jsonb->>'purchaseNumber') as recibo
-        from public.carros c
-        join public.ventas v on v.purchase_uuid = c.purchase_uuid
-        where not c.es_prueba and c.cancelado_en is null) m
-  where vi.caja = 'import' and vi.ticket = m.recibo and vi.carro_id is null;
+  -- 4) Overlap: ligar a su carro REAL por ticket == purchaseNumber de Zettle.
+  perform public.ligar_visitas_de_import();
 end $$;
