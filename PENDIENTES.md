@@ -6,6 +6,243 @@
 
 ---
 
+## 🔍 AUDITORÍA GENERAL del 21–22/ago/2026 — 75 hallazgos, 63 verificados adversarialmente
+
+Corrida con `Workflow`: 11 frentes en paralelo, **cada hallazgo atacado por refutadores
+independientes** (dos lentes en los graves, una en los medianos), más un crítico de completitud.
+El método y la decisión de modelos viven en `.claude/skills/auditoria-general/SKILL.md`.
+
+> 🔑 **Lo que el pase adversarial cambió, y es la razón de tenerlo:** de **17 hallazgos marcados
+> `alta` por quien los encontró, sólo 2 sobrevivieron como altas** — y son el mismo bug visto desde
+> dos frentes distintos. **8 se refutaron por completo.** Sin este pase, quince números inflados
+> habrían entrado a esta lista como urgentes.
+
+### 🔴 Lo único confirmado como ALTA — y por los cuatro refutadores que lo atacaron
+
+1. **El reporte inventa las "Devoluciones": pinta 31 donde hubo 6.**
+   `docs/reporte.html:501` calcula `devoluciones = cancelados − borrados` en vez de leer
+   `r.devoluciones`, que el backend **ya entrega** desde la migración `120` (21/ago). La migración
+   arregló el backend y la pantalla nunca se actualizó.
+   - Medido: el 29/jul la tarjeta dice **18** y las devoluciones reales son **0** (los 18 son
+     cancelaciones a mano, `cancelado_motivo` nulo, ninguna con reembolso de Zettle detrás).
+     Histórico completo: pantalla **31**, real **6**. Un `grep` de `devoluciones` en todo `docs/`
+     da 4 líneas, las 4 en ese cálculo: `r.devoluciones` y `r.devoluciones_tras_entregar` no se
+     leen en ningún archivo del front.
+   - Se verificó contra la página **publicada** en GitHub Pages, no sólo contra el repo: idéntica
+     byte por byte.
+   - ⚠️ **Contradice lo que el `CLAUDE.md §11.15` ya da por hecho** (*"Ahora se cuentan las de
+     verdad"*). Es cierto del backend y falso de la pantalla, que es donde el dueño lee. Y el §13
+     define una devolución como *"una falla de servicio que se pagó con dinero para no perder al
+     cliente"*: está leyendo 31 fallas donde hubo 6.
+   - Arreglo: una línea. Es lo primero que hay que subir.
+
+### 🟠 La clase que se arregló ayer y dejó fuera a la tercera pantalla
+
+Tres frentes la reportaron por separado; **es un solo bug**.
+
+2. **Las cuatro alertas del reporte se borran solas cuando el backend falla.** Placas repetidas,
+   placas dudosas, fotos pendientes y avisos del sistema: un 500 se pinta **idéntico** a "no hay
+   nada que reportar". `pedirJSON` de `docs/reporte.html` es el único ayudante de las tres
+   pantallas **sin** la guarda de error que la `105` puso en las otras dos.
+3. **El reporte es la única de las tres pantallas sin corte de tiempo.** Una petición colgada la
+   deja en blanco para siempre, sin decir nada. El supervisor y la caja ya cortan a los 20 s.
+
+### 🟠 Seguridad — el `revoke` del 19/ago sólo blindó lo que existía ese día
+
+4. **La llave publicable puede ejecutar seis funciones `SECURITY DEFINER` nuevas, cuatro de ellas
+   escriben o borran**: `limpiar_crudo_del_webhook`, `limpiar_bitacora_del_cron`,
+   `ligar_visitas_de_import`, `anotar_aviso`, `fotos_huerfanas`, `fotos_huerfanas_lista`.
+   - **La causa es estructural, no un olvido:** Supabase tiene un `ALTER DEFAULT PRIVILEGES … GRANT
+     EXECUTE … TO anon` sobre el esquema `public`, así que **toda función nacida después del revoke
+     sale otorgada de nuevo**. De 118 funciones, `anon` alcanza todas menos las 5 que existían el
+     19/ago. Va a volver a pasar con cada migración que cree una función.
+   - Comprobado contra la API en vivo sin destruir nada (se llamaron con un rango que no alcanza
+     ninguna fila).
+   - Atenuante medido, y por eso es 🟠 y no 🔴: la llave publicable **no está en `docs/`**
+     (0 coincidencias), así que no se puede sacar del repo público.
+
+### 🟠 Lealtad — le está costando lavados gratis a clientes con nombre
+
+5. **La regla de cortesía nunca llegó al import del ClientNoteTracker.** `visitas.es_cortesia` es
+   `true` en **1 de 15,068 filas** (la prueba del dueño del 15/ago). El §11.70 dice que una
+   cortesía *"ni suma sello ni consume gratis"*, y esa regla vive en `clase_de_gratis()` — que el
+   camino de la caja sí consulta y **el del import no**. Es el patrón de siempre: *el camino que no
+   llama a la función se brinca la regla*, igual que pasó con `un lavado, un cliente`.
+   - Caso con nombre: **`reynaldo inojosa ramirez`**, 33 lavados pagados. Le tocan 6 gratis; tiene
+     9 canjes y **0 disponibles**. Cuatro de esos 9 son `Gratis`+`Cortesia`. Sin ellos serían 5 y
+     le quedaría **1 gratis disponible** — o sea que el negocio le está debiendo un lavado.
+   - Cotejo independiente (22/jul–20/ago): 242 canjes registrados contra 237 lavados `6to`
+     realmente vendidos; la diferencia son esas 5 cortesías. `lealtad_por_persona` lo tapa con
+     `greatest(0, …)`, y por eso nunca se vio.
+   - ✅ **Confirmado: sus dos refutadores lo atacaron y ninguno pudo tumbarlo** (los dos lo dejaron
+     en severidad media). Es real y está medido.
+
+### 🔵 Lo demás, agrupado por consecuencia
+
+- **Rendimiento:** `ventas_purchase_number_idx` está construido sobre la forma de payload que la
+  `115` declaró equivocada, así que **no sirve a ninguna consulta viva**: buscar un ticket hace
+  Seq Scan sobre 2,862 ventas (156 ms). Y su expresión se evalúa en cada `insert` de `ventas`.
+- **La regla de escapar comodines vive en `como_literal()` y sólo 1 de las 3 búsquedas la usa.**
+  `buscar_personas('%')` devuelve 25 clientes cualquiera y `buscar_personas('LUIS_G')` devuelve 7:
+  la cajera puede tocar al cliente equivocado creyendo que es un resultado bueno.
+- **Un titular que no cuadra con su tabla** en "Calidad de la entrega": dice 2 rechazos, la tabla
+  de abajo suma 3.
+- **`anotar_aviso` no se puede apagar:** el reporte muestra ahora mismo una alerta pidiendo
+  autorizar el borrado de 176 fotos huérfanas **que ya se borraron anoche**. El primer aviso del
+  sistema que existe ya es falso.
+- **El canal de avisos se cableó a 2 de los ~80 `console.error`**, y no al modo de falla que lo
+  motivó.
+- **Corregir de un carro que ya seca le vuelve a poner la hora a las asignaciones** aunque no se
+  toque ningún secador.
+- **Quitar el tipo o el color en Corregir responde "ok" y no borra nada.**
+- **El desglose del carro presenta como medido un secado que el reporte descarta por ser ficción.**
+- **En la caja, buscar por apellido esconde clientes sin decirlo** (82 de 107 en el caso medido), y
+  justo debajo de la lista recortada está el botón que crea la ficha duplicada.
+- **La lista de tickets se congela en silencio** si el backend falla; tras un 401 no vuelve a
+  refrescarse en todo el turno.
+- **Con el wifi COLGADO (no caído) el aviso "Sin conexión" nunca sale** en la pantalla del
+  supervisor: ve cronómetros corriendo con datos de hace media hora.
+- **El RUNBOOK del import se contradice:** el paso que de verdad se ejecuta sigue diciendo que la
+  zona horaria sale del PDF, que es justo la fuente que el 21/ago se declaró no confiable.
+
+### ✅ Refutados — NO son hallazgos, y vale saber por qué
+
+- ~~"El webhook sólo entiende el aviso envuelto"~~ — **la premisa es falsa**: el proyecto nunca
+  afirmó que Zettle mande el aviso plano *por webhook*. Habría sido una falsa alarma grande.
+- ~~"La bitácora del webhook no guarda el cuerpo crudo"~~ — se **bajó el artefacto desplegado** de
+  la función viva (v12 ACTIVE) y sí manda el cuerpo. Repo y producción coinciden.
+- ~~"Storage se rompe a 173 carros/día"~~ — la aritmética cuadra, pero ya está en esta bandeja dos
+  veces y la retención de 60 días se escogió **sabiendo** este escenario.
+- ~~"Al chocar la placa se tira también marca y submarca"~~ — es una **decisión deliberada**,
+  escrita en el encabezado de la migración `100`: *"la foto entera es sospechosa"*.
+- ~~"El CRM vuelve a ir atrás"~~ y ~~"la única devolución cae en el día sin recongelar"~~ —
+  refutados por dos vías medidas cada uno.
+- ~~"`webhook_descartados_del_rango` no la llama nadie"~~ — cierto, pero **ya estaba en esta
+  bandeja** desde el 20/ago. No es nuevo.
+
+### ✅ Comprobado SANO — no volver a auditar
+
+- **0 ventas perdidas: 2,861 tickets consecutivos de Zettle (24503 → 27363), sin un solo hueco.**
+- 🔑 **La firma de Zettle SÍ llega y ya se puede deducir:** `x-izettle-signature` (SHA-256, 64 hex)
+  presente en **160 de 160** avisos buenos, con el cuerpo crudo guardado. **Esto desbloquea el
+  pendiente más viejo del proyecto** — ya no hay que adivinar el esquema.
+- `/respaldo` recorrido completo contra la API: **37,260 renglones en 11 tablas**, todas cuadran
+  con el manifiesto.
+- El borrado de anoche **no se llevó ninguna foto viva**: 2,626 archivos para 2,626 carros con
+  foto, 0 huérfanas.
+- 33 de 34 reportes congelados salen idénticos a un recálculo fresco (el 19/jul difiere por lo ya
+  documentado).
+- 0 drift en las columnas generadas sobre 2,821 carros; 0 etapas abiertas en carros entregados;
+  0 carros con dos dueños activos en 15,068 visitas; 0 no-express en la línea 1.
+- 6 crones activos, **0 corridas fallidas en 7 días**. La retención de `cron.job_run_details`
+  funcionó: de 14 MB / 80,913 corridas a 3.3 MB / 19,627; la base de 81 a 71 MB.
+- `/cola`, la consulta que se dispara cada 3 s: Index Scan, **0.111 ms**. No es un problema de
+  escala.
+- La retención de fotos dice **60 en los tres lugares** donde vive el número.
+- Los umbrales de rojo y `BORRAR_UMBRAL` coinciden exactamente entre el front y la base.
+- Todo lo que se pinta con `innerHTML` en la pantalla del supervisor pasa por `escapar()`.
+- 🔑 **`obtenerStream()` de la caja NO cae sola a la cámara del tablet.** La auditoría del 20/ago
+  se equivocó ahí, quedó anotado en la skill, y **este pase lo confirma otra vez**.
+
+### 🙋 Lo que necesita tu palabra, no trabajo mío
+
+1. **`Faros` $600 se cobró el 21/ago y nunca apareció en el teléfono del supervisor.** Está en la
+   categoría `Extras`, que no crea carro. Las otras 8 ventas sin carro del periodo son mostrador
+   legítimo (Pinito, aromas, diferencias de precio). **¿El servicio de faros se hace sobre el carro
+   del cliente?** Si sí, hay que sacarlo de `Extras`.
+2. **Las fotos pegadas al carro equivocado se cuadruplicaron el 21/ago:** 6 de 97 (6.19%) contra
+   14 de 1,071 (1.31%) en las dos semanas previas. Al menos uno **no es error**: dos tickets del
+   mismo vehículo con 2 minutos de diferencia (Encerado $800 + Completo $300, la misma GMC Sierra
+   blanca) — o sea que el candado también produce falsos positivos cuando la caja parte un
+   servicio en dos cobros. **¿Se parten seguido?**
+
+
+### 🧭 El crítico de completitud — lo que ningún frente miró
+
+Corrió al final, con el inventario de los once frentes enfrente y una sola pregunta: **qué falta.**
+
+> 🔴 **Y de entrada, una corrección al propio crítico.** Su hallazgo principal decía que *"el CRM
+> volvió a quedarse atrás 24 horas después de arreglarlo, la misma forma exacta de la falla de
+> cinco días"*. **Es falso, y su refutador lo demostró midiendo.** El hueco del 21/ago está escrito
+> como esperado en esta misma bandeja (*"falta el 21, el día no había cerrado cuando el dueño mandó
+> el export"*): el import es un lote post-cierre, así que un CRM al día **tiene** que mostrar el día
+> en curso en cero. Y el mecanismo de los cinco días —la `114` tumbando el bloque entero— sí se
+> arregló: `ligar_visitas_de_import()` está viva en producción y `registrar_visita` ya no existe.
+> Decir que no cambió invierte el resultado del trabajo del 21/ago.
+> **Lo que sí queda en pie de ahí:** sigue sin existir un detector que avise si el import se
+> atrasa, y **la caja lleva 4 días en cero** después de que el dueño dijo el 19/ago que sí se iba a
+> usar. Eso es seguimiento de una decisión suya, no un hallazgo.
+
+Lo que aportó de verdad:
+
+1. 🟠 **Nadie había corrido el portón de despliegue, y una de sus pruebas no puede fallar.**
+   El crítico corrió `bash pruebas/correr.sh` completo: **13 grupos, TODO PASÓ**. Pero el grupo que
+   se agregó el 21/ago para cerrar el hallazgo #3 de la auditoría anterior —el dry-run real del
+   import— corre sobre `stg_cnt`, que hoy tiene las 240 filas del export **ya importadas**. El dedup
+   las descarta todas, así que **el INSERT se ejercita con cero filas** y la aserción es un
+   `grep -q DRYRUN` que sale igual con 0 que con 240.
+   - Medido: `stg_cnt` tiene 240 filas y `insertaria_el_dryrun = 0`.
+   - El `pruebas/README.md` tiene su propia regla para esto: *"una prueba que no puede fallar no
+     sirve"*. Lo que sí queda cubierto es el bug de la `114`: `ligar_visitas_de_import()` corre de
+     verdad sobre 12,817 visitas sin ligar.
+
+2. 🟠 **El rescate de una venta perdida no sirve si lo perdido fue una DEVOLUCIÓN.**
+   `scripts/4-recuperar-venta.ps1` es el camino que el `CLAUDE.md §7` nombra para rescatar una venta
+   que no llegó por webhook. Para una venta normal **está sano y se comprobó**. Pero la respuesta de
+   `purchase/v2` **no trae `refundsPurchaseUuid`** —trae `refund` y `refunded`—, y **tres funciones
+   vivas cuelgan de esa llave exacta**.
+   - Consecuencia: se rescata una devolución, `crear_carro_desde_venta` no la reconoce, **no cancela
+     el carro original** (se queda en la cola como si el cliente siguiera esperando) y
+     `reporte_del_rango` no la cuenta — justo el número que la `120` acaba de poner honesto.
+   - El síntoma es silencioso: el monto negativo evita crear un carro nuevo, así que nada truena.
+   - Medido contra la venta real del ticket 27363: las 70 llaves de la respuesta REST no incluyen
+     `refundsPurchaseUuid`.
+
+3. 🔵 **`.env.example` ya no dice todas las llaves que producción necesita.** Faltan
+   `REOLINK_IP/USER/PASS`, y `relectura_token` y `limpieza_token` no aparecen en ningún archivo del
+   repo. Quien reconstruya en otra máquina se queda **sin cámara y con el obrero de relectura
+   respondiendo 401** — que es exactamente el modo de falla del 17/ago, y ninguno de los dos avisa.
+
+### ⚠️ El límite de esta auditoría, dicho de frente
+
+**Nadie ejecutó una sola pantalla en un navegador.** Tres frentes lo dicen explícitamente. O sea que
+**todos los hallazgos de carrera del front** —el supervisor atrapado en Finalizados, el cronómetro
+que sigue corriendo, la foto que se borra sola, el aviso de "sin conexión" con el wifi colgado— son
+**lectura de código, no comportamiento observado**. El proyecto ya tiene la técnica (el 19/ago se
+verificó el front del reporte interceptando `pedirJSON`) y no se usó esta vez. Hay que probarlos
+antes de arreglarlos.
+
+Tampoco se revisaron: el relay go2rtc + Tailscale y la cámara Reolink (fuera del repo y de la base),
+seis de los siete scripts `.ps1`, y **las pruebas en sí mismas** — la suite está verde, pero que esté
+verde por la razón correcta sólo está comprobado en `import-cnt.sql`.
+
+### ✅ Lo que el crítico agregó a comprobado sano
+
+- **La suite completa pasa hoy:** 13 grupos, 11 pruebas SQL contra producción.
+- **Lo publicado es byte a byte lo del repo:** md5 idéntico en los 4 archivos de GitHub Pages, y
+  `HEAD == origin/main`.
+- **La suscripción de Zettle está viva y correcta:** una sola, `ACTIVE`, `PurchaseCreated`, al
+  destino correcto — y **el `signingKey` que devuelve Zettle hoy es idéntico al guardado**, o sea
+  que no se rotó y la firma sigue siendo implementable.
+- **El corte de las 8:30 PM sigue teniendo margen:** 0 carros creados después de las 20:30 en toda
+  la historia.
+- **El congelado de anoche corrió** pese a que se desplegó con el taller casi cerrado.
+- **`anotar_aviso` sí deduplica** (probado y revertido).
+
+### 🙋 Preguntas nuevas del crítico
+
+- **¿"Devoluciones" debe contar sólo los reembolsos de Zettle** (6 en toda la historia) y rotular
+  aparte las 25 cancelaciones a mano, o prefieres seguir viendo el total de cancelaciones con otro
+  nombre?
+- **¿Los avisos del sistema deberían poder marcarse como atendidos**, o basta con que caduquen a los
+  7 días?
+- **¿Se recongela el 19/jul** con la función de hoy (perdería la deriva histórica de su secado
+  promedio, 2130 contra 2191) o se deja como está?
+- Dato suelto sin explicar: hay **8 ventas después de las 20:30** en toda la historia contra 0 carros
+  creados a esa hora. Podrían ser devoluciones o extras de mostrador; no se abrieron.
+
+---
+
 ## ✅ HECHO el 21/ago/2026 — el CRM revivió (migración `118`)
 
 Los **tres puntos rojos** de la auditoría del 20/ago están cerrados. Detalle y razones en
