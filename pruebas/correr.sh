@@ -50,6 +50,8 @@ correr "el trigger no tumba la venta"     sql pruebas/trigger-y-enlaces.sql
 correr "un lavado, un cliente"            sql pruebas/un-lavado-un-cliente.sql
 correr "payload y busquedas"              sql pruebas/payload-y-busquedas.sql
 correr "el import del ClientNoteTracker" sql pruebas/import-cnt.sql
+correr "limpieza 119: nulo no borra, Jibble" sql pruebas/limpieza-119.sql
+correr "numeros honestos del reporte"     sql pruebas/numeros-del-reporte.sql
 
 # El dry-run del import REVIERTE por diseno (termina en `raise`), asi que se
 # puede correr contra produccion: es la unica prueba que ejercita el archivo
