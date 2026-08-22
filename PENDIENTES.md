@@ -195,17 +195,27 @@ fallidas en 7 días · 0 etapas abiertas en carros entregados, 0 negativas, 0 pl
 normalizar · el webhook con 61 bitácoras 'ok' contra 61 ventas y **0** `trigger_carro_fallo` ·
 0 no-express en la línea 1.
 
-### 🔵 LO ÚNICO QUE QUEDA ABIERTO — y depende del dueño, no de código
+### ✅ Las tres decisiones del dueño (21/ago, la misma noche)
 
-1. **176 fotos huérfanas (16 MB)** en Storage que ya no apunta ningún carro: 165 de "Tomar foto
-   otra vez" y 11 capturas de la caja que nunca se ligaron. **No se borran sin autorización** —
-   borrar datos es una de las cuatro cosas de §2, y la lista sale de cruzar dos fuentes. Ya se
-   cuentan solas y salen en el reporte; el día que se autorice, el borrado son tres líneas.
-2. **164 tickets reclamados por dos clientes** (~170 sellos de más) más los 11 de
-   `imp_ligado_conflictos`. Las visitas están intactas; falta decidir de quién es cada cobro.
-3. **Los 3 renombres dudosos**: `ARTURO CONTRERAS` (falso probable), `JAVIER MEZA` y
-   `LUIS VARGAS` (varios candidatos cada uno).
-4. **La firma de Zettle ya se puede empezar.** Estaba bloqueada porque la bitácora guardaba la
+1. ~~**176 fotos huérfanas (16 MB)**~~ ✅ **BORRADAS.** *"bórralas"*. Quedó **2,802 → 2,626
+   archivos, 267 MB → 252 MB**, cero huérfanas. Comprobado después: los **2,626 carros con foto
+   siguen teniendo su archivo**, ninguna foto viva se perdió.
+   > El borrado NO es automático: vive tras `?huerfanas=1` en `limpiar-fotos`, y el cron sigue
+   > barriendo sólo por EDAD. La lista lleva **gracia de 1 hora** porque `/foto` sube el archivo
+   > y *después* escribe `carros.foto_path`: entre esas dos cosas una foto viva se ve huérfana.
+2. ~~**164 tickets con dos dueños**~~ → **se ignoran**: van a desaparecer con el borrón y cuenta
+   nueva del CNT (abajo).
+3. ~~**Los 3 renombres dudosos**~~ → **se ignoran**, por lo mismo.
+
+### 🔵 LO QUE QUEDA ABIERTO
+
+1. 🔑 **BORRÓN Y CUENTA NUEVA DEL CNT, cuando el dueño lance el reporte nuevo.** Instrucción suya
+   del 21/ago: *"quiero borrar absolutamente todo y hacer un import de cero del CNT y ligar con
+   las fotos que ya tenemos"*, y **completo** — *"no como la vez pasada que por decisión tuya no
+   lo hiciste"*. Con eso se van los 164 tickets con dos dueños y los renombres pendientes.
+   El procedimiento vive en `RUNBOOK.md` §4 (RESET) y §4e; **releer §3.1 antes: la zona horaria
+   del export cambia**. Detalle y límites en la memoria `cnt-borron-y-cuenta-nueva`.
+2. **La firma de Zettle ya se puede empezar.** Estaba bloqueada porque la bitácora guardaba la
    firma sin los bytes que cubre; eso se arregló. Con unos días de avisos reales guardados se
    puede deducir el esquema — y hasta entonces **no se implementa adivinando**, porque una firma
    mal calculada rechaza ventas de verdad.

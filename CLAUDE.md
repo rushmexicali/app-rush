@@ -878,9 +878,14 @@ mina se desactiva sin mover ningún número, que es la mejor forma de arreglar a
   corre cada 5 min y sin eso serían 288 renglones diarios, que es la otra forma de no avisar.
   Primer cliente: si un grupo de Jibble viene vacío, 3 de 15 personas desaparecían de la grilla
   **sin un solo error** (la guarda vieja sólo miraba el total, y 16−3 sigue sin ser cero).
-- **Las fotos huérfanas se cuentan**: 176 archivos, 16 MB, que ya no apunta ningún carro.
-  **No se borran**: borrar datos es una de las cuatro cosas que se preguntan antes, y la lista
-  sale de cruzar dos fuentes. Se anota y el dueño decide.
+- **Las fotos huérfanas se cuentan y, autorizado, se borraron**: 176 archivos, 16 MB, que ya no
+  apuntaba ningún carro (165 de "Tomar foto otra vez", 11 capturas de la caja sin ligar). El dueño
+  dijo *"bórralas"* con el número medido enfrente: Storage quedó en **2,626 archivos, 252 MB**, y
+  se comprobó después que **los 2,626 carros con foto siguen teniendo su archivo**.
+  > El borrado **no es automático**: vive tras `?huerfanas=1` y el cron sigue barriendo sólo por
+  > EDAD. Y la lista lleva **gracia de una hora**, que no es paranoia: `/foto` sube el archivo a
+  > Storage **y después** escribe `carros.foto_path`. Entre esas dos cosas una foto viva se ve
+  > exactamente igual que una huérfana, y ésa no se recupera.
   > ⚠️ El primer intento las contó desde la Edge Function con `list('')` y dio **36** — que es el
   > número de **carpetas**, porque las fotos viven en `AAAA-MM-DD/archivo.jpg`. Contar basura por
   > abajo es peor que no contarla. Se cuenta contra `storage.objects`, que es la lista real.

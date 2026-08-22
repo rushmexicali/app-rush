@@ -124,24 +124,44 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // que nadie la reclame. La auditoria del 20/ago los midio en 175 archivos
   // (15 MB) — hay 1.08 fotos por carro, no 1.
   //
-  // ⚠️ NO SE BORRAN. Borrar datos es una de las cuatro cosas que este
-  // proyecto pregunta ANTES de hacer, y la lista de huerfanos sale de cruzar
-  // dos fuentes: si el cruce se equivoca, se borra la foto de un carro real y
-  // no hay vuelta. Aqui SOLO se cuentan y se anotan, para que el dueno vea
-  // cuanto pesa y decida. El dia que lo autorice, el borrado son tres lineas
-  // usando esta misma lista.
+  // ⚠️ Por omision SOLO SE CUENTAN Y SE ANOTAN. Borrar datos es una de las
+  // cuatro cosas que este proyecto pregunta antes de hacer, y esta lista sale
+  // de cruzar dos fuentes: si el cruce se equivoca, se borra la foto de un
+  // carro real y no hay vuelta. El barrido diario del cron NUNCA las toca.
+  //
+  // Con `?huerfanas=1` si se borran. El dueño lo autorizo el 21/ago/2026 con
+  // el numero medido enfrente (176 archivos, 16 MB) y se corrio una vez; se
+  // vuelve a correr a mano cuando lo pida.
+  //
   // ⚠️ Se cuenta en la BASE (`fotos_huerfanas`, migracion 126), no listando el
   // bucket. El primer intento uso `storage.from('fotos').list('')` y devolvio
   // 36 — que es el numero de CARPETAS, porque las fotos viven en
   // `AAAA-MM-DD/carro-N.jpg` y esa llamada solo lista el primer nivel. El
   // numero real es 174. Contar basura por abajo es peor que no contarla.
   let huerfanos = 0;
+  let huerfanasBorradas = 0;
   try {
     const { data: h, error: errH } = await db.rpc("fotos_huerfanas");
     if (errH) throw errH;
     huerfanos = Number(h?.cuantas ?? 0);
 
-    if (huerfanos > 0) {
+    // ?huerfanas=1 las BORRA. No pasa nunca desde el cron: el barrido diario
+    // sigue siendo solo por EDAD (60 dias), que es una regla con fecha y facil
+    // de razonar. Esto se dispara a mano cuando el dueño lo autoriza, porque
+    // la lista sale de cruzar dos fuentes y si el cruce se equivoca no hay
+    // vuelta. La gracia de 1 hora vive en `fotos_huerfanas_lista` (127).
+    if (huerfanos > 0 && url.searchParams.get("huerfanas") === "1") {
+      const { data: lista, error: errLista } = await db.rpc("fotos_huerfanas_lista", { p_tope: 500 });
+      if (errLista) throw errLista;
+      const aBorrar: string[] = (lista ?? []) as string[];
+      for (let i = 0; i < aBorrar.length; i += 100) {
+        const tanda = aBorrar.slice(i, i + 100);
+        const { data: fueron, error: errDel } = await db.storage.from("fotos").remove(tanda);
+        if (errDel) { console.error("remove de huerfanas:", errDel); break; }
+        huerfanasBorradas += (fueron ?? []).length;
+      }
+      console.log("limpiar-fotos: huerfanas borradas:", huerfanasBorradas, "de", aBorrar.length);
+    } else if (huerfanos > 0) {
       await db.rpc("anotar_aviso", {
         p_origen: "limpiar-fotos",
         p_motivo: "fotos_huerfanas",
@@ -161,7 +181,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     quedan_para_manana: paths.length >= TOPE,
     borradas,
     apuntadores_limpiados: olvidados ?? 0,
-    huerfanas_sin_borrar: huerfanos,
+    huerfanas_encontradas: huerfanos,
+    huerfanas_borradas: huerfanasBorradas,
     fallos: fallos.length,
     dias: DIAS,
     cuando: new Date().toISOString(),
