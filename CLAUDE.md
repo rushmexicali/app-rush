@@ -846,7 +846,32 @@ explicadas: 4 sin ticket, 6 con el carro cancelado (borrado de supervisor) y 1 s
   `086` — ver "Lo que falta decidir".
 - Lealtad: **236 gratis por honrar en 236 personas**.
 
-### Dos respuestas del dueño, el mismo día
+### Las respuestas del dueño, el mismo día
+
+- **Se fusionaron 9 clientes partidos** (los que el esqueleto de consonantes detectó con un solo
+  destino). Se verificó antes, uno por uno, que **las dos fichas no se enciman en el tiempo** —la
+  vieja se corta y la nueva arranca después, que es la forma de un renombre y no la de dos
+  homónimos—, y dos además **comparten placa** (Andrés Zavala, Mario Pacheco), que es
+  corroboración independiente. **Ninguna visita se perdió** (15,068 antes y después).
+
+  **Quedan fuera tres, a propósito:** `ARTURO CONTRERAS` → `VICENTE ARTURO CHAVARI CONTRERAS`
+  (falso probable), `JAVIER MEZA` (empata con dos) y `LUIS VARGAS` (con tres). Regla de siempre:
+  1000% o nada.
+
+  > 💡 **Y la lealtad bajó en 1, que es la señal de que la fusión servía.** Tres de los nueve
+  > tenían el sello en una ficha y el canje ya usado en la otra: partidos, el negocio les debía un
+  > lavado que ya habían cobrado. Juntos, la cuenta sale correcta.
+
+- 🔴 **Las 1,452 placas "por confirmar" se quitaron** — *"1000% o nada"*. Las había metido el
+  helper de la migración `086`, que este RUNBOOK mandaba correr en cada import; el 29/jul agregó
+  131 y nadie había visto la escala, hasta que el 21/ago metió 1,452 de un jalón. Quedan **213
+  confirmadas** (la MISMA placa leída en 2+ carros del cliente) más las 6 que ya existían.
+
+  **El RUNBOOK se corrigió en el mismo movimiento**, y eso es la mitad del arreglo: si sólo se
+  borran las filas, el próximo import las vuelve a meter y nadie se entera. Una foto sola no liga
+  placa a cliente en el import, aunque el carro ya esté ligado — porque **una foto mal pegada
+  también produce una sola coincidencia**. El camino en vivo (lo que teclea la cajera o lee el
+  supervisor) no cambia.
 
 - **`hector figeroa` y `HECTOR FIGUEROA DAUTO` son la misma persona** — *"sí, esa misma persona"*.
   Fusionadas: una sola ficha (id 6403) con **14 visitas, $3,082, placa `BK6640A`, historia desde el

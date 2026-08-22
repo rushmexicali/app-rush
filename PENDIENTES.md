@@ -30,24 +30,16 @@ Los **tres puntos rojos** de la auditoría del 20/ago están cerrados. Detalle y
    julio y principios de agosto, ninguno del export nuevo. Las visitas están intactas; lo único
    que falta es decidir de quién es cada lavado. Es la misma clase de los **164 tickets** que
    siguen abiertos.
-2. **11 posibles renombres por esqueleto de consonantes** (§4c-bis) que **no** se aplicaron
-   porque no cumplen "1000% o nada". Mientras no se decidan, esos clientes tienen su historia
-   partida en dos.
-   > ✅ **Uno ya se resolvió el 21/ago:** el dueño autorizó `hector figeroa` (13 visitas) +
-   > `HECTOR FIGUEROA DAUTO` (1) → **una sola ficha, id 6403, 14 visitas, $3,082, placa
-   > `BK6640A`, historia desde el 3/sep/2025**. Cierra la duda que quedó del 17/ago (él había
-   > dicho "Figueroa **Garcia**", que no existe ni en el padrón ni en la base). Las dos fichas no
-   > se encimaban en el tiempo —la vieja para el 20/jul, la nueva arranca el 7/ago—, que es
-   > exactamente la forma de un renombre.
-   >
-   > **Los 3 que NO conviene aplicar aunque se autorice el resto:** `ARTURO CONTRERAS` →
-   > `VICENTE ARTURO CHAVARI CONTRERAS` (falso probable), `JAVIER MEZA` (empata con
-   > `JAVIER CHAVEZ MEZA` **y** `JAVIER MONTAÑO MEZA`) y `LUIS VARGAS` (tres candidatos).
-3. **Las 1,452 placas "por confirmar"** que agregó el helper de la `086` (`persona_placas` pasó de
-   166 a 1,671 filas; las **213 confirmadas** salen de corroboración de 2+ fotos y ésas no están a
-   discusión). El RUNBOOK lo manda como paso de cada import, pero nunca se había corrido a esta
-   escala. Si el dueño prefiere "1000% o nada" también aquí, se quitan con un solo `delete` — el
-   respaldo `bak_persona_placas_0821` está tomado.
+2. ~~**11 posibles renombres por esqueleto de consonantes**~~ ✅ **RESUELTO (21/ago): el dueño
+   autorizó los 9 limpios y quedan fuera los 3 dudosos.** Ver `CLAUDE.md §11.25`.
+   > **Siguen sin resolver, a propósito:** `ARTURO CONTRERAS` → `VICENTE ARTURO CHAVARI
+   > CONTRERAS` (falso probable), `JAVIER MEZA` (empata con `JAVIER CHAVEZ MEZA` **y**
+   > `JAVIER MONTAÑO MEZA`) y `LUIS VARGAS` (tres candidatos). No se tocan sin evidencia nueva.
+3. ~~**Las 1,452 placas "por confirmar"**~~ ✅ **RESUELTO (21/ago): el dueño dijo quitarlas,
+   sigue mandando "1000% o nada".** Borradas; quedan **213 confirmadas** (corroboración de 2+
+   carros) más las 6 sugeridas que ya existían de antes del import. **El RUNBOOK se corrigió**
+   para que el helper de la `086` no se vuelva a correr desde el import — si no, el próximo las
+   metía otra vez.
 4. ~~**El 20/ago sólo tuvo 28 lavados**~~ ✅ **RESUELTO (21/ago): día nublado, casi no hubo
    trabajo.** No es la app ni la captura. Vale tenerlo presente al leer ese día en el reporte: un
    día de 28 lavados no se compara contra uno de 84, y sus promedios salen de muy poca muestra.

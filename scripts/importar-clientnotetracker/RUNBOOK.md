@@ -501,12 +501,12 @@ para ver `visitas +N / personas +N / ligadas` antes de escribir. Luego el real.
    Comprobado el 15/ago: `persona_placas` tiene 123 filas, **todas** `confirmada` y
    `origen='corroborada'`, 0 sugeridas.
 
-   **Propagar placas al CRM (migración `086`).** Las visitas nuevas que quedaron
-   ligadas a un carro con placa de foto deben alimentar `persona_placas` (si no, la
-   placa se queda en el carro y no llega a caja/búsqueda). El import inserta visitas
-   directo (no pasa por `enlazar_visita_a_carro`), así que hay que correr el helper a
-   mano — es idempotente (solo agrega sugeridas nuevas y auto-confirma repetidas):
+   ⛔ **Y el helper de la migración `086` TAMPOCO se corre — decisión del dueño del
+   21/ago/2026.** Es el bloque que propaga a `persona_placas` la placa de los carros ya
+   ligados a una visita, como **sugerida** (`ligar_placa_a_persona(..., 'foto', false)`):
+
    ```sql
+   -- ⛔ NO CORRER. Se deja escrito para que nadie lo reviva por error.
    do $$ declare r record; begin
      for r in select v.persona_id, coalesce(c.placa_display, c.placa) as p
                 from public.visitas v join public.carros c on c.id=v.carro_id
@@ -514,8 +514,21 @@ para ver `visitas +N / personas +N / ligadas` antes de escribir. Luego el real.
      loop perform public.ligar_placa_a_persona(r.persona_id, r.p, 'foto', false); end loop;
    end $$;
    ```
-   Probado 29/jul: +131 enlaces placa↔cliente de los carros nuevos. Ver la memoria
-   `placa-de-foto-al-cliente-sugerida`.
+
+   **Qué pasó:** el 21/ago se corrió porque este RUNBOOK lo mandaba, y `persona_placas`
+   pasó de **166 a 1,671 filas** — 1,452 sugeridas de golpe. El 29/jul había agregado 131
+   y por eso nadie había visto la escala. Se le presentó al dueño y contestó **quitarlas:
+   sigue mandando "1000% o nada"**. Se borraron (quedaron 213 confirmadas + las 6
+   sugeridas que ya existían de antes).
+
+   👉 **El único camino para ligar placa↔cliente en el import es
+   `religar-placas-corroboradas.sql`** (paso 8): la MISMA placa leída en **2+ carros
+   distintos** del cliente. Una sola foto no basta, aunque el carro ya esté ligado —
+   porque una foto mal pegada también produce una sola coincidencia.
+
+   La memoria `placa-de-foto-al-cliente-sugerida` sigue siendo válida **para el camino en
+   vivo** (lo que lee el supervisor o teclea la cajera, que sí entra como "por
+   confirmar"). Lo que quedó prohibido es hacerlo **en masa desde el import**.
 
 ## 5. Números de la 1a corrida (27/jul/2026) — para comparar
 
