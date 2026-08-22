@@ -789,6 +789,152 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 11.15 La auditoría del 20/ago, resuelta de un jalón (21/ago/2026, migraciones `119`–`126`)
+
+El dueño pidió subirlo **todo el mismo día, sin esperar al corte**. Se le dijo que la regla de §2
+es desplegar front+back en el corte y él lo reafirmó, así que se hizo así: se desplegó con el
+taller abierto, en tandas, verificando cada una contra la API en vivo. La cola nunca se cayó.
+
+De los 53 hallazgos quedan abiertos sólo los que dependen de una decisión suya. Lo demás, abajo.
+
+### 🔑 La clase: un error del backend se tiene que VER como error
+
+Seis hallazgos en cuatro frentes eran **el mismo bug**. La `105` arregló al productor (`json()`
+marca `ok:false`) y dejó intactos a **todos los consumidores**, que seguían leyendo
+`d.algo || []`. Con eso un 500 se pinta **idéntico a "no hay datos"**.
+
+Se arregló en el ayudante de cada pantalla, no en los seis sitios: como seis bugs se corrigen seis
+líneas y el séptimo consumidor nace igual la semana entrante.
+
+| Dónde | Qué se veía antes |
+|---|---|
+| Buscador de la caja | "Nadie con ese nombre" — y la cajera daba de alta una **ficha duplicada** de alguien que sí estaba |
+| Grilla de secadores | Vacía, sin nadie a quien asignar, con el taller lleno de gente |
+| Finalizados | "Todavía no se ha entregado ningún carro hoy" después de 80 entregas |
+
+La caja además tenía **cero corte de tiempo**: una petición colgada dejaba todos los botones
+muertos sin decir nada. Ahora corta a los 20 s, como el supervisor.
+
+### Lo que el supervisor va a notar
+
+- **La cola dejó de brincar hacia atrás.** El poll dispara cada 3 s sin esperar la anterior, así
+  que con el wifi flojo había varias respuestas en vuelo y **la vieja pisaba a la nueva**:
+  reaparecían carros ya entregados y secadores ya reasignados. Ahora cada consulta lleva su número
+  y sólo se pinta la última.
+- **"Entregar" y "RECHAZAR" dicen lo que están haciendo.** El candado contra el doble toque ya
+  existía, pero **en silencio**: con 20 s de corte, el supervisor tocaba, no pasaba nada, y volvía
+  a tocar tres veces creyendo que el botón no servía — y los tres toques se los tragaba el
+  candado. Ahora dicen "Entregando…" / "Registrando…" y se atenúan.
+- **Si la foto no se pudo subir, sale en la tarjeta del carro.** Antes el outbox se rendía a los
+  ~35 min, borraba la foto y lo decía **en la consola del teléfono**, o sea en ningún lado.
+
+### Lo que la cajera va a notar
+
+- **La lista de tickets dice el día.** Al abrir en la mañana los cinco últimos son de **AYER** y
+  se veían idénticos a los de hoy, porque sólo salía la hora. Registrar contra el lavado de ayer
+  le pega el cobro equivocado a un cliente que está enfrente. Los de hoy siguen igual que siempre.
+- 🔴 **La captura se limpia ANTES de leer, no después de que salga bien.** Si la lectura fallaba,
+  `captura` se quedaba con la **foto y la placa del carro anterior**, y la siguiente visita se
+  registraba con ellas. Es justo lo que el candado de placa repetida existe para evitar.
+- **Si la Cámara Exterior no da la foto grande, lo dice.** Caía callada al cuadro del video, que
+  debajo de 1600 px no alcanza para leer una placa: el síntoma ("no se leyó la placa") no se
+  parecía a la causa (el relay no contestó).
+
+### Los números del dueño
+
+- 🔴 **"Devoluciones" no eran devoluciones.** La pantalla restaba `cancelados − borrados`. Medido:
+  de esas 31, sólo **6** tenían un reembolso de Zettle detrás; las otras 25 son cancelaciones a
+  mano. Ahora se cuentan las de verdad (una venta que apunta a otra con `refundsPurchaseUuid`).
+- **Y por fin existe la devolución DESPUÉS de entregar**, que el §13 describe como la falla de
+  servicio más cara y decía textualmente que era invisible. Hay **1** en toda la historia: el
+  carro 70 del 19/jul, un Completo Cera de $270 devuelto un minuto después de entregarse.
+- **`trabajadores()` y `perfil_de_secador()` ya filtran `tiempo_imposible`.** Le inflaban los
+  lavados a **10 personas con nombre** (Pablo Cruz 370→358). El reporte los descarta por ser
+  ficción; las dos pantallas donde se evalúa a alguien se los contaban.
+- **Se recongelaron 32 días.** La `107` nunca recongeló el histórico, así que sus campos existían
+  en la función y en **ningún día guardado**. Comprobado campo por campo antes: toda diferencia es
+  un campo que **falta**, no un valor distinto (el 19/jul se deja fuera, como la `105`).
+
+### 🔴 El aviso PLANO de Zettle seguía vivo en cuatro funciones más
+
+Esta clase ya se había arreglado **tres veces** (`115` en `ventas_indexar`, `118` en el ligado del
+import) y seguía en `tickets_recientes`, `ticket_detalle`, `carros_recientes` y
+`placas_repetidas_del_rango`. Zettle manda el aviso envuelto en una llave `payload` unas veces y
+plano otras; quien lo desarma a mano sólo entiende una forma y devuelve nulo con la otra.
+
+**La peor es `tickets_recientes`**: es la lista que la cajera toca para registrar. Con una venta
+plana el ticket **no aparece**, y ella no puede saber si el cobro no entró o si la lista se
+equivocó. Ahora las cuatro le preguntan a `detalle_venta()`. Los hashes quedaron **idénticos**: la
+mina se desactiva sin mover ningún número, que es la mejor forma de arreglar algo.
+
+### Lo que no se podía ver, ahora se ve
+
+- **`carros.placa_dudosa`**: tres funciones la escribían y **cero código la leía**. Son 20 carros
+  donde el candado atajó una placa que se iba a pegar al carro equivocado — la red cazaba el
+  problema y enterraba la evidencia. Ya sale en el reporte, con la placa atajada, la que sí quedó
+  y el carro con el que chocaba. **Hoy mismo cachó dos.**
+- **`avisos_del_sistema`** (migración `124`): el lugar donde las tareas de fondo dejan escrito lo
+  que antes moría en un `console.error`. **Se deduplica por día** — la sincronización de Jibble
+  corre cada 5 min y sin eso serían 288 renglones diarios, que es la otra forma de no avisar.
+  Primer cliente: si un grupo de Jibble viene vacío, 3 de 15 personas desaparecían de la grilla
+  **sin un solo error** (la guarda vieja sólo miraba el total, y 16−3 sigue sin ser cero).
+- **Las fotos huérfanas se cuentan**: 176 archivos, 16 MB, que ya no apunta ningún carro.
+  **No se borran**: borrar datos es una de las cuatro cosas que se preguntan antes, y la lista
+  sale de cruzar dos fuentes. Se anota y el dueño decide.
+  > ⚠️ El primer intento las contó desde la Edge Function con `list('')` y dio **36** — que es el
+  > número de **carpetas**, porque las fotos viven en `AAAA-MM-DD/archivo.jpg`. Contar basura por
+  > abajo es peor que no contarla. Se cuenta contra `storage.objects`, que es la lista real.
+
+### Lo que sobraba
+
+- **`registrar_visita`** (la caja vieja: registra una visita **sin lavado ligado**, la fuga de
+  lealtad que el rediseño del 15/ago cerró) y su ruta `/visita`. Con eso desaparece también el
+  hallazgo de "la regla de cortesía vive en una sola de las dos funciones que registran visitas":
+  ahora hay **una**.
+- **`importar_personas()`**, un arma cargada que nadie llamaba: siembra sellos a mano y correrla
+  hoy le inventaría lealtad a medio padrón.
+- **Cuatro rutas más** del flujo de dos pantallas de la caja. Sus funciones de la base se quedan
+  —`enlazar_visita_a_carro` la usa la caja por dentro—; lo que se quitó es la puerta HTTP.
+- **`cron.job_run_details`**: 80,913 corridas, **14 MB de una base de 81**, y nunca se limpiaba
+  sola. Retención de 7 días. La base bajó a **70 MB**.
+
+### Dos que estaban rotos y no lo parecían
+
+- 🔴 **El candado de `sincronizar-jibble` era INERTE.** `pg_try_advisory_xact_lock` dura lo que
+  dura la transacción, y `net.http_get` es **asíncrono**: devuelve en cuanto encola. El lock se
+  soltaba antes de que la Edge Function empezara siquiera. Se puso el 19/ago para impedir un
+  solape que **nunca pudo impedir**. Ahora es una marca de tiempo en tabla, que sí sobrevive
+  entre transacciones. *Lección: un lock de transacción no puede candar trabajo que ocurre afuera
+  de la base.*
+- 🔴 **La bitácora del webhook guardaba la firma pero NO los bytes que la firma cubre.** Mandaba
+  `crudo = null` con el argumento de que "el payload ya vive en `ventas.payload`" — falso para
+  esto: una firma se calcula sobre los **bytes exactos** (espacios, orden de llaves), y el jsonb
+  ya está parseado. Se guardaba el candado sin la puerta, y con eso el pendiente de la firma de
+  Zettle **no se podía cerrar nunca**. Ya se guarda, y caduca a los 3 días (~270 avisos reales,
+  de sobra para deducir el esquema).
+
+### `enlazar_visita_a_carro` borraba marca y submarca
+
+Le faltaba la regla "un nulo no borra" que la `109` sí le puso a `guardar_datos_de_foto`. La caja
+casi nunca captura marca, así que enlazar una visita **borraba la marca que la foto sí había
+leído**. Con su excepción, igual que allá: si el carro ya tenía placa y la nueva es distinta, se
+reemplaza el juego completo — son dos carros distintos.
+
+> ⚠️ El `placa is not null` de esa condición no es adorno: sin él, un carro cuya foto leyó la
+> marca pero **no** la placa (el caso normal de §9) perdería la marca en cuanto la cajera tecleara
+> una.
+
+### Y la auditoría se equivocó en un punto
+
+Reportó que `obtenerStream()` de la caja cae **sin aviso** a la cámara del tablet si el relay se
+muere. **Es falso**: el código dice explícitamente lo contrario y tiene su mensaje de error. El
+respaldo silencioso estaba un nivel más abajo, en `tomarFoto()`. Queda anotado en la skill: **los
+hallazgos que citan una función hay que abrirla, no confiar en el resumen del agente.**
+
+La skill también ganó el **octavo frente que le faltaba: DATOS DE LA OPERACIÓN**. Los cinco días
+de CRM muerto los cazó el crítico de completitud y no un frente, porque los siete eran superficies
+de código más costos y ninguno tenía como sujeto los datos.
+
 ## 11.20 El respaldo por fin respalda (21/ago/2026)
 
 Cierra el hallazgo que el crítico de completitud puso arriba de todo en la auditoría del 20/ago,

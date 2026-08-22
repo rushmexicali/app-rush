@@ -1346,6 +1346,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ repetidas: data ?? [] });
   }
 
+  // --- Avisos de las tareas de fondo (migracion 124) -------------------
+  //
+  // Lo que antes se moria en un `console.error` que nadie lee. Va aparte del
+  // reporte congelado, como las otras alertas: solo lectura y para cualquier
+  // dia.
+  if (ruta === "/avisos") {
+    const dias = Number(url.searchParams.get("dias") ?? 7);
+    const { data, error } = await db.rpc("avisos_recientes", { p_dias: dias });
+    if (error) { console.error("avisos_recientes:", error); return json({ error: error.message }, 500); }
+    return json({ avisos: data ?? [] });
+  }
+
   // --- Carros con placa DUDOSA (el candado atajo una placa repetida) ---
   //
   // Tres funciones escriben `carros.placa_dudosa` y hasta el 21/ago/2026

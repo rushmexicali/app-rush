@@ -1,6 +1,6 @@
 ---
 name: auditoria-general
-description: Auditoría exhaustiva de todo el código del proyecto RUSH — siete revisiones en paralelo (base de datos, API, funciones de fondo, las tres pantallas, costos), de SOLO LECTURA, comprobando lo grave contra producción antes de reportarlo. Úsala cuando el dueño diga "corre la auditoría general", "auditoría completa", "revisa todo el código", "revisión exhaustiva" o algo equivalente.
+description: Auditoría exhaustiva de todo el código del proyecto RUSH — ocho revisiones en paralelo (base de datos, API, funciones de fondo, las tres pantallas, costos y los datos de la operación), de SOLO LECTURA, comprobando lo grave contra producción antes de reportarlo. Úsala cuando el dueño diga "corre la auditoría general", "auditoría completa", "revisa todo el código", "revisión exhaustiva" o algo equivalente.
 ---
 
 # Auditoría general
@@ -19,7 +19,7 @@ la correcta, no repetirla en automático.
 Pregúntate, y **dile al dueño lo que concluiste antes de lanzar nada**:
 
 1. **¿Los agentes que voy a usar son los correctos?** Mira qué tipos de agente hay disponibles
-   en esta sesión (el listado llega en el system prompt). El reparto de siete frentes salió del
+   en esta sesión (el listado llega en el system prompt). El reparto de ocho frentes salió del
    tamaño real del código, no de una regla: si un archivo creció mucho o nació uno nuevo, el
    reparto cambia.
 2. **¿Salió algo nuevo que convenga usar?** Modelos más capaces, un agente especializado
@@ -37,7 +37,7 @@ se corre igual.
 
 ---
 
-## Paso 1 — Los siete frentes, en paralelo
+## Paso 1 — Los OCHO frentes, en paralelo
 
 Un agente por frente, todos lanzados en el mismo mensaje. **Nada se toca: es de SOLO LECTURA.**
 Ningún agente escribe archivos, corre migraciones ni despliega.
@@ -51,6 +51,7 @@ Ningún agente escribe archivos, corre migraciones ni despliega.
 | 5 | **Pantalla de la caja** | `docs/caja.html` |
 | 6 | **Reporte del dueño** | `docs/reporte.html` |
 | 7 | **Costos, transversal** | Anthropic (tokens por foto), Supabase (Storage, invocaciones, CPU de la base), y qué se rompe primero al crecer a 150–200 carros/día |
+| 8 | **DATOS DE LA OPERACIÓN** | No el código: los DATOS. ¿Sigue entrando lo que debe entrar? Última visita del CRM, última venta, huecos en la secuencia de `purchaseNumber`, carros sin foto o sin placa por día, colas de trabajo pendiente (`fotos_por_leer`, `imp_ligado_conflictos`, `avisos_del_sistema`, `placa_dudosa`), tablas que crecen sin límite. **Se compara contra los días anteriores: lo que importa es el CAMBIO, no el valor.** |
 
 A cada agente dale, además del frente: leer `CLAUDE.md` completo primero (las decisiones tienen
 razón escrita y muchas "rarezas" son deliberadas), y **el patrón de fondo a cazar**, que es lo
@@ -110,3 +111,28 @@ bash pruebas/correr.sh
 
 Y súmale un caso por cada hallazgo que se arregle: ésa es la única parte de la auditoría que
 evita que la siguiente encuentre lo mismo.
+
+---
+
+## Lo que la corrida del 20/ago dejó dicho para la siguiente
+
+Escrito el 21/ago/2026, después de arreglar sus hallazgos. Vale más que cualquier hallazgo suelto:
+
+- ✅ **El octavo frente (el código escrito ese mismo día) valió la pena** y se queda: encontró el
+  hallazgo más grave de los 53, sobre código propio. La instrucción que lo hizo funcionar fue
+  *"no le creas a los comentarios: el autor escribió las dos cosas en la misma hora"*.
+- ✅ **El pase adversarial no refutó ninguno de los 8 graves, pero bajó la severidad de 4.** Sin
+  él, cuatro números inflados habrían entrado como urgentes. Siguiente paso: que verifique
+  también los `media`, que es donde se acumularon los 53.
+- 🔴 **Faltaba el frente de DATOS DE LA OPERACIÓN, y ya está arriba.** Los cinco días de CRM
+  muerto los cazó el crítico de completitud, no un frente — porque los siete eran superficies de
+  código más costos, y ninguno tenía como sujeto los datos.
+- ⚠️ **7 duplicados entre frentes.** El reparto por archivo hace que un bug que cruza dos archivos
+  se cuente dos veces y con severidades distintas. Al consolidar, agrupar por CAUSA antes que por
+  archivo.
+- ⚠️ **Frentes flojos:** supervisor (3,069 líneas, 6 hallazgos, ninguno alto — la densidad más
+  baja) y costos (4 de 6 hallazgos eran ecos de otros). Al supervisor conviene darle sub-frentes.
+- 🔑 **Y uno que sí se equivocó:** reportó que `obtenerStream()` de la caja cae sin aviso a la
+  cámara del tablet. **Es falso** — el código dice explícitamente lo contrario y tiene su
+  mensaje de error. El respaldo silencioso estaba un nivel más abajo, en `tomarFoto()`. Los
+  hallazgos que citan una función hay que **abrirla**, no confiar en el resumen del agente.

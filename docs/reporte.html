@@ -343,7 +343,7 @@ function pintarReporte(r) {
   var asp = r.aspirado || {};
   // Aviso de placas repetidas el mismo día: se llena aparte (pedirRepetidas),
   // va hasta arriba porque es algo que hay que ir a revisar.
-  var html = '<div id="repetidas"></div><div id="dudosas"></div><div id="fotos-pendientes"></div>';
+  var html = '<div id="avisos"></div><div id="repetidas"></div><div id="dudosas"></div><div id="fotos-pendientes"></div>';
 
   html += '<div class="numeros">';
   html +=   tarjeta(r.vehiculos_lavados, "Vehículos lavados",
@@ -747,6 +747,39 @@ function pedirRepetidas(desde, hasta) {
     .catch(function () { /* es un extra: si falla, el reporte no se cae */ });
 }
 
+// --- Avisos de las tareas de fondo ------------------------------------
+//
+// Lo que antes se moría en un `console.error`: los logs de las Edge Functions
+// duran un día y hay que ir a buscarlos al panel, así que en la práctica
+// nadie se enteraba nunca. Hoy el único que escribe aquí es la sincronización
+// de Jibble cuando un grupo viene vacío (y con eso desaparecen personas de la
+// grilla del supervisor sin ningún error a la vista).
+//
+// Va ARRIBA de las otras alertas y no depende del día elegido: si algo se
+// rompió en el fondo, eso importa antes que cualquier número del reporte.
+function pedirAvisos() {
+  pedir("/avisos?dias=7")
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var cont = document.getElementById("avisos");
+      if (!cont) return;
+      var arr = (d && d.avisos) || [];
+      if (!arr.length) { cont.innerHTML = ""; return; }
+      var html = '<div class="aviso alerta"><b>⚠ ' + arr.length +
+                 (arr.length === 1 ? " aviso del sistema" : " avisos del sistema") +
+                 "</b> — de los últimos 7 días. Esto no lo ve nadie más.";
+      arr.forEach(function (a) {
+        html += '<div class="rep-carro">' +
+                escapar(fechaCorta(a.hasta)) + " " + escapar(hora(a.hasta)) +
+                " — <b>" + escapar(a.origen) + "</b>: " + escapar(a.detalle || a.motivo) +
+                (a.veces > 1 ? " (" + a.veces + " veces)" : "") +
+                "</div>";
+      });
+      cont.innerHTML = html + "</div>";
+    })
+    .catch(function () { /* es un extra: si falla, el reporte no se cae */ });
+}
+
 // --- Placas que el candado ATAJÓ -------------------------------------
 //
 // Cuando la app va a escribirle a un carro una placa que otro carro del
@@ -882,6 +915,7 @@ function cargarReporte(ruta, esRango) {
               : "Día en curso — todavía puede cambiar");
       document.getElementById("contenido").innerHTML = pintarReporte(r) + pintarPlacas();
       cargarPlacas("");
+      pedirAvisos();
       pedirRepetidas(r.desde, r.hasta || r.desde);
       pedirDudosas(r.desde, r.hasta || r.desde);
       pedirFotosPendientes(r.desde, r.hasta || r.desde);

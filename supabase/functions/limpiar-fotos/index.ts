@@ -117,12 +117,51 @@ Deno.serve(async (req: Request): Promise<Response> => {
   });
   if (errOlv) console.error("olvidar_fotos_viejas:", errOlv);
 
+  // 3) Los HUERFANOS: archivos en Storage que ya no apunta ningun carro.
+  //
+  // Los deja el boton "Tomar foto otra vez" (migracion 103): la foto nueva
+  // reemplaza el `foto_path` del carro y la vieja se queda en el bucket sin
+  // que nadie la reclame. La auditoria del 20/ago los midio en 175 archivos
+  // (15 MB) — hay 1.08 fotos por carro, no 1.
+  //
+  // ⚠️ NO SE BORRAN. Borrar datos es una de las cuatro cosas que este
+  // proyecto pregunta ANTES de hacer, y la lista de huerfanos sale de cruzar
+  // dos fuentes: si el cruce se equivoca, se borra la foto de un carro real y
+  // no hay vuelta. Aqui SOLO se cuentan y se anotan, para que el dueno vea
+  // cuanto pesa y decida. El dia que lo autorice, el borrado son tres lineas
+  // usando esta misma lista.
+  // ⚠️ Se cuenta en la BASE (`fotos_huerfanas`, migracion 126), no listando el
+  // bucket. El primer intento uso `storage.from('fotos').list('')` y devolvio
+  // 36 — que es el numero de CARPETAS, porque las fotos viven en
+  // `AAAA-MM-DD/carro-N.jpg` y esa llamada solo lista el primer nivel. El
+  // numero real es 174. Contar basura por abajo es peor que no contarla.
+  let huerfanos = 0;
+  try {
+    const { data: h, error: errH } = await db.rpc("fotos_huerfanas");
+    if (errH) throw errH;
+    huerfanos = Number(h?.cuantas ?? 0);
+
+    if (huerfanos > 0) {
+      await db.rpc("anotar_aviso", {
+        p_origen: "limpiar-fotos",
+        p_motivo: "fotos_huerfanas",
+        p_detalle: huerfanos + " fotos en Storage que ya no apunta ningun carro " +
+                   "(las deja 'Tomar foto otra vez'). No se borran solas: hay que autorizarlo.",
+      });
+    }
+  } catch (e) {
+    // Contar huerfanos es un extra: nunca puede tumbar el borrado por edad,
+    // que es el trabajo de verdad de esta funcion.
+    console.error("No se pudieron contar las fotos huerfanas:", e);
+  }
+
   const resumen = {
     ok: fallos.length === 0,
     candidatas: paths.length,
     quedan_para_manana: paths.length >= TOPE,
     borradas,
     apuntadores_limpiados: olvidados ?? 0,
+    huerfanas_sin_borrar: huerfanos,
     fallos: fallos.length,
     dias: DIAS,
     cuando: new Date().toISOString(),

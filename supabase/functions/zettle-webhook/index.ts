@@ -250,9 +250,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // significaria rechazar ventas reales si me equivoco. Con una venta real
   // basta para saberlo.
   //
-  // No guarda el cuerpo (`crudo` va nulo cuando el motivo es 'ok'), asi que no
-  // duplica datos de venta: eso ya vive completo en `ventas.payload`.
-  await anotar(db, req, "ok", nombreEvento, null);
+  // 🔴 SI guarda el cuerpo CRUDO, y ese era el error: sin el, esto no sirve
+  // para nada.
+  //
+  // Antes iba `null` con el argumento de que "el payload ya vive en
+  // `ventas.payload`". Falso para lo que se necesita: `ventas.payload` es el
+  // JSON YA PARSEADO, y una firma se calcula sobre los BYTES EXACTOS —los
+  // espacios, el orden de las llaves, todo—. Volver a serializar el jsonb da
+  // otros bytes y otra firma. O sea que se estaba guardando la firma sin
+  // guardar lo que la firma cubre, y con eso el esquema no se puede deducir
+  // nunca. Lo cacho la auditoria del 20/ago.
+  //
+  // El cuerpo se corta a 8000 caracteres (lo hace `anotar`) y la migracion
+  // `125` lo BORRA a los 3 dias, asi que no se acumulan datos de venta
+  // duplicados. Tres dias son ~270 avisos reales: de sobra para aprender como
+  // firma Zettle.
+  await anotar(db, req, "ok", nombreEvento, crudo);
 
   return responder({ ok: true });
 });

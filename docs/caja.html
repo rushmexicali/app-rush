@@ -972,7 +972,17 @@ function tomarFoto() {
   if (feedFuente !== "reolink") return Promise.resolve(capturarCuadro());
   var v = document.getElementById("feed-video");
   if (v.videoWidth >= ANCHO_MINIMO) return Promise.resolve(capturarCuadro());
-  return fotoDeLaReolink().catch(function () { return capturarCuadro(); });
+  // 🔴 El respaldo se queda —una foto chica es mejor que ninguna, y la caja
+  // nunca se traba— pero LO DICE. Antes caía callado al cuadro del video, que
+  // debajo de 1600 px de ancho no alcanza para leer una placa: la cajera veía
+  // "no se pudo leer la placa" sin ninguna pista de que la foto había salido
+  // degradada porque el relay no contestó. El síntoma no se parece a la causa.
+  return fotoDeLaReolink().catch(function () {
+    var hint = document.getElementById("feed-hint-txt");
+    if (hint) hint.textContent = "⚠ La Cámara Exterior no dio la foto grande: " +
+      "se usó el cuadro del video y la placa puede no leerse.";
+    return capturarCuadro();
+  });
 }
 
 // Congela el feed y muestra LA MISMA foto que se sube a Claude, oscurecida,

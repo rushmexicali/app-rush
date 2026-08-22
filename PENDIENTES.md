@@ -119,6 +119,14 @@ entrado al informe como urgentes.
    justo antes de romperlo, porque no hay una sola prueba de la tubería que carga el 99.8% de las
    visitas. La suite protege lo ya arreglado, no lo que está por romperse.
 
+### ✅ TODO LO DE ABAJO SE HIZO EL 21/ago (migraciones `119`–`126`)
+
+> Se subió **todo el mismo día, con el taller abierto**, a pedido expreso del dueño. El
+> detalle y las razones viven en `CLAUDE.md §11.15` y `§11.20`. Lo que queda abierto son
+> sólo las decisiones suyas, listadas al final de esta sección.
+>
+> Se conserva el diagnóstico original tal como lo reportó la auditoría.
+
 ### 🟠 La clase que hay que arreglar como clase, no como seis bugs
 
 Seis hallazgos en cuatro frentes son **el mismo patrón**: un error del backend se pinta como
@@ -186,6 +194,21 @@ aplicadas en la base · la cola de relectura en cero por los tres lados · 0 cor
 fallidas en 7 días · 0 etapas abiertas en carros entregados, 0 negativas, 0 placas sin
 normalizar · el webhook con 61 bitácoras 'ok' contra 61 ventas y **0** `trigger_carro_fallo` ·
 0 no-express en la línea 1.
+
+### 🔵 LO ÚNICO QUE QUEDA ABIERTO — y depende del dueño, no de código
+
+1. **176 fotos huérfanas (16 MB)** en Storage que ya no apunta ningún carro: 165 de "Tomar foto
+   otra vez" y 11 capturas de la caja que nunca se ligaron. **No se borran sin autorización** —
+   borrar datos es una de las cuatro cosas de §2, y la lista sale de cruzar dos fuentes. Ya se
+   cuentan solas y salen en el reporte; el día que se autorice, el borrado son tres líneas.
+2. **164 tickets reclamados por dos clientes** (~170 sellos de más) más los 11 de
+   `imp_ligado_conflictos`. Las visitas están intactas; falta decidir de quién es cada cobro.
+3. **Los 3 renombres dudosos**: `ARTURO CONTRERAS` (falso probable), `JAVIER MEZA` y
+   `LUIS VARGAS` (varios candidatos cada uno).
+4. **La firma de Zettle ya se puede empezar.** Estaba bloqueada porque la bitácora guardaba la
+   firma sin los bytes que cubre; eso se arregló. Con unos días de avisos reales guardados se
+   puede deducir el esquema — y hasta entonces **no se implementa adivinando**, porque una firma
+   mal calculada rechaza ventas de verdad.
 
 ### 📌 Autocrítica del método (para la próxima corrida)
 

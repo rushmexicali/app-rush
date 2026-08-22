@@ -109,6 +109,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // PRIMERO de la lista: quien es secador y ademas supervisor debe
     // salir con los secadores, que es donde el supervisor lo busca.
     const porId = new Map<string, any>();
+    const vacios: string[] = [];
 
     for (const g of GRUPOS) {
       const filtro = `groupId eq ${g.id} and status ne 'Removed'`;
@@ -120,8 +121,45 @@ Deno.serve(async (req: Request): Promise<Response> => {
       const rGente = await fetch(urlGente, { headers: cab });
       if (!rGente.ok) throw new Error(`People (${g.rol}) devolvio ` + rGente.status);
 
-      for (const p of ((await rGente.json())?.value ?? [])) {
+      const delGrupo = ((await rGente.json())?.value ?? []) as any[];
+      // ⚠️ UN grupo vacio tampoco es normal, aunque los otros traigan gente.
+      // La guarda de abajo solo mira el TOTAL, asi que si `Tunelero` (1
+      // persona) o `Supervisor` (2) se vacian —porque alguien reorganizo los
+      // grupos en Jibble, cuyos identificadores estan escritos a mano en este
+      // archivo— el total sigue siendo 16 y pasa de largo: esas 3 personas se
+      // marcan `fuera` y desaparecen de la grilla sin un solo error.
+      if (delGrupo.length === 0) vacios.push(g.rol);
+
+      for (const p of delGrupo) {
         if (!porId.has(p.id)) porId.set(p.id, { ...p, rol: g.rol });
+      }
+    }
+
+    // Un grupo vacio NO detiene la sincronizacion: puede ser legitimo (un
+    // tunelero que se fue y no han contratado). Lo que no puede es pasar
+    // callado, porque el sintoma —"faltan tres en la grilla"— no se parece
+    // en nada a la causa.
+    if (vacios.length) {
+      console.error("sincronizar-jibble: estos grupos vinieron VACIOS:",
+                    vacios.join(", "), "— si no es a proposito, revisa los",
+                    "identificadores de GRUPOS contra Jibble.");
+      // Y ademas queda ESCRITO donde el dueno lo ve. El `console.error` de
+      // arriba vive un dia en el panel y nadie lo mira: es exactamente el
+      // modo de fallar que la auditoria senalo. `anotar_aviso` deduplica por
+      // dia, asi que esto no escribe 288 renglones aunque el cron corra cada
+      // 5 minutos (migracion 124).
+      //
+      // Su fallo se traga a proposito: un aviso no puede tumbar la
+      // sincronizacion. Es la leccion de la bitacora del webhook.
+      try {
+        await db.rpc("anotar_aviso", {
+          p_origen: "sincronizar-jibble",
+          p_motivo: "grupos_vacios",
+          p_detalle: "Jibble devolvio 0 personas en: " + vacios.join(", ") +
+                     ". Esa gente desaparece de la grilla del supervisor.",
+        });
+      } catch (e) {
+        console.error("No se pudo anotar el aviso de grupos vacios:", e);
       }
     }
 
