@@ -846,6 +846,18 @@ explicadas: 4 sin ticket, 6 con el carro cancelado (borrado de supervisor) y 1 s
   `086` — ver "Lo que falta decidir".
 - Lealtad: **236 gratis por honrar en 236 personas**.
 
+### Dos respuestas del dueño, el mismo día
+
+- **`hector figeroa` y `HECTOR FIGUEROA DAUTO` son la misma persona** — *"sí, esa misma persona"*.
+  Fusionadas: una sola ficha (id 6403) con **14 visitas, $3,082, placa `BK6640A`, historia desde el
+  3/sep/2025**. Cierra la duda del 17/ago, cuando él había dicho "Figueroa **Garcia**" y ese nombre
+  no existía ni en el padrón ni en la base. La evidencia cuadraba: las dos fichas **no se enciman
+  en el tiempo** (la vieja termina el 20/jul, la nueva arranca el 7/ago), que es la forma exacta de
+  un renombre — la cajera creó la ficha corregida cuando el cliente volvió.
+- **El 20/ago tuvo 28 lavados porque estuvo nublado** — *"día nublado, no hubo casi trabajo"*. No
+  es la app ni la captura. Importa al leer los promedios de ese día: salen de muy poca muestra y no
+  se comparan contra un día de 84.
+
 ### 🔴 Y una corrección de método que hay que leer
 
 Al abrir la sesión reporté **407 lavados sin sello**. Eran **248**. El error fue mío y de una
