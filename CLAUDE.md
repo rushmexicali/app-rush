@@ -789,6 +789,55 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 11.20 El respaldo por fin respalda (21/ago/2026)
+
+Cierra el hallazgo que el crítico de completitud puso arriba de todo en la auditoría del 20/ago,
+y con razón: es el único de los 53 cuyo modo de falla es **perderlo todo**.
+
+**Lo que había:** el botón "Descargar respaldo" bajaba **94 kB con una sola llave** — los reportes
+diarios congelados. No traía carros, ni etapas, ni asignaciones, ni personas, ni visitas, ni las
+ventas de Zettle. El 0.5% de los datos. Y nadie lo había apretado nunca. El plan de recuperación
+del §13 era eso.
+
+**Lo que hay:** `/respaldo` baja las 11 tablas del negocio — **37,245 renglones**, ~35 MB. Va
+**paginado** porque una Edge Function tiene memoria y tiempo acotados y `ventas` sola son 11 MB de
+payloads crudos; un `select` de todo se queda a medias, y un respaldo a medias es peor que ninguno
+porque nadie se entera hasta que lo necesita.
+
+```
+GET /respaldo                  -> manifiesto: qué trae, cuántas filas por tabla, y qué NO trae
+GET /respaldo?tabla=X&desde=N  -> una página + el cursor
+```
+
+### Tres decisiones que hay que respetar si esto se toca
+
+1. 🔑 **El cursor se entrega SIEMPRE que haya filas; quien recorre se detiene con una página
+   vacía.** La primera versión deducía "ya no hay más" de *la página vino incompleta*, y **eso es
+   exactamente lo que falló**: PostgREST tiene su propio tope de `max-rows` en **1,000** y recorta
+   sin decir nada, así que pedir 2,000 devolvía 1,000, el cliente lo leía como "ya acabé" y
+   `etapas` se respaldaba **al 12%** — completa a la vista. Cuesta una petición de más por tabla y
+   deja de depender de que ningún tope ajeno coincida con el nuestro.
+2. **La lista de tablas es blanca.** Una tabla nueva **no** entra sola al respaldo. Es el error
+   barato: si falta, se nota al agregarla; si entrara sola, un día el respaldo se lleva una tabla
+   de staging de 18 MB y nadie lo revisa.
+3. **El manifiesto dice lo que NO trae, y eso es parte del respaldo.** Las fotos de Storage (~290
+   MB, y caducan a los 60 días), `zettle_compras` (se reconstruye desde Zettle), las tablas `bak_*`
+   y `stg_*`, y **el esquema** — que vive en `supabase/migrations/` dentro de Git. Este archivo son
+   los **datos**; el repo es la otra mitad, y hacen falta las dos. Un archivo que se cree completo
+   es justo lo que falló la vez pasada.
+
+Y si **cualquier** página falla, el front no baja nada y lo dice. No hay archivo parcial.
+
+### Cómo se encontró el bug, que es lo que vale
+
+`pruebas/respaldo-completo.sh` recorre el respaldo entero contra la API real y compara lo bajado
+contra el manifiesto, tabla por tabla. **La primera corrida falló en tres** (etapas 8,300 → 1,000;
+asignaciones y visitas igual). Leyendo el código no se veía: `.limit(2000)` está bien escrito, y el
+recorte lo hace PostgREST del otro lado.
+
+> ⚠️ **La prueba NO va en `pruebas/correr.sh`**: son ~37,000 renglones y ~4 minutos. Se corre
+> cuando se toque `/respaldo`. Está documentada en `pruebas/README.md`.
+
 ## 11.25 El CRM revivió: los cinco días muertos y el candado que los causó (21/ago/2026, migración `118`)
 
 Cierra los tres puntos rojos de la auditoría del 20/ago. **El CRM llevaba cinco días sin registrar

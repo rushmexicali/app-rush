@@ -161,9 +161,12 @@ arregla en el ayudante `pedirJSON` de cada pantalla.
 
 ### 🕳️ Lo que el crítico encontró que NADIE revisó
 
-- **No hay respaldo.** `/respaldo` devuelve 94 KB con **una sola llave**: los 32 reportes
-  diarios. No trae carros, etapas, asignaciones, personas ni visitas. El plan de recuperación del
-  §13 es un botón que baja el 0.5% de los datos y que nadie ha apretado nunca.
+- ~~**No hay respaldo.**~~ ✅ **HECHO el 21/ago.** `/respaldo` baja las 11 tablas del negocio
+  (**37,245 renglones**, ~35 MB), paginado, con manifiesto que dice qué trae y **qué no**. La
+  prueba `pruebas/respaldo-completo.sh` cachó que PostgREST recorta en 1,000 filas sin avisar:
+  `etapas` se respaldaba **al 12% y se veía completa**. Ver `CLAUDE.md §11.20`.
+  > Sigue pendiente lo que el respaldo **no** puede cubrir por tamaño: las **fotos de Storage**
+  > (~290 MB). Hoy la única red es que caducan a 60 días de todos modos.
 - **`carros.placa_dudosa`**: tres funciones la escriben, **cero código la lee**. Hay 14 carros
   marcados y no hay ninguna vía en el producto para revisarlos. La red caza el problema y
   entierra la evidencia.

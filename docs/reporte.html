@@ -880,20 +880,98 @@ document.getElementById("ver-rango").addEventListener("click", function () {
   cargarRango(desde, hasta);
 });
 
+// --- Descargar respaldo -----------------------------------------------
+//
+// Baja TODAS las tablas del negocio, no solo los reportes diarios (que era
+// lo unico que traia hasta el 21/ago/2026: 94 kB, el 0.5% de los datos).
+// El backend lo entrega paginado, asi que aqui se recorre tabla por tabla y
+// pagina por pagina.
+//
+// El archivo se arma como PEDAZOS DE TEXTO, no como un objeto gigante que
+// despues se serializa: son ~35 MB y armar el objeto completo en memoria
+// para volverlo a recorrer duplica el consumo sin necesidad. `Blob` recibe
+// el arreglo de pedazos tal cual.
+//
+// Si CUALQUIER pagina falla, NO se baja nada. Un respaldo incompleto que se
+// ve completo es peor que no tener respaldo: nadie lo revisa hasta el dia
+// que hace falta.
 document.getElementById("respaldo").addEventListener("click", function () {
-  pedir("/respaldo")
-    .then(function (r) { return r.json(); })
-    .then(function (d) {
-      // Se baja como archivo para que viva fuera de Supabase. Ese es el
-      // punto: si un dia se pierde la cuenta, los numeros siguen aqui.
-      var blob = new Blob([JSON.stringify(d, null, 2)], { type: "application/json" });
+  var boton = this;
+  if (boton.disabled) return;
+  var textoOriginal = boton.textContent;
+  boton.disabled = true;
+
+  function avisar(t) { boton.textContent = t; }
+
+  function pedirJSONRespaldo(ruta) {
+    return pedir(ruta).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(function (d) {
+      if (!d || d.ok === false) throw new Error((d && d.error) || "respuesta con error");
+      return d;
+    });
+  }
+
+  avisar("Preparando…");
+  pedirJSONRespaldo("/respaldo").then(function (man) {
+    if (!man.tablas || !man.tablas.length) throw new Error("el manifiesto vino vacio");
+
+    var total = 0;
+    for (var i = 0; i < man.tablas.length; i++) total += man.tablas[i].filas;
+
+    var partes = ['{\n"generado_en":' + JSON.stringify(man.generado_en) +
+                  ',\n"manifiesto":' + JSON.stringify(man) + ',\n"datos":{'];
+    var bajadas = 0;
+
+    // Una tabla a la vez, en cadena de promesas: en serie a proposito, para
+    // no dispararle diez peticiones simultaneas a la misma Edge Function
+    // mientras el supervisor la esta usando.
+    function tabla(idx) {
+      if (idx >= man.tablas.length) return Promise.resolve();
+      var t = man.tablas[idx];
+      partes.push((idx ? "," : "") + "\n" + JSON.stringify(t.tabla) + ":[");
+      var primera = true;
+
+      function pagina(desde) {
+        var ruta = "/respaldo?tabla=" + encodeURIComponent(t.tabla) +
+                   (desde === null || desde === undefined ? "" : "&desde=" + encodeURIComponent(desde));
+        return pedirJSONRespaldo(ruta).then(function (d) {
+          var filas = d.filas || [];
+          for (var i = 0; i < filas.length; i++) {
+            partes.push((primera ? "" : ",") + JSON.stringify(filas[i]));
+            primera = false;
+          }
+          bajadas += filas.length;
+          avisar("Bajando… " + Math.round(100 * bajadas / (total || 1)) + "%");
+          if (d.siguiente === null || d.siguiente === undefined) return;
+          return pagina(d.siguiente);
+        });
+      }
+
+      return pagina(null).then(function () {
+        partes.push("]");
+        return tabla(idx + 1);
+      });
+    }
+
+    return tabla(0).then(function () {
+      partes.push("\n}}\n");
+      var blob = new Blob(partes, { type: "application/json" });
       var a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = "rush-respaldo-" + new Date().toISOString().slice(0, 10) + ".json";
       a.click();
       URL.revokeObjectURL(a.href);
-    })
-    .catch(function () { alert("No se pudo bajar el respaldo."); });
+      avisar("Listo: " + bajadas.toLocaleString("es-MX") + " renglones");
+      setTimeout(function () { boton.textContent = textoOriginal; boton.disabled = false; }, 6000);
+    });
+  }).catch(function (e) {
+    boton.textContent = textoOriginal;
+    boton.disabled = false;
+    alert("No se pudo bajar el respaldo y NO se guardo nada a medias.\n\n" +
+          "Vuelve a intentarlo. Detalle: " + (e && e.message ? e.message : e));
+  });
 });
 
 document.getElementById("entrar").addEventListener("click", function () {

@@ -65,6 +65,25 @@ Por lo mismo, `sintaxis-front.sh` sólo comprueba que las pantallas **parseen**.
 El error `'document' is undefined` es el resultado esperado y correcto:
 significa que el archivo está bien formado y llegó a ejecutarse.
 
+## La que NO va en `correr.sh`: el respaldo
+
+```bash
+bash pruebas/respaldo-completo.sh
+```
+
+Recorre `/respaldo` entero contra la API real y comprueba que **cada tabla
+entregue exactamente las filas que promete el manifiesto**. Son ~37,000
+renglones y ~4 minutos, así que queda **fuera de la suite de despliegue** a
+propósito: correrla antes de cada `deploy` costaría cinco minutos cada vez.
+Se corre **cuando se toque `/respaldo`** y de vez en cuando por gusto.
+
+Vale la pena leer por qué existe: el modo de falla que importa en un respaldo
+no es que truene, es que **baje de menos y se vea completo**. Y eso fue justo
+lo que encontró la primera vez que se corrió — PostgREST recorta en 1,000
+filas sin avisar, así que las tablas con página de 2,000 bajaban 1,000 y se
+detenían creyéndose enteras. `etapas` se respaldaba al 12%. Leyendo el código
+no se veía.
+
 ## Qué falta agregar
 
 Cada hallazgo de la auditoría debería acabar aquí como un caso permanente. Los

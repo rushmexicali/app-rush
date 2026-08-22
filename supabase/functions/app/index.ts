@@ -1091,21 +1091,120 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // --- Respaldo completo ----------------------------------------------
-  // Todos los reportes congelados de un jalon, para bajarlos a un archivo.
-  // Es el respaldo mensual manual: si algun dia se pierde el proyecto de
-  // Supabase, los numeros historicos siguen existiendo en la computadora
-  // del dueno.
+  //
+  // Si algun dia se pierde el proyecto de Supabase, esto es lo que queda en
+  // la computadora del dueno. Hasta el 21/ago/2026 bajaba SOLO los reportes
+  // diarios congelados: 94 kB, una sola llave, el 0.5% de los datos. O sea
+  // que el plan de recuperacion del CLAUDE.md era un boton que no respaldaba
+  // ni los carros, ni las etapas, ni los clientes, ni las visitas. Y nadie
+  // lo habia apretado nunca.
+  //
+  // Ahora baja las tablas completas. Va PAGINADO por dos razones que no son
+  // negociables: una Edge Function tiene memoria y tiempo acotados, y
+  // `ventas` sola son 11 MB de payloads crudos. Un solo `select` de todo
+  // revienta o se queda a medias — y un respaldo a medias es peor que
+  // ninguno, porque nadie se entera hasta que lo necesita.
+  //
+  //   GET /respaldo                  -> manifiesto: que trae, cuantas filas
+  //                                     de cada tabla, y que NO trae
+  //   GET /respaldo?tabla=X&desde=N  -> una pagina de esa tabla + el cursor
+  //
+  // El cursor es la llave primaria, asi que dos paginas nunca se encimen ni
+  // se salten una fila aunque entren carros mientras se baja.
   if (ruta === "/respaldo") {
-    const { data, error } = await db
-      .from("reportes_diarios")
-      .select("fecha, datos, congelado_en")
-      .order("fecha", { ascending: true });
+    // La lista es blanca a proposito: una tabla nueva NO entra sola al
+    // respaldo. Es el error barato — si falta, se nota al agregarla; si
+    // entrara sola, un dia el respaldo se lleva una tabla de staging de
+    // 18 MB y nadie lo revisa.
+    // ⚠️ Ninguna pagina pasa de 1000: PostgREST tiene su propio tope de
+    // `max-rows` en 1000 y RECORTA la respuesta sin decir nada. Pedir 2000
+    // devolvia 1000 filas calladas — lo cacho `pruebas/respaldo-completo.sh`,
+    // que comparo lo bajado contra el manifiesto (etapas 8,300 -> 1,000).
+    const TABLAS: { tabla: string; clave: string; pagina: number }[] = [
+      { tabla: "carros",           clave: "id",    pagina: 500 },
+      { tabla: "etapas",           clave: "id",    pagina: 1000 },
+      { tabla: "asignaciones",     clave: "id",    pagina: 1000 },
+      { tabla: "empleados",        clave: "id",    pagina: 500 },
+      { tabla: "rechazos",         clave: "id",    pagina: 500 },
+      { tabla: "personas",         clave: "id",    pagina: 1000 },
+      { tabla: "visitas",          clave: "id",    pagina: 1000 },
+      { tabla: "persona_placas",   clave: "id",    pagina: 1000 },
+      { tabla: "reportes_diarios", clave: "fecha", pagina: 100 },
+      // `ventas` trae el aviso crudo de Zettle completo (~4 kB por fila), asi
+      // que su pagina es la mas chica de todas.
+      { tabla: "ventas",           clave: "id",    pagina: 200 },
+      { tabla: "webhook_bitacora", clave: "id",    pagina: 200 },
+    ];
 
+    const cual = url.searchParams.get("tabla");
+
+    // --- Manifiesto ---
+    if (!cual) {
+      const tablas = [];
+      for (const t of TABLAS) {
+        const { count, error } = await db
+          .from(t.tabla)
+          .select("*", { count: "exact", head: true });
+        if (error) {
+          // Un conteo que falla no se disfraza de cero: si el manifiesto
+          // dijera 0 filas, la pantalla bajaria un archivo "completo" que no
+          // trae esa tabla y nadie lo notaria.
+          console.error("Fallo al contar " + t.tabla + ":", error);
+          return json({ error: "No se pudo contar " + t.tabla + ": " + error.message }, 500);
+        }
+        tablas.push({ tabla: t.tabla, clave: t.clave, pagina: t.pagina, filas: count ?? 0 });
+      }
+      return json({
+        generado_en: new Date().toISOString(),
+        tablas,
+        // Decir lo que NO trae es parte del respaldo. Un archivo que se cree
+        // completo es justo lo que fallo la vez pasada.
+        no_incluye: {
+          fotos_de_los_carros:
+            "Viven en Supabase Storage (~2,900 archivos, ~290 MB) y no caben aqui. " +
+            "Caducan a los 60 dias de todos modos.",
+          zettle_compras:
+            "18 MB de archivo historico que se reconstruye desde Zettle con " +
+            "scripts/importar-clientnotetracker/pull-zettle-compras.ps1. Las ventas " +
+            "nuevas si van, en la tabla `ventas`.",
+          tablas_de_trabajo:
+            "bak_* y stg_* son copias y staging de los imports, no datos del negocio.",
+          el_esquema:
+            "Las tablas, funciones e indices viven en supabase/migrations/ dentro del " +
+            "repo de Git. Este archivo son los DATOS; el repo es la otra mitad, y hacen " +
+            "falta las dos para reconstruir.",
+        },
+      });
+    }
+
+    const def = TABLAS.find((t) => t.tabla === cual);
+    if (!def) return json({ error: "Esa tabla no esta en el respaldo" }, 400);
+
+    const desde = url.searchParams.get("desde");
+    let q = db.from(def.tabla).select("*").order(def.clave, { ascending: true }).limit(def.pagina);
+    if (desde !== null && desde !== "") q = q.gt(def.clave, desde);
+
+    const { data, error } = await q;
     if (error) {
-      console.error("Fallo al armar el respaldo:", error);
+      console.error("Fallo el respaldo de " + def.tabla + ":", error);
       return json({ error: error.message }, 500);
     }
-    return json({ generado_en: new Date().toISOString(), reportes: data ?? [] });
+    const filas = data ?? [];
+    // 🔑 `siguiente` NO se deduce de "la pagina vino llena". Esa version se
+    // detenia sola en cuanto algo recortaba la respuesta por debajo del
+    // limite pedido — y PostgREST lo hace, a las 1000 filas. El respaldo
+    // quedaba truncado Y se veia completo, que es el peor de los dos males.
+    // Ahora el cursor se da SIEMPRE que haya filas, y quien recorre se
+    // detiene con una pagina vacia. Cuesta una peticion de mas por tabla y
+    // no depende de que ningun tope coincida con el nuestro.
+    const siguiente = filas.length > 0
+      ? (filas[filas.length - 1] as Record<string, unknown>)[def.clave]
+      : null;
+    // `n` es cuantas filas trae ESTA pagina. Va explicito porque contarlas
+    // desde afuera obliga a adivinar donde empieza cada renglon, y los
+    // payloads de `ventas` traen `"id"` anidado en cada producto: la primera
+    // version de la prueba conto 10 veces de mas por eso.
+    return json({ tabla: def.tabla, n: filas.length, filas, siguiente });
   }
 
   // --- Desglose de un carro -------------------------------------------
