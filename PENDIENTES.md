@@ -144,14 +144,30 @@ Tres frentes la reportaron por separado; **es un solo bug**.
    - Prueba nueva: `pruebas/cortesia-del-import.sql`, ya en `correr.sh`. **Reproduce el bug viejo
      antes de comprobar el arreglo** —el insert crudo del import deja la cortesía marcada como
      gratis— así que si dejara de fallar, avisa que dejó de medir.
-### 🔵 Lo demás, agrupado por consecuencia
+### ✅ Lo demás — parte HECHO el 23/ago/2026 (migración `130` y la suite)
 
-- **Rendimiento:** `ventas_purchase_number_idx` está construido sobre la forma de payload que la
-  `115` declaró equivocada, así que **no sirve a ninguna consulta viva**: buscar un ticket hace
-  Seq Scan sobre 2,862 ventas (156 ms). Y su expresión se evalúa en cada `insert` de `ventas`.
-- **La regla de escapar comodines vive en `como_literal()` y sólo 1 de las 3 búsquedas la usa.**
-  `buscar_personas('%')` devuelve 25 clientes cualquiera y `buscar_personas('LUIS_G')` devuelve 7:
-  la cajera puede tocar al cliente equivocado creyendo que es un resultado bueno.
+- ✅ **`ventas_purchase_number_idx` no servía a ninguna consulta viva.** Reemplazado por
+  `ventas_recibo_idx`, sobre `detalle_venta(payload)->>'purchaseNumber'`, que es la expresión del
+  join de `ligar_visitas_de_import()`. Medido con `EXPLAIN (analyze, buffers)`: **Seq Scan de 165 ms
+  y 9,479 buffers → Index Scan de 2.5 ms y 3**. El viejo además se evaluaba en cada `insert`.
+- ✅ **La regla de escapar comodines ya vive en las tres búsquedas.** Antes `buscar_personas('%')`
+  daba 25 clientes cualquiera, `buscar_personas('_')` otros 25, `buscar_personas('LUIS_G')` 7 y
+  `buscar_vehiculos('%')` 50 placas; ahora los cuatro dan **0**. Comprobado contra una línea base de
+  16 búsquedas: **las siete normales dan idéntico** (`gonz` 25, `luis` 25, `mar` 25, `BVJ` 1,
+  `9XU` 1, `toyota` 50, `completo` 30, `express` 30). En `buscar_vehiculos` se escapa **una vez en
+  el CTE `q`** y quedan cubiertos los cuatro `like`, en vez de cuatro parches que se desfasan.
+  Las dos funciones se editaron **sobre su propia definición**, no reescritas.
+- ✅ **La prueba del import ya puede fallar.** Corría sobre `stg_cnt` con las filas ya importadas,
+  así que el `INSERT` se ejercitaba con **cero** y la aserción (`grep -q DRYRUN`) salía igual con 0
+  que con 240. Ahora `pruebas/dryrun-import.sh` **siembra una fila** en la misma transacción que
+  revierte y exige `visitas +[1-9]`. Medido: sin la siembra el dry-run dice `visitas +0`, o sea que
+  la aserción nueva sí lo rechaza.
+  > ⚠️ **Y el arreglo rompió el cierre de `correr.sh`** —se comió el bloque que cuenta los fallos,
+  > así que la suite salía con código 0 pasara lo que pasara—. Se detectó porque faltó el banner
+  > `TODO PASO`. Restaurado desde Git y rehecho; queda anotado en `pruebas/README.md`.
+
+### 🔵 Lo demás que SIGUE pendiente, agrupado por consecuencia
+
 - **Un titular que no cuadra con su tabla** en "Calidad de la entrega": dice 2 rechazos, la tabla
   de abajo suma 3.
 - **`anotar_aviso` no se puede apagar:** el reporte muestra ahora mismo una alerta pidiendo

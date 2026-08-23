@@ -41,6 +41,23 @@ usarse**. Esta carpeta es donde dejan de tirarse.
    prueba lo detecta. `marcar-error.js` se validó así: cambiando el umbral de
    400 a 500, cuatro casos fallaron y salió con código 1.
 
+   > 🔴 **Y le pasó a esta misma suite, que es la mejor prueba de que la regla
+   > hace falta.** El grupo del dry-run del import (agregado el 21/ago) corría
+   > sobre `stg_cnt`, que **después de un import queda con sus filas ya
+   > importadas**: el dedup las descartaba todas, el `INSERT` se ejercitaba con
+   > **cero filas**, y la aserción era un `grep -q DRYRUN` que sale igual con 0
+   > que con 240. Lo cachó el crítico de completitud de la auditoría del 22/ago.
+   > Arreglado el 23/ago: `pruebas/dryrun-import.sh` **siembra una fila** en la
+   > misma transacción que revierte y exige `visitas +[1-9]`. Medido: sin la
+   > siembra el dry-run dice `visitas +0`, o sea que la aserción nueva sí lo
+   > rechaza.
+   >
+   > ⚠️ Y de paso, el propio arreglo rompió el cierre de `correr.sh` (se comió
+   > el bloque que cuenta los fallos, así que la suite salía con código 0
+   > pasara lo que pasara). Se detectó porque **faltaba el banner `TODO PASO`**
+   > al final. Al tocar `correr.sh`, comprobar siempre que el banner salga y que
+   > el `if [ "$fallos" -eq 0 ]` siga ahí.
+
 3. **Un falso positivo mata la suite.** Una prueba que grita por algo que en
    producción funciona se deja de correr a la semana, y entonces no protege
    nada. Cuando el arnés tenga una limitación (ver abajo), se documenta y se

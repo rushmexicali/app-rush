@@ -60,8 +60,11 @@ correr "la cortesia del import"       sql pruebas/cortesia-del-import.sql
 # El dry-run del import REVIERTE por diseno (termina en `raise`), asi que se
 # puede correr contra produccion: es la unica prueba que ejercita el archivo
 # de verdad, de punta a punta, en vez de una copia de su logica.
-correr "el dry-run del import corre" \
-  bash -c 'bash scripts/releer-fotos/q.sh scripts/importar-clientnotetracker/import-incremental-dryrun.sql | grep -q DRYRUN'
+# ⚠️ Corre con una fila SEMBRADA. Hasta el 23/ago la asercion era `grep -q
+# DRYRUN`, que sale igual con 0 filas que con 240 -- y despues de un import
+# `stg_cnt` queda con sus filas ya importadas, o sea que el INSERT se
+# ejercitaba con CERO y la prueba no podia fallar. Ver pruebas/dryrun-import.sh.
+correr "el dry-run del import corre e inserta" bash pruebas/dryrun-import.sh
 
 echo ""
 echo "=============================================================="
