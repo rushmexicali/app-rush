@@ -54,6 +54,8 @@ correr "limpieza 119: nulo no borra, Jibble" sql pruebas/limpieza-119.sql
 correr "numeros honestos del reporte"     sql pruebas/numeros-del-reporte.sql
 correr "el aviso plano y las placas dudosas" sql pruebas/aviso-plano.sql
 
+correr "la llave publica no alcanza nada" sql pruebas/llave-publica.sql
+
 # El dry-run del import REVIERTE por diseno (termina en `raise`), asi que se
 # puede correr contra produccion: es la unica prueba que ejercita el archivo
 # de verdad, de punta a punta, en vez de una copia de su logica.

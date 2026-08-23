@@ -33,9 +33,11 @@ El método y la decisión de modelos viven en `.claude/skills/auditoria-general/
 > cronómetro que no se apaga, foto que se borra sola, aviso de "sin conexión"): **nadie los
 > reprodujo en un navegador**, son lectura de código. Reproducirlos primero.
 >
-> **Esperan respuesta del dueño:** el servicio de `Faros` de $600 que no crea carro; si la caja
-> parte servicios en dos cobros; qué debe contar «Devoluciones»; si los avisos del sistema deben
-> poder marcarse como atendidos; y si se recongela el 19/jul.
+> ✅ **Ya no espera nada del dueño: las cinco preguntas se contestaron el 23/ago.** Ver la sección
+> "Lo que necesitaba tu palabra" más abajo. En corto: `Faros` se queda como está (nunca crea
+> unidad), la caja **no** parte servicios en dos cobros, "Devoluciones" cuenta sólo reembolsos con
+> las cancelaciones aparte, los avisos se van a poder marcar como atendidos, y el 19/jul no se
+> recongela.
 
 
 > 🔑 **Lo que el pase adversarial cambió, y es la razón de tenerlo:** de **18 hallazgos marcados
@@ -73,19 +75,37 @@ Tres frentes la reportaron por separado; **es un solo bug**.
 3. **El reporte es la única de las tres pantallas sin corte de tiempo.** Una petición colgada la
    deja en blanco para siempre, sin decir nada. El supervisor y la caja ya cortan a los 20 s.
 
-### 🟠 Seguridad — el `revoke` del 19/ago sólo blindó lo que existía ese día
+### ✅ Seguridad — HECHO el 23/ago/2026 (migración `128`)
 
-4. **La llave publicable puede ejecutar seis funciones `SECURITY DEFINER` nuevas, cuatro de ellas
-   escriben o borran**: `limpiar_crudo_del_webhook`, `limpiar_bitacora_del_cron`,
-   `ligar_visitas_de_import`, `anotar_aviso`, `fotos_huerfanas`, `fotos_huerfanas_lista`.
-   - **La causa es estructural, no un olvido:** Supabase tiene un `ALTER DEFAULT PRIVILEGES … GRANT
-     EXECUTE … TO anon` sobre el esquema `public`, así que **toda función nacida después del revoke
-     sale otorgada de nuevo**. De 118 funciones, `anon` alcanza todas menos las 5 que existían el
-     19/ago. Va a volver a pasar con cada migración que cree una función.
-   - Comprobado contra la API en vivo sin destruir nada (se llamaron con un rango que no alcanza
-     ninguna fila).
-   - Atenuante medido, y por eso es 🟠 y no 🔴: la llave publicable **no está en `docs/`**
-     (0 coincidencias), así que no se puede sacar del repo público.
+4. ~~**La llave publicable puede ejecutar seis funciones `SECURITY DEFINER` nuevas**~~ ✅
+   **CERRADO, y la clase con él.** `anon` pasó de alcanzar **119 de 124** funciones a **38** — y las
+   38 son las 35 de `pg_trgm`/`unaccent` (de `supabase_admin`, no tocan datos) más los 3 triggers,
+   que se dejan a propósito igual que el 19/ago: PostgREST no los expone, Postgres no comprueba
+   EXECUTE al disparar un trigger, y uno de ellos es el camino por donde entra el dinero.
+   `authenticated` entró al revoke también (hoy hay **0 usuarios** en `auth.users`, así que cerrar
+   esa puerta no cuesta nada y el día que se prenda Auth ya está cerrada).
+   > 🔴 **Y el arreglo obvio NO funcionó — vale más esto que el revoke.** Se aplicó
+   > `ALTER DEFAULT PRIVILEGES … REVOKE EXECUTE ON FUNCTIONS FROM anon, authenticated` y una función
+   > creada después, **ya comprometido el cambio y en otra transacción**, nació igual con
+   > `{=X/postgres, …}`. Ese `=X` es **PUBLIC**, y por ahí le sigue llegando el permiso a `anon`
+   > aunque no tenga concesión propia: es palabra por palabra la trampa que el `CLAUDE.md §11.50`
+   > ya documentaba del revoke del 19/ago, y se volvió a caer en ella. Agregarle `from public` al
+   > `ALTER DEFAULT PRIVILEGES` **tampoco bastó**: el `pg_default_acl` se veía correcto
+   > (`{postgres=X, service_role=X}`) mientras las funciones seguían naciendo abiertas.
+   >
+   > La garantía terminó donde no depende de esa sutileza: un **event trigger**
+   > (`cerrar_funciones_nuevas`), el mismo patrón que este proyecto ya usa en `rls_auto_enable`,
+   > que revoca al terminar cada `CREATE FUNCTION` — y que se traga su propio error, porque una
+   > salvaguarda nunca puede tumbar una migración.
+   >
+   > 🔑 **Se encontró probando, no leyendo el catálogo.** Leer `pg_default_acl` decía que todo
+   > estaba bien. Lo que lo destapó fue crear una función de prueba y preguntarle si `anon` la
+   > alcanzaba.
+   - Verificado después: `/cola`, `/tickets`, `/personas`, `/reporte`, `/trabajadores`,
+     `/entregados` y `/avisos` en **200**, y la suite completa en verde.
+   - Prueba nueva: `pruebas/llave-publica.sql`, ya en `pruebas/correr.sh`. Sus 4 grupos incluyen el
+     que importa —que una función **nueva** nazca cerrada—, y **puede fallar**: esa misma aserción
+     reventó contra producción antes de instalar el event trigger.
 
 ### 🟠 Lealtad — le está costando lavados gratis a clientes con nombre
 
@@ -170,17 +190,32 @@ Tres frentes la reportaron por separado; **es un solo bug**.
 - 🔑 **`obtenerStream()` de la caja NO cae sola a la cámara del tablet.** La auditoría del 20/ago
   se equivocó ahí, quedó anotado en la skill, y **este pase lo confirma otra vez**.
 
-### 🙋 Lo que necesita tu palabra, no trabajo mío
+### 🙋 Lo que necesitaba tu palabra — CONTESTADO el 23/ago/2026
 
-1. **`Faros` $600 se cobró el 21/ago y nunca apareció en el teléfono del supervisor.** Está en la
-   categoría `Extras`, que no crea carro. Las otras 8 ventas sin carro del periodo son mostrador
-   legítimo (Pinito, aromas, diferencias de precio). **¿El servicio de faros se hace sobre el carro
-   del cliente?** Si sí, hay que sacarlo de `Extras`.
-2. **Las fotos pegadas al carro equivocado se cuadruplicaron el 21/ago:** 6 de 97 (6.19%) contra
-   14 de 1,071 (1.31%) en las dos semanas previas. Al menos uno **no es error**: dos tickets del
-   mismo vehículo con 2 minutos de diferencia (Encerado $800 + Completo $300, la misma GMC Sierra
-   blanca) — o sea que el candado también produce falsos positivos cuando la caja parte un
-   servicio en dos cobros. **¿Se parten seguido?**
+1. ~~**`Faros` $600 nunca apareció en el teléfono del supervisor**~~ ✅ **CERRADO SIN CAMBIO DE
+   CÓDIGO: `Faros` se queda en `Extras` y NUNCA debe crear unidad.** Textual del dueño: *"la venta
+   de faros solo puede suceder de 2 maneras. 1. el carro entra y pide un paquete + el de faros. La
+   otra es que, al momento de que está en secado, el secador le recomienda un pulido de faros y el
+   cliente va a caja caminando a pagar el servicio. El servicio de faros nunca va sin lavado, por lo
+   tanto los faros nunca generan una unidad nueva."*
+   > 🔑 **Y el arreglo que yo iba a proponer habría CREADO el problema.** El segundo caso produce un
+   > ticket aparte para un carro **que ya está en la cola secándose**; si `Faros` creara unidad, ahí
+   > entraría un carro fantasma duplicado del que se está secando. Medido antes de decidir: **1 sola
+   > venta de `Faros` en toda la historia** (ticket 27298, 21/ago 11:22, sola en su ticket, monto
+   > libre). **No hay que sacarlo de `Extras`; la regla ya estaba bien.**
+   >
+   > Consecuencia aceptada, dicha de frente: los $600 de ese trabajo no quedan colgados de ningún
+   > carro, así que no entran a ninguna métrica por vehículo. Es el precio de no meter fantasmas.
+2. ~~**¿La caja parte seguido un servicio en dos cobros?**~~ ✅ **NO, es raro** (dueño, 23/ago). O
+   sea que el brinco del 21/ago —6 de 97 contra 1.31% las dos semanas previas— **son fotos mal
+   pegadas de verdad**, no falsos positivos del candado. Es problema de captura y hay que mirarlo
+   como tal: el candado está haciendo su trabajo.
+3. ✅ **"Devoluciones" cuenta SÓLO los reembolsos de Zettle** (6 en toda la historia) y las 25
+   cancelaciones a mano salen **en su propia tarjeta, con su nombre**. Decide el hallazgo 🔴 #1.
+4. ✅ **Los avisos del sistema se van a poder marcar como atendidos.** Hoy sólo caducan a los 7
+   días, y el primero que existió ya es falso (pide autorizar un borrado que ya se hizo).
+5. ✅ **El 19/jul NO se recongela.** Se queda como está, con su deriva histórica, igual que en todos
+   los recongelados anteriores.
 
 
 ### 🧭 El crítico de completitud — lo que ningún frente miró
