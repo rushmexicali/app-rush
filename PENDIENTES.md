@@ -107,22 +107,43 @@ Tres frentes la reportaron por separado; **es un solo bug**.
      que importa —que una función **nueva** nazca cerrada—, y **puede fallar**: esa misma aserción
      reventó contra producción antes de instalar el event trigger.
 
-### 🟠 Lealtad — le está costando lavados gratis a clientes con nombre
+### ✅ Lealtad — HECHO el 23/ago/2026 (migración `129`): cinco clientes recuperaron su lavado
 
-5. **La regla de cortesía nunca llegó al import del ClientNoteTracker.** `visitas.es_cortesia` es
-   `true` en **1 de 15,068 filas** (la prueba del dueño del 15/ago). El §11.70 dice que una
-   cortesía *"ni suma sello ni consume gratis"*, y esa regla vive en `clase_de_gratis()` — que el
-   camino de la caja sí consulta y **el del import no**. Es el patrón de siempre: *el camino que no
-   llama a la función se brinca la regla*, igual que pasó con `un lavado, un cliente`.
-   - Caso con nombre: **`reynaldo inojosa ramirez`**, 33 lavados pagados. Le tocan 6 gratis; tiene
-     9 canjes y **0 disponibles**. Cuatro de esos 9 son `Gratis`+`Cortesia`. Sin ellos serían 5 y
-     le quedaría **1 gratis disponible** — o sea que el negocio le está debiendo un lavado.
-   - Cotejo independiente (22/jul–20/ago): 242 canjes registrados contra 237 lavados `6to`
-     realmente vendidos; la diferencia son esas 5 cortesías. `lealtad_por_persona` lo tapa con
-     `greatest(0, …)`, y por eso nunca se vio.
-   - ✅ **Confirmado: sus dos refutadores lo atacaron y ninguno pudo tumbarlo** (los dos lo dejaron
-     en severidad media). Es real y está medido.
+5. ~~**La regla de cortesía nunca llegó al import del ClientNoteTracker**~~ ✅ **CERRADO.** El
+   hallazgo era exacto: `es_cortesia` estaba en **1 de 15,051** visitas activas y ahora está en
+   **12**. La regla vivía en `clase_de_gratis()`, que el camino de la caja sí consulta y el del
+   import no — *el camino que no llama a la función se brinca la regla*, otra vez.
+   - **Quiénes cobran, medido persona por persona contra una línea base de 4,957.** Sólo se
+     movieron **8**, y **nadie perdió un gratis disponible**:
 
+     | Persona | Canjes | Disponibles |
+     |---|---|---|
+     | `reynaldo inojosa ramirez` | 9 → **5** | 0 → **1** |
+     | `Gregorio Coronel` | 4 → **2** | 0 → **1** |
+     | `ANICETO MIRELES UYOHA` | 6 → **5** | 1 → **2** |
+     | `cristian rodriguez` | 1 → **0** | 0 → **1** |
+     | `CRISTIAN VALENZUELA` | 1 → **0** | 0 → **1** |
+     | `CECILIA LARA` | 0 → **1** | 0 → 0 |
+     | `JEUS ROBERTO VALDEZ MORENO`, `Luis Gonzalez` | 1 → **0** | 0 → 0 |
+
+     Cecilia es el único canje que iba **sin marcar** (ahí el ticket manda en la otra dirección), y
+     no le quita nada porque no tenía ninguno disponible.
+   - **Dónde quedó la regla, que es lo que impide que vuelva:** no en los tres scripts del import
+     —copiarla tres veces es como se desfasan las cosas aquí— sino dentro de
+     `ligar_visitas_de_import()`, la función que la `118` creó **justamente** porque los tres la
+     llamaban copiada y que los tres ya llaman. Es el único cuello por donde pasa todo import.
+   - Dos funciones nuevas: `clase_de_gratis_del_ticket(ticket)` —resuelve contra `ventas` (webhook,
+     con `detalle_venta()`) y contra `zettle_compras` (histórico REST, **cuyo payload tiene otra
+     forma**: `productos[].nombre/variante`, en español)— y
+     `aplicar_clase_de_gratis_del_import()`.
+   - ⚠️ **Un ticket irresoluble devuelve NULL y no se toca nada.** Son 41 visitas que traen
+     `es_gratis` del ClientNoteTracker sin ticket que lo respalde: desmarcarlas a ciegas sería
+     quitarle un lavado a alguien por falta de dato.
+   - `ligar_visitas_de_import()` **no se reescribió**: se le insertó una línea sobre su propia
+     definición (`pg_get_functiondef`) con el ancla comprobada, el patrón de la `117`.
+   - Prueba nueva: `pruebas/cortesia-del-import.sql`, ya en `correr.sh`. **Reproduce el bug viejo
+     antes de comprobar el arreglo** —el insert crudo del import deja la cortesía marcada como
+     gratis— así que si dejara de fallar, avisa que dejó de medir.
 ### 🔵 Lo demás, agrupado por consecuencia
 
 - **Rendimiento:** `ventas_purchase_number_idx` está construido sobre la forma de payload que la
