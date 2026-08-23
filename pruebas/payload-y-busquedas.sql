@@ -89,7 +89,40 @@ begin
   if jsonb_array_length(public.buscar_tickets('%', 30)) <> 0 then
     raise exception 'FALLA: buscar "%%" devolvio tickets — el comodin no se escapo';
   end if;
-  v_msg := v_msg || 'comodines literales OK. ';
+  v_msg := v_msg || 'comodines literales en tickets OK. ';
+
+  -- ---------- 5) ...y en las OTRAS DOS busquedas (migracion 130) ----------
+  -- Hasta el 23/ago la regla vivia en `como_literal()` y solo `buscar_tickets`
+  -- la usaba. Medido entonces: buscar_personas('%') devolvia 25 clientes
+  -- cualquiera y buscar_vehiculos('%') 50 placas. La cajera veia una lista con
+  -- cara de resultado bueno y podia tocar al cliente equivocado.
+  if jsonb_array_length(public.buscar_personas('%')) <> 0
+     or jsonb_array_length(public.buscar_personas('_')) <> 0 then
+    raise exception 'FALLA: buscar_personas trata los comodines como comodines';
+  end if;
+  if jsonb_array_length(public.buscar_vehiculos('%')) <> 0
+     or jsonb_array_length(public.buscar_vehiculos('_')) <> 0 then
+    raise exception 'FALLA: buscar_vehiculos trata los comodines como comodines';
+  end if;
+  -- Y lo de verdad sigue saliendo: escapar no puede apagar la busqueda.
+  if jsonb_array_length(public.buscar_personas('gonz')) = 0
+     or jsonb_array_length(public.buscar_vehiculos('toyota')) = 0 then
+    raise exception 'FALLA: escapar apago una busqueda normal';
+  end if;
+  v_msg := v_msg || 'comodines literales en personas y vehiculos OK. ';
+
+  -- ---------- 6) el indice que si sirve (migracion 130) ----------
+  -- El viejo estaba sobre la forma ENVUELTA del aviso, la que la 115 declaro
+  -- equivocada: no servia a ninguna consulta viva y se evaluaba en cada insert.
+  if exists (select 1 from pg_indexes
+              where schemaname='public' and indexname='ventas_purchase_number_idx') then
+    raise exception 'FALLA: el indice muerto ventas_purchase_number_idx volvio';
+  end if;
+  if not exists (select 1 from pg_indexes
+                  where schemaname='public' and indexname='ventas_recibo_idx') then
+    raise exception 'FALLA: falta ventas_recibo_idx, el que usa el join del import';
+  end if;
+  v_msg := v_msg || 'indice del recibo OK. ';
 
   raise exception 'PRUEBA PASADA -> %', v_msg;
 end $$;
