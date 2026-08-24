@@ -192,9 +192,9 @@ aviso desaparece); y se comprobó que el corte **aborta de verdad** (304 ms con 
 
 - **El canal de avisos se cableó a 2 de los ~80 `console.error`**, y no al modo de falla que lo
   motivó.
-- **Corregir de un carro que ya seca le vuelve a poner la hora a las asignaciones** aunque no se
-  toque ningún secador.
-- **Quitar el tipo o el color en Corregir responde "ok" y no borra nada.**
+- ~~**Corregir de un carro que ya seca le vuelve a poner la hora a las asignaciones**~~ ✅ y
+  ~~**Quitar el tipo o el color en Corregir responde "ok" y no borra nada**~~ ✅ — **HECHOS y
+  APLICADOS el 24/ago (migración `132`).** Ver abajo.
 - **El desglose del carro presenta como medido un secado que el reporte descarta por ser ficción.**
 - **En la caja, buscar por apellido esconde clientes sin decirlo** (82 de 107 en el caso medido), y
   justo debajo de la lista recortada está el botón que crea la ficha duplicada.
@@ -204,6 +204,63 @@ aviso desaparece); y se comprobó que el corte **aborta de verdad** (304 ms con 
   24/ago** (ver abajo). ⏳ pendiente de desplegar en el corte.
 - **El RUNBOOK del import se contradice:** el paso que de verdad se ejecuta sigue diciendo que la
   zona horaria sale del PDF, que es justo la fuente que el 21/ago se declaró no confiable.
+
+### ✅ Los dos de Corregir — APLICADOS el 24/ago/2026 (migración `132`)
+
+Es **sólo base**: no toca la función `app` ni ninguna de las tres pantallas, así que se aplicó sin
+esperar al corte, igual que la `111`. Verificado en vivo: `/cola`, `/secadores` y `/entregados` en
+200, y la suite completa en verde.
+
+1. 🔴 **Corregir el COLOR de un carro le movía la hora de asignación.** Cuando venían secadores, la
+   función borraba las asignaciones abiertas y las reinsertaba con `inicio = now()` — y la pantalla
+   de Corregir **manda siempre la lista**, porque viene preseleccionada. Medido en la prueba: un
+   carro con 40 min de secado saltó a **now()**, o sea 40 minutos adelante, sin que nadie tocara un
+   secador.
+   > **Por qué importa:** `encimados` del reporte compara justo esas horas (`a2.inicio < a.inicio`).
+   > Es la métrica de saturación — la misma que ya produjo un **juicio falso por escrito sobre dos
+   > personas con nombre** (§11.50). Y corrompe en las dos direcciones: al carro corregido le
+   > aparecen encimados que no tuvo, y a los que le siguieron les desaparece el que sí tuvieron.
+   >
+   > **Cuánto pasó, medido sobre toda la historia:** de 2,888 carros con asignación, **33 (1.1%)**
+   > traen la hora de asignación más de 90 s después del arranque de su propia etapa de secado, el
+   > peor por **36 minutos**. Ya no se puede saber cuáles de esos 33 fueron una reasignación de
+   > verdad y cuáles una corrección de color — y esa imposibilidad es el argumento para arreglarlo.
+   >
+   > ⚠️ **Lo que NO estaba mal:** las **etapas** nunca se tocaron, así que el cronómetro de secado
+   > tampoco se reiniciaba. Eso que el `CLAUDE.md` promete siempre fue cierto. Lo que se movía era
+   > la hora de la **asignación**, que es otro dato y alimenta otra cuenta.
+
+   🔑 **El arreglo se cambió a media escritura, y la razón vale.** El primer diseño reconciliaba
+   (quitar al que sobra, agregar al que falta, no tocar al que sigue) y **rompía un caso de
+   `pruebas/editar-y-foto.sql`**: la misma persona listada dos veces con dos nombres pasaba de 2
+   filas a 1. Cuando un arreglo cambia algo que nadie pidió cambiar, el arreglo está de más. Lo
+   que quedó: se apunta la hora que ya tenía cada pareja (persona, nombre), se borra y se
+   reinserta **exactamente igual que antes**, y a cada fila se le devuelve su hora si ya estaba.
+   **El juego de filas queda idéntico y lo único distinto es `inicio`**, que es justo el bug.
+
+2. 🔴 **Quitar el tipo o el color respondía "ok" y no borraba nada.** El segundo toque sobre el
+   valor ya seleccionado lo **deselecciona** ([index.html:1896](docs/index.html:1896)), pero el
+   `coalesce(nuevo_tipo, tipo_unidad)` leía ese nulo como *"no tocar"*: contestaba `ok`, la
+   pantalla se cerraba, y el valor equivocado seguía ahí.
+   > La regla que queda: **en Corregir, lo que muestra la pantalla es la verdad.** Se puede porque
+   > `editar_carro` tiene **una sola llamadora** (`/editar`, comprobado en `pg_proc` y en el Edge
+   > Function): nadie más le manda nulos con el sentido de "no toques esto".
+   >
+   > ⚠️ **La marca NO entra y conserva su `coalesce`.** La pone la **foto** (`061`) y `/editar` le
+   > manda `null` **siempre**; con la regla nueva, cada Corregir borraría lo que la foto leyó. Es
+   > la lección de la `109` aplicada a un campo y no a los tres, porque quien manda el dato es
+   > distinto en cada caso. La prueba lo comprueba explícitamente.
+
+**Cómo se aplicó:** la migración **no copia la función** (son ~120 líneas de reglas con sus
+razones escritas). Le pide a Postgres su propia definición, le cambia tres bloques con **anclas
+comprobadas** y la vuelve a crear; si un ancla falta se cae con un mensaje claro. Patrón de la
+`117` y la `130`.
+
+**Cómo se probó:** `pruebas/corregir-no-mueve-la-hora.sql` (7 grupos, ya en `correr.sh`).
+**Reproduce el bug viejo antes de comprobar el arreglo**, y se corrió **contra la función sin
+arreglar primero**: falló con el salto de 40 minutos a la vista. El ensayo completo (migración +
+prueba concatenadas, que revierten con el `raise`) pasó **antes** de aplicar, y se comprobó que la
+función viva seguía intacta después del ensayo.
 
 ### ✅ Los cuatro del front, EJECUTADOS en un navegador (24/ago/2026)
 
