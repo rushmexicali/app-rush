@@ -96,6 +96,19 @@ function hoyMexicali(): string {
 Deno.serve(async (req: Request): Promise<Response> => {
   if (!JIBBLE_ID || !JIBBLE_SECRET) {
     console.error("Faltan las credenciales de Jibble");
+    // Sin credenciales el cron corre cada 5 minutos y no hace NADA, en
+    // silencio. La grilla del supervisor se queda con la ultima lista buena
+    // (eso esta bien, lo puso la 106), pero envejece sin que nadie lo sepa:
+    // a media manana estaria ofreciendo secadores que ya se poncharon.
+    try {
+      await db.rpc("anotar_aviso", {
+        p_origen: "sincronizar-jibble",
+        p_motivo: "no_puede_arrancar",
+        p_detalle: "faltan las credenciales de Jibble: la grilla de secadores no se actualiza",
+      });
+    } catch (e) {
+      console.error("No se pudo anotar el aviso de credenciales:", e);
+    }
     return json({ ok: false, error: "Jibble no esta configurado" }, 503);
   }
 
@@ -233,6 +246,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // la ultima lista buena. Es preferible una lista de hace 5 minutos
     // a una pantalla vacia con el taller lleno de gente.
     console.error("Fallo la sincronizacion con Jibble:", e);
+    // Igual que arriba: la lista vieja se conserva, pero envejece en silencio.
+    // El detalle lleva el mensaje del error para poder distinguir "Jibble se
+    // cayo un rato" de "nos cambiaron la API" sin ir a los logs, que duran un
+    // dia. `anotar_aviso` deduplica por dia, asi que el cron de cada 5 min no
+    // puede convertir esto en 288 renglones.
+    try {
+      await db.rpc("anotar_aviso", {
+        p_origen: "sincronizar-jibble",
+        p_motivo: "fallo_la_sincronizacion",
+        p_detalle: String(e).slice(0, 300),
+      });
+    } catch (e2) {
+      console.error("No se pudo anotar el aviso de sincronizacion fallida:", e2);
+    }
     return json({ ok: false, error: String(e) }, 500);
   }
 });

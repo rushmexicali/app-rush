@@ -66,6 +66,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const dado = req.headers.get("x-tarea") ?? url.searchParams.get("t") ?? "";
   if (!TOKEN || dado !== TOKEN) {
     console.error("limpiar-fotos: token invalido o no configurado.");
+    // 🔑 Solo se avisa cuando el secreto FALTA, que es configuracion nuestra:
+    // el cron llama cada noche, no encuentra token, responde 401 y la limpieza
+    // no corre NUNCA -- en silencio y para siempre. Es el mismo modo de falla
+    // que dejo al obrero de relectura inerte semanas enteras (§11.50), o sea
+    // el patron #3 de pruebas/README.md: trabajo a medio terminar que queda
+    // quieto sin fallar.
+    //
+    // Cuando el token simplemente NO COINCIDE no se avisa: esta URL es publica
+    // y cualquier escaneo la toca. Avisar ahi convertiria el panel del dueno en
+    // un blanco -- y un canal de avisos con ruido es la otra forma de no avisar.
+    if (!TOKEN) {
+      try {
+        await db.rpc("anotar_aviso", {
+          p_origen: "limpiar-fotos",
+          p_motivo: "no_puede_arrancar",
+          p_detalle: "falta el secreto LIMPIEZA_TOKEN: la limpieza de fotos no corre",
+        });
+      } catch (e) {
+        console.error("No se pudo anotar el aviso de token faltante:", e);
+      }
+    }
     return json({ ok: false, error: "no autorizado" }, 401);
   }
 

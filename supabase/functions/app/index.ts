@@ -407,6 +407,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const dadoTarea = req.headers.get("x-tarea") ?? url.searchParams.get("t") ?? "";
     if (!RELECTURA_TOKEN || dadoTarea !== RELECTURA_TOKEN) {
       console.error("releer-pendientes: token invalido o no configurado.");
+      // Solo cuando el secreto FALTA, que es configuracion nuestra. Este
+      // obrero ya estuvo INERTE semanas por exactamente esto: la migracion 104
+      // quedo a medio desplegar, el cron llamaba, contestaba 401, y las fotos
+      // se quedaban sin leer sin que nadie se enterara (§11.50). Que no vuelva
+      // a pasar en silencio.
+      //
+      // Si el token no coincide NO se avisa: la URL es publica y un escaneo
+      // llenaria el panel del dueno de ruido, que es la otra forma de no avisar.
+      if (!RELECTURA_TOKEN) {
+        try {
+          await db.rpc("anotar_aviso", {
+            p_origen: "releer-pendientes",
+            p_motivo: "no_puede_arrancar",
+            p_detalle: "falta el secreto RELECTURA_TOKEN: las fotos pendientes no se releen",
+          });
+        } catch (e) {
+          console.error("No se pudo anotar el aviso de token faltante:", e);
+        }
+      }
       return json({ ok: false, error: "no autorizado" }, 401);
     }
 

@@ -72,6 +72,28 @@ function aCentavos(valor: unknown): number | null {
 // perderse en silencio) y, mientras se aprende el esquema de firma de Zettle,
 // tambien las CABECERAS de los buenos.
 //
+// Una venta que no se pudo guardar queda escrita donde el dueno la ve.
+//
+// No es que se pierda -- se responde 500 y Zettle reintenta, que es justo el
+// diseno --, pero si la base lleva rato rechazando, la cola del supervisor se
+// va vaciando y el unico rastro es un `console.error` en unos logs que duran
+// un dia. `anotar_aviso` deduplica por dia y va contando las veces, asi que
+// una racha de reintentos no se vuelve ruido: se vuelve un numero.
+//
+// ⚠️ Igual que la bitacora: su fallo se traga. Un aviso NUNCA puede tumbar el
+// camino del dinero.
+async function avisarVentaNoGuardada(detalle: string) {
+  try {
+    await db.rpc("anotar_aviso", {
+      p_origen: "zettle-webhook",
+      p_motivo: "venta_no_guardada",
+      p_detalle: String(detalle).slice(0, 300),
+    });
+  } catch (e) {
+    console.error("No se pudo anotar el aviso de venta no guardada:", e);
+  }
+}
+
 // ⚠️ NUNCA puede tumbar una venta. Va envuelto en try/catch y su fallo se
 // traga a proposito: es una bitacora, no el camino del dinero. La leccion de
 // la fecha en milisegundos (§7 del CLAUDE.md) aplicada al reves — ahi una
@@ -229,6 +251,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (error) {
       // Aqui SI devolvemos 500 a proposito. Ver nota al final.
       console.error("Fallo al guardar la venta", purchaseUuid, ":", error);
+      await avisarVentaNoGuardada(error.message);
       return responder({ ok: false, error: error.message }, 500);
     }
   } catch (e) {
@@ -236,6 +259,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // funcion con un 502 sin atrapar. Ahora se atrapa y se responde 500, que
     // es reintentable: Zettle reintenta y la venta se recupera, no se pierde.
     console.error("Excepcion al guardar la venta", purchaseUuid, ":", e);
+    await avisarVentaNoGuardada(String(e));
     return responder({ ok: false, error: "excepcion al guardar" }, 500);
   }
 

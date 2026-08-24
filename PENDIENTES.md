@@ -190,8 +190,9 @@ aviso desaparece); y se comprobó que el corte **aborta de verdad** (304 ms con 
 
 ### 🔵 Lo demás que SIGUE pendiente, agrupado por consecuencia
 
-- **El canal de avisos se cableó a 2 de los ~80 `console.error`**, y no al modo de falla que lo
-  motivó.
+- ~~**El canal de avisos se cableó a 2 de los ~80 `console.error`**~~ ✅ **HECHO el 24/ago** — y
+  **la segunda mitad del hallazgo era falsa.** Ver abajo. Va en el corte (son cuatro Edge
+  Functions).
 - ~~**Corregir de un carro que ya seca le vuelve a poner la hora a las asignaciones**~~ ✅ y
   ~~**Quitar el tipo o el color en Corregir responde "ok" y no borra nada**~~ ✅ — **HECHOS y
   APLICADOS el 24/ago (migración `132`).** Ver abajo.
@@ -210,6 +211,38 @@ aviso desaparece); y se comprobó que el corte **aborta de verdad** (304 ms con 
   orden real —cargar con Tijuana, medir el desfase contra `ventas`, corregir `tz` y volver a
   medir hasta que dé 0— más el cotejo de que no queden notas después de las 8 PM, que por sí solo
   habría cachado el error del 21/ago.
+
+### ✅ El canal de avisos, cableado a lo que de verdad se queda mudo (24/ago)
+
+⚠️ **El hallazgo era mitad cierto, y la mitad falsa importa.** *"Se cableó a 2 de los ~80
+`console.error`"* → **cierto**: medido, son **82** en las cuatro Edge Functions y `anotar_aviso`
+se llamaba desde **2**. *"y no al modo de falla que lo motivó"* → **falso**: la migración `124`
+nombra sus dos casos, y los dos están atendidos — el grupo de Jibble vacío por aviso, y el outbox
+que se rinde **en la tarjeta del carro**, que es donde el supervisor lo puede atender.
+
+Lo que sí quedaba suelto es el **principio** del encabezado de la `124`: *"algo se rompe en una
+tarea de fondo, el código lo escribe con `console.error`, y nadie lo lee nunca"*. Se cablearon las
+que se quedan mudas **para siempre**, no las 82:
+
+| Dónde | Qué pasaba si fallaba |
+|---|---|
+| `limpiar-fotos` sin `LIMPIEZA_TOKEN` | el cron llama cada noche, recibe 401, y la limpieza **no corre nunca** |
+| `/releer-pendientes` sin `RELECTURA_TOKEN` | **ya pasó**: la `104` quedó a medio desplegar y el obrero estuvo **inerte semanas** (§11.50) |
+| `sincronizar-jibble` sin credenciales | corre cada 5 min sin hacer nada; la grilla envejece ofreciendo secadores ya ponchados |
+| `sincronizar-jibble` que revienta | igual, y el detalle lleva el error para distinguir *"Jibble se cayó un rato"* de *"cambió la API"* sin ir a unos logs que duran un día |
+| `zettle-webhook` que no pudo guardar la venta | Zettle reintenta (no se pierde), pero si la base lleva rato rechazando, la cola se vacía y el único rastro era un `console.error` |
+
+🔑 **La decisión de diseño que hay que respetar si esto se toca: se avisa cuando el secreto
+FALTA, no cuando el token NO COINCIDE.** Esas URLs son públicas y cualquier escaneo las toca;
+avisar ahí convertiría el panel del dueño en un blanco — y **un canal de avisos con ruido es la
+otra forma de no avisar**, que es exactamente lo que la `124` dice de la deduplicación.
+
+Los cinco van envueltos en `try/catch` con el fallo tragado: un aviso **nunca** puede tumbar el
+camino del dinero ni una tarea de fondo. Es la lección de §7 aplicada otra vez.
+
+> Comprobado que las ediciones no rompen los archivos: las llaves cuadran en los cuatro, y el
+> desbalance de paréntesis (−4, de los comentarios) es **idéntico antes y después**. No hay `deno`
+> en esta máquina, así que el compilado de verdad lo hace el `deploy` — que va en el corte.
 
 ### ✅ Los dos de la caja (24/ago, migración `134`)
 
