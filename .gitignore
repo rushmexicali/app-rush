@@ -32,3 +32,6 @@ supabase/.temp/
 # Cuerpos JSON generados al mandar SQL a la API (artefactos, no fuente)
 *.sql.json
 *.body.json
+
+# === Arnes del front, se regenera con pruebas/front-supervisor/armar.sh ===
+pruebas/front-supervisor/.armado/

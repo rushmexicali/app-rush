@@ -20,9 +20,10 @@ El método y la decisión de modelos viven en `.claude/skills/auditoria-general/
 > §2 sigue siendo esperar al corte cuando no lo pide.
 >
 > **Lo que sigue, en este orden:**
-> 1. **Reproducir en el navegador** los cuatro hallazgos del front que nadie ejecutó (supervisor
->    atrapado en Finalizados, cronómetro que no se apaga, foto que se borra sola, aviso de "sin
->    conexión" con el wifi colgado). Son lectura de código. **No arreglarlos a ciegas.**
+> 1. ~~**Reproducir en el navegador** los cuatro hallazgos del front que nadie ejecutó~~
+>    ✅ **HECHO el 24/ago: tres eran reales, uno no se reprodujo.** Arreglados y probados; ver
+>    abajo. ⏳ **Falta DESPLEGARLOS: tocan la pantalla del supervisor, así que van en el corte**
+>    (§2). El código ya está commiteado.
 > 2. La lista 🔵 que queda más abajo (Corregir, la caja, el RUNBOOK del import).
 > 3. Los dos del crítico de completitud: `4-recuperar-venta.ps1` no sirve para una **devolución**,
 >    y `.env.example` ya no dice todas las llaves que producción necesita.
@@ -199,10 +200,69 @@ aviso desaparece); y se comprobó que el corte **aborta de verdad** (304 ms con 
   justo debajo de la lista recortada está el botón que crea la ficha duplicada.
 - **La lista de tickets se congela en silencio** si el backend falla; tras un 401 no vuelve a
   refrescarse en todo el turno.
-- **Con el wifi COLGADO (no caído) el aviso "Sin conexión" nunca sale** en la pantalla del
-  supervisor: ve cronómetros corriendo con datos de hace media hora.
+- ~~**Con el wifi COLGADO (no caído) el aviso "Sin conexión" nunca sale**~~ ✅ **ARREGLADO el
+  24/ago** (ver abajo). ⏳ pendiente de desplegar en el corte.
 - **El RUNBOOK del import se contradice:** el paso que de verdad se ejecuta sigue diciendo que la
   zona horaria sale del PDF, que es justo la fuente que el 21/ago se declaró no confiable.
+
+### ✅ Los cuatro del front, EJECUTADOS en un navegador (24/ago/2026)
+
+Cierra el límite que la propia auditoría se puso: *"nadie ejecutó una sola pantalla en un
+navegador"*. Se montó un arnés que **extrae** `docs/index.html` y le reemplaza `window.fetch`
+(`pruebas/front-supervisor/`, con su README y lo medido antes y después). **Los tres reales son
+carreras que sólo salen con el wifi lento**, o sea que leyendo el código no se veían.
+
+⏳ **Están commiteados pero NO desplegados: tocan la pantalla del supervisor y van en el corte.**
+
+1. 🔴 **El desglose (la ⓘ) tenía TRES bugs, y son el mismo guard faltante.** `abrirDetalle`
+   nunca tuvo el contador que `consultar()` sí tiene desde el 21/ago. Con el wifi a 15 s:
+   - Cerrar antes de que llegue la respuesta → **el cronómetro nace sobre la pantalla ya
+     cerrada** (`detalleTimer = 21` con `display:none`).
+   - ⓘ del carro A → atrás → ⓘ del carro B → **la pantalla que el supervisor abrió para B se
+     pintó cinco veces con los datos del A**: placa, tiempos y foto de otro carro. Es el mismo
+     bug que la cola tenía ("brincar hacia atrás") y que ahí ya está resuelto.
+   - Dos aperturas en vivo en vuelo → el segundo `setInterval` pisa al primero **sin apagarlo**,
+     y ese queda vivo y **ya inalcanzable**. Medido: **8 repintados en 3 s** de un desglose
+     estático, con `detalleTimer` en `null` — o sea repintando lo que el supervisor lee, sin que
+     la app supiera que ese timer existía.
+
+   Arreglo: `detalleToken`, igual que `consultaToken`, más el bump al cerrar. Después: 1
+   repintado del carro correcto, `detalleTimer` en `null` al cerrar, y 2 repintados en 3 s.
+
+2. 🔴 **La foto re-tomada se borraba sin subirse ni una vez.** El candado #4 del outbox
+   preguntaba `servidorYaTieneFoto(id)`, y esa pregunta **no distingue "el servidor ya tiene
+   ESTA foto" de "tiene OTRA, más vieja"**. En un **reemplazo** —el botón "Tomar foto otra vez"
+   de la migración `103`, el de las pickups grandes cuya placa no se dejó leer— el carro ya
+   tenía foto, así que la nueva se descartaba de la cola. Medido: **0 subidas**. El supervisor
+   la tomaba, el teléfono vibraba, y la tarjeta seguía diciendo "no se leyó la placa".
+   > Arreglo: la entrada guarda `teniaFoto` (si el carro ya tenía foto al encolarla), y el
+   > candado sólo concluye cuando puede: no tenía → ahora tiene → fue la nuestra. **El candado
+   > #4 sigue intacto** (comprobado: una primera foto ya subida se sigue descartando con 0
+   > subidas). Las entradas viejas sin ese campo se comportan igual que hoy.
+
+3. 🔴 **El aviso "Sin conexión" nunca salía con el wifi COLGADO.** El `.catch` comparaba contra
+   `consultaToken` —la última consulta **lanzada**—, y como cada petición se corta a los 20 s
+   mientras el poll lanza una cada 3, **toda falla llegaba "vieja"** y se descartaba. Medido:
+   **85 s colgado, 22 peticiones abortadas, `fallosSeguidos` en 0, banner nunca**, con los
+   cronómetros corriendo y las tarjetas poniéndose rojas con datos de hace minuto y medio.
+   > La pregunta correcta no es *"¿salió otra después?"* sino *"¿ya **pintó** bien alguna
+   > después?"*. Con `consultaOk` el aviso sale a los **31 s**. Los dos controles pasan: con el
+   > wifi **caído** sigue saliendo a los ~12 s, y tras un **parpadeo** de 2.5 s el aviso **no**
+   > se enciende (la protección original —que una falla vieja no mienta al revés— se conserva).
+   >
+   > 🙋 **Para el dueño:** 31 s es el piso que impone el corte de 20 s de cada petición. Se puede
+   > bajar, pero cuesta cortar antes, y una petición legítimamente lenta se abortaría. Dime si
+   > 31 s te parece mucho.
+
+4. ⚪ **"El supervisor queda atrapado en Finalizados" NO se reprodujo.** Se recorrieron las rutas
+   documentadas (Finalizados → Corregir → atrás; Restaurar; el selector de día; el desglose), el
+   doble toque a "Cancelar", la carrera del Guardar lento, y **440 pasos fuzzeados** con clics
+   reales (verificando con `elementFromPoint` que el botón esté de verdad hasta arriba) y backs
+   al azar, en dos condiciones de wifi. **Cero violaciones** de las dos invariantes: ninguna
+   pantalla quedó visible sin cerrador, y nunca sobró un cerrador sin pantalla.
+   > **No se arregló nada por esto**, que es el punto: es el tercer hallazgo de auditoría que cae
+   > al ejecutarlo (los otros dos: `obtenerStream()` y el hallazgo principal del crítico). Si
+   > alguien lo vuelve a reportar, que traiga los pasos exactos.
 
 ### ✅ Refutados — NO son hallazgos, y vale saber por qué
 

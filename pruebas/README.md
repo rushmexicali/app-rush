@@ -101,6 +101,26 @@ filas sin avisar, así que las tablas con página de 2,000 bajaban 1,000 y se
 detenían creyéndose enteras. `etapas` se respaldaba al 12%. Leyendo el código
 no se veía.
 
+## La otra que NO va en `correr.sh`: el front del supervisor, en un navegador
+
+```bash
+bash pruebas/front-supervisor/armar.sh
+```
+
+Levanta la pantalla del supervisor con un `fetch` falso y permite manejarla
+con el wifi lento, colgado o caído. Tiene su propio `README.md` con las
+perillas y con lo medido antes y después de cada arreglo.
+
+Existe porque la auditoría del 21–22/ago declaró su propio límite así:
+**«nadie ejecutó una sola pantalla en un navegador»**. Al ejecutarlos el
+24/ago, **tres de sus cuatro hallazgos del front eran reales y uno no se
+reprodujo** — y los tres reales son carreras que sólo salen con el wifi
+lento, o sea que leyendo el código no se veían.
+
+Queda fuera de la suite porque **no hay `node` ni `deno` en esta máquina**:
+no se puede manejar un navegador sin una persona. Se corre **cuando se toque
+`docs/index.html`**, igual que el respaldo.
+
 ## Qué falta agregar
 
 Cada hallazgo de la auditoría debería acabar aquí como un caso permanente. Los

@@ -1386,6 +1386,10 @@ document.addEventListener("visibilitychange", function () {
 // El contador es el mismo patron que ya usan los buscadores de la caja y del
 // reporte: cada consulta se lleva su numero y solo se pinta la ultima.
 var consultaToken = 0;
+// Numero de la ultima consulta que de verdad PINTO la cola. No es lo mismo
+// que `consultaToken` (la ultima LANZADA), y confundirlos dejaba mudo el
+// aviso de "sin conexion" con el wifi colgado. Ver el .catch de abajo.
+var consultaOk = 0;
 
 function consultar() {
   if (!CODIGO) { pedirCodigo(false); return; }
@@ -1416,6 +1420,7 @@ function consultar() {
       }
       carros = d.carros;
       ultimoDatoBueno = Date.now();
+      consultaOk = miToken;           // esta consulta SI trajo datos
       avisarCarrosNuevos(carros);
       avisarError(false);
       pintar();
@@ -1426,7 +1431,20 @@ function consultar() {
     // La falla vieja tampoco cuenta: si una consulta de hace 20 s se corta
     // DESPUES de que la nueva ya pinto bien, encender el aviso seria mentir
     // al reves.
-    .catch(function () { if (miToken === consultaToken) avisarError(true); });
+    //
+    // 🔴 Pero se comparaba contra `consultaToken` —el numero de la ULTIMA
+    // consulta LANZADA—, y con el wifi COLGADO (la conexion se abre y nunca
+    // contesta) eso deja al supervisor sin ninguna senal: cada peticion se
+    // corta a los 20 s, y para entonces el poll de cada 3 s ya lanzo siete
+    // mas, asi que TODA falla se descarta por vieja y `fallosSeguidos` se
+    // queda en cero para siempre. Medido en el navegador: 85 s colgado, 22
+    // peticiones abortadas, 0 avisos — con los cronometros corriendo y las
+    // tarjetas poniendose rojas con datos de hace minuto y medio.
+    //
+    // Lo que hay que preguntar no es "salio otra despues", sino "ya PINTO
+    // bien alguna despues". Si nadie pinto, esta falla es la mas reciente
+    // que se sabe y si cuenta.
+    .catch(function () { if (miToken > consultaOk) avisarError(true); });
 }
 
 // --- Asignar linea y secadores ---------------------------------------
@@ -2527,10 +2545,30 @@ function cuerpoDetalle(c, enVivo) {
 // El carro que se esta viendo y el timer del cronometro en vivo.
 var detalleCarro = null;
 var detalleTimer = null;
+// Cada apertura del desglose se lleva su numero, y solo la ULTIMA manda.
+// Es el mismo patron de `consultaToken` en la cola, que aqui faltaba: sin
+// el, una respuesta lenta que aterriza tarde produce tres cosas, todas
+// medidas en el navegador con el wifi a 15 s (23/ago... 24/ago/2026):
+//
+//   1. Se cierra la pantalla antes de que llegue la respuesta -> el
+//      cronometro NACE sobre una pantalla ya cerrada y sigue corriendo.
+//   2. Se abre el desglose del carro A, se cierra, y se abre el del B ->
+//      la respuesta tardia de A se pinta en la pantalla que el supervisor
+//      abrio para B: placa, tiempos y foto de OTRO carro. (Medido: 5
+//      repintados del carro 101 en la pantalla del 102.)
+//   3. Dos aperturas en vivo en vuelo -> el segundo setInterval pisa al
+//      primero sin apagarlo, y ese queda vivo y ya inalcanzable: repinta
+//      cada segundo el desglose que el supervisor este leyendo. (Medido:
+//      8 repintados en 3 s de una pantalla ESTATICA, con detalleTimer en
+//      null, o sea sin que la app supiera que existia.)
+//
+// Los tres se cierran con el mismo guard, porque son el mismo bug.
+var detalleToken = 0;
 
 // enVivo lo manda el boton de info de la cola; desde Finalizados no se
 // manda (undefined), y el carro ya entregado se ve estatico.
 function abrirDetalle(id, enVivo) {
+  var miToken = ++detalleToken;
   clearInterval(detalleTimer); detalleTimer = null;
   detalleCarro = null;
 
@@ -2543,6 +2581,9 @@ function abrirDetalle(id, enVivo) {
   pedir("/carro?id=" + encodeURIComponent(id))
     .then(function (r) { return r.json(); })
     .then(function (c) {
+      // Llego tarde: o ya se cerro la pantalla, o el supervisor abrio otro
+      // carro. En los dos casos esta respuesta ya no manda.
+      if (miToken !== detalleToken) return;
       if (!c || c.error) {
         document.getElementById("detalle-cuerpo").innerHTML =
           '<div class="sub">No se pudo cargar.</div>';
@@ -2556,6 +2597,7 @@ function abrirDetalle(id, enVivo) {
       if (detalleCarro._enVivo) detalleTimer = setInterval(pintarDetalle, 1000);
     })
     .catch(function () {
+      if (miToken !== detalleToken) return;
       document.getElementById("detalle-cuerpo").innerHTML =
         '<div class="sub">Sin conexión.</div>';
     });
@@ -2568,6 +2610,9 @@ function pintarDetalle() {
 }
 
 function cerrarDetalle() {
+  // Se invalida lo que venga en camino: sin esto, una respuesta que llega
+  // DESPUES de cerrar arrancaba el cronometro sobre la pantalla ya cerrada.
+  detalleToken++;
   // Se apaga el cronometro al cerrar: si no, seguiria corriendo en el
   // fondo gastando bateria sin que nadie lo vea.
   clearInterval(detalleTimer); detalleTimer = null;
@@ -2735,7 +2780,13 @@ function guardarPendiente(id, imagen) {
   // Foto nueva, cuenta nueva: se apaga el aviso de "no se pudo subir".
   delete FOTOS_RENDIDAS[id];
   return fotoStore("readwrite")
-    .then(function (st) { return idbReq(st.put({ id: id, imagen: imagen, intentos: 0, proximo: 0 })); })
+    // `teniaFoto` = si el carro YA tenia foto en el servidor cuando se
+    // encolo esta. Es lo unico que permite distinguir una PRIMERA foto de
+    // un REEMPLAZO, y de eso depende el candado #4 (ver flushOutbox).
+    .then(function (st) {
+      return idbReq(st.put({ id: id, imagen: imagen, intentos: 0, proximo: 0,
+                             teniaFoto: servidorYaTieneFoto(id) }));
+    })
     .catch(function (e) { console.error("No se pudo encolar la foto del carro", id, e); });
 }
 function quitarPendiente(id) {
@@ -2744,9 +2795,9 @@ function quitarPendiente(id) {
     .catch(function () {});
 }
 
-// Candado #4: si la cola ya trae foto para ese carro, no hay nada que
-// subir. Si el carro ya no esta en la cola (entregado/cancelado) se
-// intenta igual: de haber subido, la entrada ya se habria borrado.
+// Si la cola ya trae foto para ese carro. Si el carro ya no esta en la
+// cola (entregado/cancelado) devuelve false: de haber subido, la entrada
+// ya se habria borrado.
 function servidorYaTieneFoto(id) {
   for (var i = 0; i < carros.length; i++) {
     if (carros[i].id === id) return !!carros[i].foto;
@@ -2813,7 +2864,25 @@ function flushOutbox() {
       var ahora = Date.now(), elegido = null;
       for (var i = 0; arr && i < arr.length; i++) {
         var e = arr[i];
-        if (servidorYaTieneFoto(e.id)) { quitarPendiente(e.id); continue; }
+        // Candado #4: la entrada ya subio, asi que se descarta sin gastar
+        // red (y sin pagarle a Claude una segunda lectura de la misma foto).
+        //
+        // 🔴 Antes esto era solo `if (servidorYaTieneFoto(e.id))`, y esa
+        // pregunta NO distingue "el servidor ya tiene ESTA foto" de "el
+        // servidor tiene OTRA, mas vieja". O sea que en un REEMPLAZO —el
+        // boton "Tomar foto otra vez" de la migracion 103, el de las pickups
+        // grandes cuya placa no se dejo leer— el carro ya tenia foto, y la
+        // foto nueva se BORRABA de la cola sin haberse subido ni una vez.
+        // El supervisor la tomaba, el telefono vibraba, y no pasaba nada:
+        // la tarjeta seguia diciendo "no se leyo la placa". Medido en el
+        // navegador: 0 subidas y la cola vacia.
+        //
+        // Con `teniaFoto` la conclusion solo se saca cuando es valida: el
+        // carro no tenia foto, ahora la tiene, luego fue la nuestra. En un
+        // reemplazo el candado no puede concluir nada, asi que no descarta;
+        // lo peor que pasa entonces es una subida de mas si la app se
+        // reinicia justo entre la subida buena y el borrado de la entrada.
+        if (!e.teniaFoto && servidorYaTieneFoto(e.id)) { quitarPendiente(e.id); continue; }
         if ((e.proximo || 0) > ahora) continue;   // aun en backoff
         elegido = e; break;
       }
