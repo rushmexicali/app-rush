@@ -249,6 +249,18 @@
   .top-op .sub2 { display:block; color:#8b949e; font-size:14px; margin-top:3px; }
   .top-op.nuevo .nom { color:#2f81f7; }
   .top-vacio { padding:14px 16px; color:#8b949e; font-size:15px; }
+  /* El aviso de "la lista esta recortada". Va ARRIBA del boton de dar de alta
+     y en ambar, no en gris: es lo unico que separa a la cajera de crear una
+     ficha duplicada, asi que tiene que verse antes de que llegue al boton. */
+  .top-mas { padding:12px 16px; color:#d29922; font-size:15px; line-height:1.35;
+             border-top:1px solid #21262d; background:#1c1a12; }
+
+  /* La lista de tickets no se pudo actualizar. Nace escondido; lo prende
+     tkAvisarViejo() tras ~9 s de fallas seguidas. La lista vieja se conserva
+     (mas vale vieja que vacia), pero rotulada. */
+  #tk-viejo { display:none; margin:0 0 8px; padding:12px 14px; border-radius:10px;
+              background:#1c1a12; border:1px solid #6b5a1a; color:#d29922;
+              font-size:16px; line-height:1.35; }
 
   /* ---- Los ultimos tickets de Zettle, en vivo ------------------------- */
   .tk-op {
@@ -429,6 +441,10 @@
   <!-- 4. Los ultimos tickets de Zettle, refrescandose solos cada 2 s. -->
   <div class="seccion">¿Cuál es su ticket?</div>
   <div id="tk-aviso">Selecciona un ticket con lavado gratis</div>
+  <!-- Va FUERA de #lista-tickets a proposito: la lista solo se reconstruye
+       cuando cambia su firma, asi que un aviso metido adentro no podria
+       aparecer ni irse cuando hace falta. -->
+  <div id="tk-viejo"></div>
   <div id="lista-tickets"><div class="nota">Buscando los últimos tickets…</div></div>
 
   <!-- Nace en rojo diciendo que falta elegir el ticket; pintarTickets() lo pasa
@@ -1156,6 +1172,22 @@ function buscarTop(q) {
                 "</button>";
       });
       if (!arr.length) html += '<div class="top-vacio">Nadie con ese nombre o placa.</div>';
+
+      // 🔴 La lista viene recortada, y hasta el 24/ago no se decia. Con un
+      // apellido comun eso es una trampa: "lopez" tiene 191 clientes y aqui
+      // salian 25, con el boton de dar de alta justo debajo. La cajera creaba
+      // una ficha DUPLICADA de alguien que si estaba, y sus sellos quedaban
+      // partidos en dos.
+      //
+      // El total lo manda el backend (contado con el MISMO `where` que busca).
+      // Si no viene -- porque ese conteo fallo -- no se inventa nada: no sale
+      // el aviso, igual que antes.
+      var total = (d && typeof d.total === "number") ? d.total : null;
+      if (total !== null && total > arr.length) {
+        html += '<div class="top-mas">Se muestran ' + arr.length + " de " + total +
+                ".<br>Escribe más letras para encontrarlo antes de darlo de alta.</div>";
+      }
+
       // Registrar cliente nuevo SIEMPRE al final: si no aparece, ahi mismo se
       // da de alta sin tener que salir a buscar otro boton.
       html += '<button class="top-op nuevo" data-nuevo="1">' +
@@ -1436,12 +1468,32 @@ document.addEventListener("visibilitychange", function () {
   else if (document.getElementById("p-persona").classList.contains("activa")) arrancarTickets();
 });
 
+// 🔴 Cuantas consultas seguidas han fallado. Antes esto no existia: una
+// respuesta que no fuera la lista se descartaba con un `return` a secas y la
+// cajera seguia viendo los tickets de hace rato, sin una sola senal. Conservar
+// la lista vieja esta BIEN (mas vale vieja que vacia, y el ticket que busca
+// probablemente sigue ahi); lo que no puede ser es que no se note.
+var tkFallos = 0;
+
+function tkAvisarViejo() {
+  var e = document.getElementById("tk-viejo");
+  if (!e) return;
+  // Un parpadeo del wifi se arregla solo en la siguiente vuelta; a los ~9 s ya
+  // no es parpadeo. Mismo criterio que el aviso de la cola del supervisor.
+  if (tkFallos < 3) { e.style.display = "none"; e.textContent = ""; return; }
+  e.style.display = "block";
+  e.textContent = "No se pudo actualizar la lista de tickets. Lo que ves es de hace rato: " +
+                  "si acabas de cobrar, todavía no aparece.";
+}
+
 function cargarTickets() {
   pedir("/tickets-recientes?limite=5")
     .then(function (r) { return r.json(); })
     .then(function (d) {
       var arr = d && d.tickets;
-      if (!Array.isArray(arr)) return;    // respuesta rara: se conserva lo que hay
+      // Una respuesta que no trae la lista es una FALLA, no "no hay tickets".
+      if (!Array.isArray(arr)) { tkFallos++; tkAvisarViejo(); return; }
+      tkFallos = 0; tkAvisarViejo();
       ticketsAhora = arr;
       // Si el ticket elegido ya no está en la lista (otro lo tomó), se suelta
       // para que no se registre contra algo que ya no aplica.
@@ -1449,7 +1501,16 @@ function cargarTickets() {
         ticketSel = null;
       pintarTickets();
     })
-    .catch(function (e) { if (e && e.message === "codigo") pararTickets(); });
+    .catch(function (e) {
+      // Con el codigo malo SI se para: seguir preguntando cada 3 s con una
+      // llave que no sirve no arregla nada. Se vuelve a arrancar en cuanto la
+      // cajera teclea el codigo bueno (ver el boton "Entrar") -- antes no, y
+      // por eso la lista se quedaba congelada el resto del turno.
+      if (e && e.message === "codigo") { pararTickets(); return; }
+      // Cualquier otra falla (red caida, corte de 20 s, 500) se cuenta y se
+      // dice. Antes se la tragaba el catch entero.
+      tkFallos++; tkAvisarViejo();
+    });
 }
 
 // 🔴 El DÍA se dice cuando no es hoy, y en mayúsculas cuando es ayer.
@@ -1737,6 +1798,13 @@ document.getElementById("entrar").addEventListener("click", function () {
   CODIGO = v;
   try { localStorage.setItem("rush_codigo", CODIGO); } catch (e) {}
   document.getElementById("acceso").style.display = "none";
+  // 🔴 Se vuelve a arrancar el sondeo de tickets. Un 401 lo para a proposito
+  // (no tiene caso preguntar cada 3 s con una llave que no sirve), pero nadie
+  // lo volvia a prender: la cajera tecleaba el codigo bueno, entraba, y la
+  // lista de tickets se quedaba congelada EL RESTO DEL TURNO. Solo si esta
+  // viendo la pantalla del cliente, que es la unica donde la lista se usa.
+  tkFallos = 0;
+  if (document.getElementById("p-persona").classList.contains("activa")) arrancarTickets();
 });
 document.getElementById("campo").addEventListener("keydown", function (ev) {
   if (ev.key === "Enter") document.getElementById("entrar").click();

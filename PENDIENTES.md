@@ -198,10 +198,9 @@ aviso desaparece); y se comprobó que el corte **aborta de verdad** (304 ms con 
 - ~~**El desglose del carro presenta como medido un secado que el reporte descarta por ser
   ficción.**~~ ✅ **HECHO el 24/ago (migración `133`).** La base ya está aplicada; el renglón del
   front va en el corte. Ver abajo.
-- **En la caja, buscar por apellido esconde clientes sin decirlo** (82 de 107 en el caso medido), y
-  justo debajo de la lista recortada está el botón que crea la ficha duplicada.
-- **La lista de tickets se congela en silencio** si el backend falla; tras un 401 no vuelve a
-  refrescarse en todo el turno.
+- ~~**En la caja, buscar por apellido esconde clientes sin decirlo**~~ ✅ y ~~**la lista de tickets
+  se congela en silencio**~~ ✅ — **HECHOS el 24/ago (migración `134`).** La base ya está aplicada;
+  el Edge Function y la pantalla van en el corte. Ver abajo.
 - ~~**Con el wifi COLGADO (no caído) el aviso "Sin conexión" nunca sale**~~ ✅ **ARREGLADO el
   24/ago** (ver abajo). ⏳ pendiente de desplegar en el corte.
 - ~~**El RUNBOOK del import se contradice** sobre la zona horaria~~ ✅ **HECHO el 24/ago.** El
@@ -211,6 +210,57 @@ aviso desaparece); y se comprobó que el corte **aborta de verdad** (304 ms con 
   orden real —cargar con Tijuana, medir el desfase contra `ventas`, corregir `tz` y volver a
   medir hasta que dé 0— más el cotejo de que no queden notas después de las 8 PM, que por sí solo
   habría cachado el error del 21/ago.
+
+### ✅ Los dos de la caja (24/ago, migración `134`)
+
+**La base ya está aplicada** (las búsquedas dan idéntico, comprobado contra línea base). **El Edge
+Function y `caja.html` van juntos en el corte.**
+
+1. 🔴 **Buscar un apellido escondía clientes sin decirlo, y el botón de dar de alta estaba justo
+   debajo.** Medido contra producción, y sale **peor** de lo reportado:
+
+   | busca | clientes que hay | se ven |
+   |---|---|---|
+   | `lopez` | **191** | 25 |
+   | `garcia` | 177 | 25 |
+   | `maria` | 172 | 25 |
+   | `luis` | 144 | 25 |
+   | `hernandez` | 125 | 25 |
+   | `martinez` | 120 | 25 |
+   | `gonzalez` | 107 | 25 |
+
+   Siete de los apellidos más comunes de Mexicali, los siete recortados en silencio. La cajera
+   teclea "lopez", ve 25 nombres que no son el suyo, y hasta abajo de esa misma lista está
+   **"+ Registrar cliente nuevo"** → **ficha duplicada de alguien que sí estaba**, con sus sellos
+   partidos en dos. Es exactamente lo que el 21/ago costó nueve fusiones a mano.
+   > **El límite de 25 NO se sube:** con 191 resultados la lista tampoco sirve. Lo que hacía falta
+   > es que la pantalla **diga** que está recortada y cuánto. Ahora sale *"Se muestran 25 de 191.
+   > Escribe más letras para encontrarlo antes de darlo de alta."*, **arriba** del botón de dar de
+   > alta y en ámbar — comprobado en el navegador **por posición en el DOM**, no mirando.
+   >
+   > 🔑 **Y el `where` no se copió.** Contar necesita la misma condición que buscar; copiarla es
+   > el patrón #1 de `pruebas/README.md`, y un contador desfasado **mentiría**, que es peor que no
+   > tenerlo. La condición se mudó a `personas_que_casan(q)` y le preguntan las dos:
+   > `buscar_personas` (los 25) y `cuantas_personas_casan` (el total). La suite lo comprueba: donde
+   > no hay recorte, los dos números tienen que coincidir.
+
+2. 🔴 **La lista de tickets se congelaba en silencio, y tras un 401 no volvía en todo el turno.**
+   Eran dos cosas:
+   - Una respuesta que no fuera la lista se descartaba con un `return` a secas. Conservar la lista
+     vieja **está bien** (el ticket que busca probablemente sigue ahí); lo que no puede ser es que
+     no se note. Ahora, tras ~9 s de fallas, la lista se **rotula**: *"No se pudo actualizar… lo
+     que ves es de hace rato: si acabas de cobrar, todavía no aparece."*
+   - Un 401 **para** el sondeo a propósito (no tiene caso preguntar cada 3 s con una llave que no
+     sirve), pero **nadie lo volvía a prender**: la cajera tecleaba el código bueno, entraba, y la
+     lista quedaba muerta el resto del turno. Ahora el botón "Entrar" lo vuelve a arrancar.
+
+**Verificado en el navegador** con el arnés, ya extendido a la caja (6 comprobaciones, con sus
+controles: pocos resultados no avisan, un backend sin el campo `total` **no inventa nada**, y el
+aviso de tickets se apaga solo cuando el backend vuelve).
+
+> ⚠️ **Trampa del arnés, anotada porque cuesta media hora:** con la pestaña en segundo plano
+> `document.hidden` es `true` y el sondeo de tickets **no consulta a propósito**. Parecía que el
+> arreglo no servía, y lo que pasaba es que no se estaba pidiendo nada.
 
 ### ✅ El secado corto: una sola regla, y el desglose por fin la dice (24/ago, migración `133`)
 

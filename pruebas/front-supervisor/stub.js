@@ -147,3 +147,86 @@
     });
   };
 })();
+
+// --- Rutas de la pantalla de la CAJA ---------------------------------
+// El mismo stub sirve las dos pantallas: caja.html y index.html hablan con
+// el mismo Edge Function, asi que una sola tabla de respuestas alcanza.
+(function () {
+  var LAB = window.LAB;
+  if (!LAB) return;
+
+  // Clientes falsos: 40 "Lopez" para poder ejercitar el recorte de 25 y el
+  // aviso de "se muestran 25 de N" que la 134 hizo posible.
+  var PERSONAS = [];
+  for (var i = 1; i <= 40; i++) {
+    PERSONAS.push({
+      id: 1000 + i,
+      nombre: "JUAN LOPEZ " + i,
+      placas: i % 3 === 0 ? ["ABC" + (1000 + i)] : [],
+      lealtad: { visitas_totales: i, lavados_pagados: i, canjes: 0, disponibles: 0, faltan: 6 - (i % 6) }
+    });
+  }
+
+  function horaHace(min) { return new Date(Date.now() - min * 60000).toISOString(); }
+
+  LAB.tickets = {
+    tickets: [
+      { carro_id: 101, ticket: "27401", monto: "270", contenido: "Completo RUSH · Chico",
+        hora: horaHace(3), placa: "ABC-123-4", motivo: null, clase: null },
+      { carro_id: 102, ticket: "27400", monto: "160", contenido: "Express",
+        hora: horaHace(9), placa: null, motivo: null, clase: null },
+      { carro_id: 103, ticket: "27399", monto: "0", contenido: "Gratis · 6to Lavado",
+        hora: horaHace(20), placa: null, motivo: null, clase: "canje" }
+    ]
+  };
+
+  var fetchBase = window.fetch;
+  window.fetch = function (url, opciones) {
+    var u = String(url);
+    var corte = u.indexOf("/functions/v1/app");
+    var resto = corte >= 0 ? u.slice(corte + "/functions/v1/app".length) : u;
+    var partes = resto.split("?");
+    var ruta = partes[0];
+    var busca = new URLSearchParams(partes[1] || "");
+
+    var propio = null;
+    if (ruta === "/tickets-recientes") propio = LAB.tickets;
+    else if (ruta === "/personas") {
+      if (busca.get("recientes") !== null) propio = { personas: PERSONAS.slice(0, 10) };
+      else if (busca.get("q") !== null) {
+        var q = (busca.get("q") || "").toLowerCase();
+        var casan = PERSONAS.filter(function (p) { return p.nombre.toLowerCase().indexOf(q) >= 0; });
+        // El backend recorta a 25 y manda el total aparte (migracion 134).
+        propio = { personas: casan.slice(0, 25), total: casan.length, limite: 25 };
+      } else propio = { personas: [] };
+    }
+    else if (ruta === "/historial") propio = { visitas: [] };
+
+    if (propio === null) return fetchBase(url, opciones);
+
+    LAB.log.push({ ruta: ruta, t: Date.now(), metodo: (opciones && opciones.method) || "GET" });
+    return new Promise(function (resolver, rechazar) {
+      var listo = false;
+      function terminar(fn) { if (listo) return; listo = true; fn(); }
+      if (opciones && opciones.signal) {
+        opciones.signal.addEventListener("abort", function () {
+          terminar(function () { var e = new Error("Abortado"); e.name = "AbortError"; rechazar(e); });
+        });
+      }
+      if (LAB.colgado) return;
+      setTimeout(function () {
+        terminar(function () {
+          var cuerpo = LAB.falla ? { ok: false, error: "falla de prueba" } : propio;
+          var estado = LAB.falla ? 500 : (LAB.estado || 200);
+          var texto = JSON.stringify(cuerpo);
+          resolver({
+            ok: estado >= 200 && estado < 300,
+            status: estado,
+            json: function () { return Promise.resolve(JSON.parse(texto)); },
+            text: function () { return Promise.resolve(texto); }
+          });
+        });
+      }, LAB.retraso);
+    });
+  };
+})();

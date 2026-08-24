@@ -1,9 +1,9 @@
-# Arnés del front del supervisor — se corre A MANO, en un navegador
+# Arnés del front — se corre A MANO, en un navegador (supervisor Y caja)
 
 ```bash
 bash pruebas/front-supervisor/armar.sh
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File pruebas/front-supervisor/servidor.ps1 -Raiz "<lo que imprimió armar.sh>" -Puerto 8777
-# y abrir http://localhost:8777/
+# y abrir http://localhost:8777/  (la caja, en /caja.html)
 ```
 
 ## Por qué existe
@@ -74,3 +74,22 @@ porque se pega en la consola y se ajusta según lo que se busque.
 > ⚠️ **Esto NO va en `pruebas/correr.sh`.** No hay `node` ni `deno` en esta máquina, así que
 > no se puede manejar un navegador sin una persona. Se corre **cuando se toque
 > `docs/index.html`**, igual que `respaldo-completo.sh` se corre cuando se toca `/respaldo`.
+
+## Lo medido en la CAJA el 24/ago/2026
+
+El arnés sirve las dos pantallas: `armar.sh` extrae `docs/index.html` **y** `docs/caja.html`, y
+comprueba con `diff` que en las dos la única diferencia sea la línea del stub.
+
+| # | Qué | Antes | Después |
+|---|---|---|---|
+| 1 | Buscar un apellido común (`LOPEZ`, 40 fichas en el arnés / **191 en producción**) | 25 resultados y **nada** que dijera que había más, con "+ Registrar cliente nuevo" justo debajo | *"Se muestran 25 de 40. Escribe más letras…"*, **antes** del botón (comprobado por posición en el DOM) |
+| 2 | Control: una búsqueda con 1 resultado | — | sin aviso |
+| 3 | Control: backend viejo, sin el campo `total` | — | sin aviso — **no se inventa nada**, así que el front puede ir por delante del backend |
+| 4 | El backend falla 3 veces seguidas mientras se ven los tickets | la lista se quedaba vieja **en silencio** | la lista vieja **se conserva** (mejor vieja que vacía) pero **rotulada** |
+| 5 | Control: el backend vuelve | — | el aviso se apaga solo y el contador se reinicia |
+| 6 | Un 401 y después la cajera teclea el código bueno | el sondeo quedaba muerto **el resto del turno** | vuelve a arrancar |
+
+> ⚠️ **Trampa del arnés que cuesta media hora si no se sabe:** con la pestaña en segundo plano,
+> `document.hidden` es `true` y el sondeo de tickets **no consulta a propósito**. Al medir el
+> contador de fallas parecía que el arreglo no servía, y lo que pasaba es que no se estaba
+> pidiendo nada. Para probar esa parte hay que llamar a `cargarTickets()` directo.

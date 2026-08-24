@@ -1513,9 +1513,29 @@ Deno.serve(async (req: Request): Promise<Response> => {
         return json({ personas: data ?? [] });
       }
       if (q !== null) {
-        const { data, error } = await db.rpc("buscar_personas", { p_q: q });
-        if (error) { console.error("buscar_personas:", error); return json({ error: error.message }, 500); }
-        return json({ personas: data ?? [] });
+        // 🔴 La lista viene recortada a 25, y hasta la 134 eso no se decia. La
+        // cajera tecleaba "lopez", veia 25 nombres que no eran el suyo y, hasta
+        // abajo de esa misma lista, "+ Registrar cliente nuevo": ficha duplicada
+        // de alguien que si estaba. Medido: lopez 191, garcia 177, gonzalez 107,
+        // todos mostrando 25. Por eso ahora tambien va el TOTAL.
+        //
+        // Las dos preguntas comparten el mismo `where` (personas_que_casan), no
+        // una copia: un contador que se desfase del buscador mentiria, y eso es
+        // peor que no tenerlo.
+        const [rLista, rTotal] = await Promise.all([
+          db.rpc("buscar_personas", { p_q: q }),
+          db.rpc("cuantas_personas_casan", { p_q: q }),
+        ]);
+        if (rLista.error) { console.error("buscar_personas:", rLista.error); return json({ error: rLista.error.message }, 500); }
+        const personas = rLista.data ?? [];
+        // Si el conteo falla, la lista SI se manda: es mejor una lista sin el
+        // aviso que ninguna lista. El total va nulo y la pantalla no inventa.
+        if (rTotal.error) console.error("cuantas_personas_casan:", rTotal.error);
+        return json({
+          personas,
+          total: rTotal.error ? null : rTotal.data,
+          limite: 25,
+        });
       }
       return json({ error: "falta placa o q" }, 400);
     }

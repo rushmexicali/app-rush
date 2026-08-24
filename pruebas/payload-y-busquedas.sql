@@ -124,5 +124,28 @@ begin
   end if;
   v_msg := v_msg || 'indice del recibo OK. ';
 
+  -- ---------- 7) el contador y el buscador NO se pueden desfasar (134) ----
+  -- La caja dice "se muestran 25 de 191" para que la cajera escriba mas letras
+  -- en vez de dar de alta una ficha duplicada. Ese numero sale de contar con
+  -- el MISMO `where` que busca (personas_que_casan); si algun dia se copiara,
+  -- el contador mentiria -- y un numero equivocado es peor que no tenerlo.
+  --
+  -- Se comprueba justo eso: donde NO hay recorte, los dos tienen que coincidir.
+  if public.cuantas_personas_casan('zzzznadie') <> jsonb_array_length(public.buscar_personas('zzzznadie')) then
+    raise exception 'FALLA: el contador y el buscador no coinciden sin resultados';
+  end if;
+  if public.cuantas_personas_casan('%') <> 0 then
+    raise exception 'FALLA: el contador trata el comodin como comodin';
+  end if;
+  -- Y donde SI hay recorte, el total tiene que ser mayor que la lista.
+  if jsonb_array_length(public.buscar_personas('lopez')) <> 25 then
+    raise exception 'FALLA: el buscador dejo de recortar a 25';
+  end if;
+  if public.cuantas_personas_casan('lopez') <= 25 then
+    raise exception 'FALLA: el contador no ve mas alla del recorte (dio %)',
+                    public.cuantas_personas_casan('lopez');
+  end if;
+  v_msg := v_msg || 'el contador de la caja cuadra con el buscador OK. ';
+
   raise exception 'PRUEBA PASADA -> %', v_msg;
 end $$;
