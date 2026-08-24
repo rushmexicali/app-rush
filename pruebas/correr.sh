@@ -48,6 +48,7 @@ correr "editar valida antes de escribir"  sql pruebas/editar-y-foto.sql
 correr "corregir no mueve la hora"        sql pruebas/corregir-no-mueve-la-hora.sql
 correr "una sola regla de secado corto"   sql pruebas/secado-corto-en-un-solo-lugar.sql
 correr "la caja confirma la placa a la 1a" sql pruebas/placa-caja-confirma-a-la-primera.sql
+correr "foto al ticket sin cliente"       sql pruebas/foto-al-ticket-sin-cliente.sql
 correr "perfil del trabajador paginado"   sql pruebas/perfil-paginado.sql
 correr "el trigger no tumba la venta"     sql pruebas/trigger-y-enlaces.sql
 correr "un lavado, un cliente"            sql pruebas/un-lavado-un-cliente.sql

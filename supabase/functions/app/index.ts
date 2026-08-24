@@ -1644,6 +1644,39 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // --- Caja: registrar la visita Y enlazarla a su ticket, en un paso ---
   // La cajera elige el ticket ANTES, así que no existe el hueco donde una
   // visita quedaba colgada sin lavado (la fuga de lealtad del botón atrás).
+  // --- "No asignar a cliente": la foto se le pega al ticket, sin visita ----
+  //
+  // Pedido del dueno (24/ago/2026): no todos los clientes se quieren registrar,
+  // pero el carro SI forma parte de la base -- el supervisor tiene que
+  // fotografiarlo de todos modos para asignar linea y secador. Si la foto de la
+  // caja se tira nada mas porque el cliente no dio su nombre, el supervisor la
+  // vuelve a tomar en el patio. Esta ruta la conserva y NO crea ninguna visita.
+  if (ruta === "/foto-al-ticket") {
+    if (req.method !== "POST") return json({ error: "usa POST" }, 405);
+    let cuerpo: any;
+    try { cuerpo = await req.json(); } catch { return json({ ok: false, error: "cuerpo invalido" }, 400); }
+    if (!cuerpo?.carro)      return json({ ok: false, error: "falta el ticket" }, 400);
+    if (!cuerpo?.foto_path)  return json({ ok: false, error: "falta la foto" }, 400);
+
+    // La MISMA funcion que usa el registro de visita (136), no una copia: ahi
+    // viven los tres candados (no pisar la foto del supervisor, no guardar la
+    // lectura si la foto no se pego, y respetar `hubo_lectura`).
+    const { data, error } = await db.rpc("pegar_foto_de_caja", {
+      p_carro:        Number(cuerpo.carro),
+      p_foto_path:    cuerpo.foto_path,
+      p_placa:        cuerpo?.placa ?? null,
+      p_marca:        cuerpo?.marca ?? null,
+      p_submarca:     cuerpo?.submarca ?? null,
+      p_tipo:         cuerpo?.tipo ?? null,
+      p_hubo_lectura: cuerpo?.leida !== false,
+    });
+    if (error) {
+      console.error("pegar_foto_de_caja:", error);
+      return json({ ok: false, error: error.message }, 500);
+    }
+    return json(data);
+  }
+
   if (ruta === "/visita-con-ticket") {
     if (req.method !== "POST") return json({ error: "usa POST" }, 405);
     let cuerpo: any;

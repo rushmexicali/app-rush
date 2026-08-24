@@ -54,6 +54,10 @@
   }
   .grande.azul  { background:#2f81f7; border-color:#2f81f7; color:#fff; }
   .grande.verde { background:#238636; border-color:#238636; color:#fff; }
+  /* "No asignar a cliente". Grande porque va hasta arriba y es una de las dos
+     salidas de esa pantalla, pero en gris y no en color: la ruta normal sigue
+     siendo escoger al cliente, y el color se reserva para ella. */
+  .grande.gris  { background:#21262d; border-color:#30363d; color:#c9d1d9; }
   /* Un boton apagado y MUDO es de las cosas que mas confunden: se ve igual que
      uno descompuesto y la cajera no sabe si la app fallo o si le falta un paso.
      En rojo y diciendo QUE falta, se entiende sola. Va DESPUES de .verde a
@@ -396,6 +400,13 @@
 <div id="p-cliente" class="pantalla">
   <button class="volver" data-inicio>&#8592; Volver</button>
 
+  <!-- HASTA ARRIBA, antes de los resultados (pedido del dueno, 24/ago/2026).
+       No todos los clientes se quieren registrar, pero el carro SI entra a la
+       base: el supervisor tiene que fotografiarlo de todos modos para asignar
+       linea y secador. Con esto la foto que ya tomo la camara de la caja se le
+       pega a su ticket y el supervisor se ahorra tomarla otra vez. -->
+  <button id="btn-sin-cliente" class="grande gris">🚗 No asignar a cliente</button>
+
   <div id="cliente-encabezado"></div>
   <div id="resultados"></div>
 
@@ -457,6 +468,19 @@
      "Registrar visita" registra y enlaza de un solo golpe. De paso desaparece
      la fuga de lealtad: ya no existe el momento en que hay una visita contando
      sin lavado al cual pertenecer. -->
+
+<!-- ============ Pantalla: la foto va al ticket, sin cliente ============ -->
+<div id="p-sin-cliente" class="pantalla">
+  <button class="volver" data-inicio>&#8592; Volver</button>
+  <div class="seccion">¿Cuál es su ticket?</div>
+  <div class="nota">La foto se le guarda al lavado. <b>No se registra ningún cliente</b>
+    y no se acumulan lavados.</div>
+  <div id="sc-viejo"></div>
+  <div id="sc-tickets"><div class="nota">Buscando los últimos tickets…</div></div>
+  <!-- Mismo patron que "Registrar visita": se toca el ticket para escogerlo y
+       el boton grande hace la accion. Nace en rojo diciendo QUE falta. -->
+  <button id="btn-sc-guardar" class="grande falta">Elige el ticket</button>
+</div>
 
 <!-- ============ Pantalla: cliente nuevo ============ -->
 <div id="p-nueva" class="pantalla">
@@ -707,13 +731,15 @@ function achicar(archivo) {
 // --- Navegacion entre pantallas + trampa del boton atras -------------
 // Cada pantalla que se abre empuja un estado; el boton atras del telefono
 // (o "Volver") regresa al inicio en vez de salir de la app.
-var PANTALLAS = ["p-placa", "p-cliente", "p-persona", "p-nueva", "p-historial"];
+var PANTALLAS = ["p-placa", "p-cliente", "p-persona", "p-nueva", "p-historial", "p-sin-cliente"];
 function mostrar(id, empujar) {
   // Al salir de la pantalla de captura, se apaga el feed (ahorra bateria).
   if (id !== "p-placa" && feedVivo) apagarFeed();
   // Los tickets solo se piden mientras se ve al cliente (es lo unico que los
   // usa). Si no, el tablet estaria consultando cada 2 s todo el dia.
-  if (id === "p-persona") arrancarTickets(); else pararTickets();
+  // ...y tambien mientras se escoge el ticket sin cliente (136): esa pantalla
+  // vive de la misma lista.
+  if (id === "p-persona" || id === "p-sin-cliente") arrancarTickets(); else pararTickets();
   PANTALLAS.forEach(function (x) {
     document.getElementById(x).classList.toggle("activa", x === id);
   });
@@ -777,6 +803,7 @@ function normPlaca(s) { return String(s || "").toUpperCase().replace(/[^A-Z0-9]/
 function irInicio(empujar) {
   personaActual = null; captura = null;
   ticketsAhora = []; ticketSel = null;
+  ticketSC = null; scFirma = null;
   document.getElementById("in-nombre").value = "";
   document.getElementById("resultados").innerHTML = "";
   document.getElementById("resultados-nombre").innerHTML = "";
@@ -1465,7 +1492,8 @@ function pararTickets() {
 // consultar; al volver, se pide de inmediato.
 document.addEventListener("visibilitychange", function () {
   if (document.hidden) pararTickets();
-  else if (document.getElementById("p-persona").classList.contains("activa")) arrancarTickets();
+  else if (document.getElementById("p-persona").classList.contains("activa") ||
+           document.getElementById("p-sin-cliente").classList.contains("activa")) arrancarTickets();
 });
 
 // 🔴 Cuantas consultas seguidas han fallado. Antes esto no existia: una
@@ -1476,14 +1504,19 @@ document.addEventListener("visibilitychange", function () {
 var tkFallos = 0;
 
 function tkAvisarViejo() {
-  var e = document.getElementById("tk-viejo");
-  if (!e) return;
-  // Un parpadeo del wifi se arregla solo en la siguiente vuelta; a los ~9 s ya
-  // no es parpadeo. Mismo criterio que el aviso de la cola del supervisor.
-  if (tkFallos < 3) { e.style.display = "none"; e.textContent = ""; return; }
-  e.style.display = "block";
-  e.textContent = "No se pudo actualizar la lista de tickets. Lo que ves es de hace rato: " +
-                  "si acabas de cobrar, todavía no aparece.";
+  // Las DOS pantallas que muestran tickets llevan el mismo aviso: la del
+  // cliente y la de "No asignar a cliente". Se recorren juntas para que no se
+  // desfasen.
+  ["tk-viejo", "sc-viejo"].forEach(function (id) {
+    var e = document.getElementById(id);
+    if (!e) return;
+    // Un parpadeo del wifi se arregla solo en la siguiente vuelta; a los ~9 s ya
+    // no es parpadeo. Mismo criterio que el aviso de la cola del supervisor.
+    if (tkFallos < 3) { e.style.display = "none"; e.textContent = ""; return; }
+    e.style.display = "block";
+    e.textContent = "No se pudo actualizar la lista de tickets. Lo que ves es de hace rato: " +
+                    "si acabas de cobrar, todavía no aparece.";
+  });
 }
 
 function cargarTickets() {
@@ -1499,7 +1532,10 @@ function cargarTickets() {
       // para que no se registre contra algo que ya no aplica.
       if (ticketSel && !arr.some(function (t) { return t.carro_id === ticketSel.carro_id; }))
         ticketSel = null;
+      if (ticketSC && !arr.some(function (t) { return t.carro_id === ticketSC.carro_id; }))
+        ticketSC = null;
       pintarTickets();
+      pintarSinCliente();
     })
     .catch(function (e) {
       // Con el codigo malo SI se para: seguir preguntando cada 3 s con una
@@ -1512,6 +1548,125 @@ function cargarTickets() {
       tkFallos++; tkAvisarViejo();
     });
 }
+
+// --- "No asignar a cliente" (24/ago/2026) -----------------------------
+//
+// Pedido del dueño: no todos los clientes se quieren registrar, pero el carro
+// SÍ forma parte de la base — el supervisor tiene que fotografiarlo de todos
+// modos para asignar línea y secador. Si la foto que ya tomó la cámara de la
+// caja se tira nada más porque el cliente no dio su nombre, el supervisor la
+// vuelve a tomar en el patio. Aquí se le pega a su ticket y NO se registra
+// ningún cliente.
+//
+// Se toca el ticket para escogerlo y el botón grande hace la acción — el MISMO
+// patrón de "Registrar visita", para que el supervisor y la cajera no tengan
+// que aprender dos formas de hacer lo mismo.
+//
+// Y a propósito NO se copia la lógica de `pintarTickets`: aquí no hay lealtad,
+// así que no hay switch de gratis, ni tickets "malos", ni banderita de canje.
+// Copiar esa función habría traído reglas que en esta pantalla no aplican.
+var ticketSC = null;
+var scFirma = null;
+
+function pintarSinCliente() {
+  var cont = document.getElementById("sc-tickets");
+  if (!cont) return;
+
+  // Misma guarda que la otra lista: no se reconstruye si nada cambió. Sin
+  // esto, el refresco de cada 3 s movería los botones justo cuando la cajera
+  // va a tocar uno.
+  var firma = ticketsAhora.map(function (t) { return t.carro_id + "|" + t.ticket; }).join(",") +
+              "#" + (ticketSC ? ticketSC.carro_id : "");
+  if (firma !== scFirma) {
+    scFirma = firma;
+    if (!ticketsAhora.length) {
+      cont.innerHTML = '<div class="nota aviso">Todavía no aparece ningún ticket. ' +
+                       'Cóbralo en Zettle y aquí sale solo.</div>';
+    } else {
+      var html = "";
+      ticketsAhora.forEach(function (t) {
+        var sinLavado = !t.carro_id;
+        var elegido = ticketSC && ticketSC.carro_id === t.carro_id;
+        html += '<button class="tk-op' + (elegido ? " sel" : "") + '"' +
+                  ' data-sc="' + escapar(t.carro_id == null ? "" : t.carro_id) + '"' +
+                  (sinLavado ? " disabled" : "") + ">" +
+                  '<span class="tk-l1">' +
+                    '<span class="tk-num">Ticket ' + escapar(t.ticket || "—") + "</span>" +
+                    '<span class="tk-monto">$' + escapar(t.monto) + "</span>" +
+                  "</span>" +
+                  '<span class="tk-l2">' + escapar(t.contenido || "—") + "</span>" +
+                  '<span class="tk-l3">' + escapar(horaExacta(t.hora)) +
+                    (t.placa ? "  ·  " + escapar(t.placa) : "") +
+                  "</span>" +
+                "</button>";
+      });
+      cont.innerHTML = html;
+    }
+  }
+
+  var btn = document.getElementById("btn-sc-guardar");
+  if (btn) {
+    var texto = ticketSC ? "Guardar la foto en este ticket" : "Elige el ticket";
+    btn.disabled = !ticketSC;
+    btn.classList.toggle("falta", !ticketSC);
+    btn.classList.toggle("verde", !!ticketSC);
+    if (btn.textContent !== texto) btn.textContent = texto;
+  }
+}
+
+document.getElementById("sc-tickets").addEventListener("click", function (ev) {
+  var b = ev.target.closest("button[data-sc]");
+  if (!b || b.disabled) return;
+  var id = Number(b.dataset.sc);
+  ticketSC = ticketsAhora.filter(function (t) { return t.carro_id === id; })[0] || null;
+  pintarSinCliente();
+});
+
+document.getElementById("btn-sin-cliente").addEventListener("click", function () {
+  ticketSC = null; scFirma = null;
+  document.getElementById("sc-tickets").innerHTML =
+    '<div class="nota">Buscando los últimos tickets…</div>';
+  mostrar("p-sin-cliente", true);
+  pintarSinCliente();
+});
+
+document.getElementById("btn-sc-guardar").addEventListener("click", function () {
+  if (!ticketSC) return;
+  var c = captura || {};
+  // Sin foto no hay nada que pegar. No debería pasar (a esta pantalla se llega
+  // después de capturar), pero si la cajera llegó por otro lado se dice en vez
+  // de mandar una petición que el servidor va a rechazar.
+  if (!c.foto_path) {
+    alert("No hay ninguna foto tomada. Toma la foto primero.");
+    return;
+  }
+  conCandado(this, "Guardando…", function () {
+    return postJSON("/foto-al-ticket", {
+      carro:     ticketSC.carro_id,
+      foto_path: c.foto_path,
+      placa:     c.placa    || null,
+      marca:     c.marca    || null,
+      submarca:  c.submarca || null,
+      tipo:      c.tipo     || null,
+      // Si la lectura no corrió, el carro se queda con `placa_en` nulo y el
+      // obrero de fondo lo relee. Mismo criterio que el registro de visita.
+      leida:     c.leida !== false
+    }).then(function (d) {
+      if (!d || d.ok === false) {
+        alert((d && d.error) || "No se pudo guardar la foto");
+        cargarTickets();       // quizá el ticket ya no está
+        return;
+      }
+      // Se dice lo que pasó de verdad. Si el carro YA traía foto (la tomó el
+      // supervisor), la de la caja no se pega — y callarlo dejaría a la cajera
+      // creyendo que guardó algo que no guardó.
+      if (d.pego === false) {
+        alert("Ese lavado ya tenía foto, así que se dejó la que ya estaba.");
+      }
+      irInicio(false);         // listo: siguiente cliente
+    });
+  });
+});
 
 // 🔴 El DÍA se dice cuando no es hoy, y en mayúsculas cuando es ayer.
 //
