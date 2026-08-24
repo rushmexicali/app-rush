@@ -66,20 +66,60 @@ y `LIMPIEZA_TOKEN` no aparecían en ningún archivo del repo. Comprobado que ya 
 > 3. ~~Los dos del crítico de completitud~~ ✅ **HECHOS el 24/ago** (migración `135` y
 >    `.env.example`).
 >
-> 🚩 **LO ÚNICO QUE QUEDA DE ESTA AUDITORÍA ES DESPLEGAR.** La base está aplicada (`132`–`135`).
-> Falta subir, **en el corte y de corrido**:
+> ✅ **TODO DESPLEGADO el 24/ago/2026.** El dueño pidió subirlo el mismo día sin esperar al corte
+> (la regla de §2 se le planteó y la reafirmó, igual que el 21 y el 23/ago). Se subió en tandas, de
+> menor a mayor riesgo, verificando cada una: `limpiar-fotos` → `sincronizar-jibble` → `app` →
+> `zettle-webhook` → `git push`.
 >
-> ```
-> git push                                              # docs/ -> GitHub Pages (supervisor + caja)
-> supabase functions deploy app --no-verify-jwt
-> supabase functions deploy zettle-webhook --no-verify-jwt
-> supabase functions deploy sincronizar-jibble --no-verify-jwt
-> supabase functions deploy limpiar-fotos --no-verify-jwt
-> ```
+> Verificado en vivo después: `/cola`, `/secadores`, `/entregados`, `/tickets-recientes`,
+> `/personas?q=`, `/reporte?fecha=`, `/avisos` y `/carro?id=` en **200**; `/personas?q=lopez`
+> devolviendo **`total: 191, limite: 25`**; `/carro` trayendo **`secado_corto`**; y los cuatro
+> archivos de GitHub Pages con **md5 idéntico** al repo.
 >
-> Y verificar después contra la API en vivo (`/cola`, `/secadores`, `/entregados`, `/personas?q=`,
-> `/reporte?fecha=`). ⚠️ **No hay `deno` en esta máquina, así que el compilado de las Edge
-> Functions lo hace el `deploy`**: si algo no compila, sale ahí y nada se publica.
+> 📌 **`docs/sw.js` NO se tocó, a propósito.** Su estrategia es **red-primero** para el mismo
+> origen, así que el cambio se ve al instante sin subir la versión — y subirla habría purgado la
+> copia sin conexión del supervisor sin ganar nada.
+
+### ✅ La firma de Zettle — descubierta y en MODO SOMBRA (24/ago/2026)
+
+**El pendiente más viejo del proyecto.** El esquema no estaba documentado por Zettle y se sacó
+midiendo avisos reales:
+
+```
+x-izettle-signature = HMAC-SHA256(ZETTLE_SIGNING_KEY, timestamp + "." + payload)
+```
+
+🔑 **`payload` es el valor DECODIFICADO, no como viaja.** En el cuerpo es una cadena JSON dentro
+de otro JSON, así que llega escapado. El script de descubrimiento **sí** probaba
+`timestamp.payload`, pero con la forma escapada — por eso llevaba meses diciendo *"ninguna
+combinación coincidió"*. Estaba a un desescapado de distancia.
+
+**Comprobado contra 213 avisos reales: 213 de 213** (`bash scripts/comprobar-firma-zettle.sh`,
+que sale con código 1 si alguno deja de cuadrar).
+
+**Decisión del dueño: arranca en SOMBRA.** Se calcula, se compara y **sólo se anota**; nunca
+rechaza. La razón es que una regla de firma equivocada no "falla": tumba **ventas reales** en
+silencio.
+
+> 👉 **CUÁNDO PASAR A RECHAZAR:** cuando lleve varios días con **cero** avisos
+> `zettle-webhook/firma_no_cuadra` y con volumen normal de ventas. Al hacerlo se quitan las dos
+> cosas marcadas `⏳ TEMPORAL` en `zettle-webhook/index.ts` (el registro de avisos buenos y el
+> guardado del cuerpo crudo).
+
+**Verificado en producción** reenviando un aviso real ya guardado —idempotente, mismo
+`purchase_uuid`—: con la firma buena `ok` y sin aviso; con la firma corrompida `ok` (**no
+rechaza**) y el aviso con `calculada=13578f51…`, el prefijo exacto de la firma real. `carros`
+3031 → 3031 y `ventas` 3075 → 3075: **no creó nada**.
+> El aviso falso de esa prueba **se borró** (1 fila, apuntada con precisión). Dejarlo sería una
+> falsa alarma sobre el dinero en el panel del dueño — el error de la `131`.
+
+**Se puso `ZETTLE_SIGNING_KEY` como secreto de las Edge Functions** (no estaba; se cargó desde un
+archivo, sin que el valor pasara por la línea de comandos).
+
+⚠️ **Dos datos sueltos que salieron y nadie ha explicado:** de 312 avisos con cuerpo guardado sólo
+**213 son JSON válido** y el más corto mide **0 bytes**; y `date` de Git Bash **no da la hora local
+correcta** en esta máquina (dijo 18:33 cuando Postgres decía 11:32). Para horas, preguntarle a la
+base.
 >
 > **Antes de subir cualquier cosa:** `bash pruebas/correr.sh`, y sumarle un caso por cada hallazgo
 > que se arregle. ⚠️ Si se toca `correr.sh`, comprobar que el banner `TODO PASO` siga saliendo —
