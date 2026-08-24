@@ -72,6 +72,104 @@ function aCentavos(valor: unknown): number | null {
 // perderse en silencio) y, mientras se aprende el esquema de firma de Zettle,
 // tambien las CABECERAS de los buenos.
 //
+// --- La firma de Zettle, en MODO SOMBRA --------------------------------
+//
+// EL ESQUEMA, descubierto el 24/ago/2026 midiendo avisos reales (no hay
+// documentacion publica confiable de Zettle):
+//
+//     x-izettle-signature = HMAC-SHA256(
+//         llave   = ZETTLE_SIGNING_KEY tal cual, como texto plano
+//         mensaje = timestamp + "." + payload
+//     )  en hexadecimal minusculas
+//
+// 🔑 `payload` es el valor DECODIFICADO, no como viaja. En el cuerpo del aviso
+// el payload es una cadena JSON dentro de otro JSON, o sea que llega escapado:
+//
+//     ..."payload":"{\"organizationUuid\":\"...\"}","timestamp":"..."
+//
+// Lo que se firma es esa cadena ya desescapada. `JSON.parse` del cuerpo ya nos
+// la entrega asi, en `evento.payload`. Ese detalle es el que tuvo trabado este
+// pendiente meses: el script de descubrimiento probaba la forma ESCAPADA.
+//
+// Comprobado contra 213 avisos reales: 213 de 213
+// (bash scripts/comprobar-firma-zettle.sh).
+//
+// ⚠️ EN SOMBRA NO RECHAZA NADA. Solo anota. Cuando pasen dias sin un solo
+// desacuerdo, se cambia a rechazar y se quitan las dos cosas marcadas
+// `⏳ TEMPORAL` de este archivo.
+const FIRMA_LLAVE = Deno.env.get("ZETTLE_SIGNING_KEY") ?? "";
+
+function aHex(b: ArrayBuffer): string {
+  return Array.from(new Uint8Array(b))
+    .map((x) => x.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function comprobarFirmaEnSombra(
+  req: Request,
+  evento: Record<string, unknown>,
+) {
+  const anota = async (motivo: string, detalle: string) => {
+    try {
+      await db.rpc("anotar_aviso", {
+        p_origen: "zettle-webhook",
+        p_motivo: motivo,
+        p_detalle: detalle.slice(0, 300),
+      });
+    } catch (e) {
+      console.error("No se pudo anotar el aviso de la firma:", e);
+    }
+  };
+
+  if (!FIRMA_LLAVE) {
+    // Configuracion nuestra: sin llave no se puede comprobar NADA, y sin este
+    // aviso el modo sombra se veria igual de tranquilo que si todo cuadrara.
+    await anota("firma_sin_llave", "falta el secreto ZETTLE_SIGNING_KEY");
+    return;
+  }
+
+  const firma = req.headers.get("x-izettle-signature");
+  if (!firma) {
+    await anota("firma_ausente", `evento ${String((evento as any)?.eventName)}`);
+    return;
+  }
+
+  const ts = (evento as any)?.timestamp;
+  const payload = (evento as any)?.payload;
+  if (typeof ts !== "string" || typeof payload !== "string") {
+    // Pasa si algun dia Zettle manda el payload ya como objeto. No es un
+    // desacuerdo de firma: es que no se puede reproducir el mensaje.
+    await anota(
+      "firma_no_comprobable",
+      `timestamp=${typeof ts} payload=${typeof payload}`,
+    );
+    return;
+  }
+
+  const enc = new TextEncoder();
+  const llave = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(FIRMA_LLAVE),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const calculada = aHex(
+    await crypto.subtle.sign("HMAC", llave, enc.encode(`${ts}.${payload}`)),
+  );
+
+  if (calculada.toLowerCase() !== firma.toLowerCase()) {
+    // El detalle NO lleva la firma calculada entera: seria darle a quien mire
+    // la tabla una pista para afinar un intento. Con los primeros caracteres
+    // alcanza para saber si es "no cuadra por poco" (nunca pasa) o "es otra
+    // cosa por completo".
+    await anota(
+      "firma_no_cuadra",
+      `evento=${String((evento as any)?.eventName)} recibida=${firma.slice(0, 8)}… calculada=${calculada.slice(0, 8)}…`,
+    );
+  }
+}
+
 // Una venta que no se pudo guardar queda escrita donde el dueno la ve.
 //
 // No es que se pierda -- se responde 500 y Zettle reintenta, que es justo el
@@ -185,6 +283,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   const nombreEvento = (evento as any)?.eventName ?? "(sin nombre)";
+
+  // ---------------------------------------------------------------
+  // 2b) La firma, EN MODO SOMBRA (24/ago/2026)
+  //
+  // Se calcula, se compara y SOLO SE ANOTA el desacuerdo. NUNCA rechaza.
+  // Decision del dueno: primero se mira unos dias, y cuando lleve tiempo sin
+  // un solo desacuerdo se pasa a rechazar de verdad. El motivo es que este es
+  // el camino por donde entra el dinero, y una regla de firma equivocada no
+  // "falla": tumba VENTAS REALES en silencio.
+  //
+  // No se espera el resultado (`await`) a proposito -- no puede retrasar la
+  // respuesta a Zettle, que exige contestar rapido o marca el destino como
+  // fallido (§7). Y va con su propio catch: la sombra jamas puede tumbar una
+  // venta.
+  comprobarFirmaEnSombra(req, evento).catch((e) =>
+    console.error("La comprobacion en sombra de la firma trono:", e)
+  );
 
   // ---------------------------------------------------------------
   // 3) Sacar los datos que nos importan
