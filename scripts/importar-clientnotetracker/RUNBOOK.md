@@ -253,14 +253,23 @@ Cuando llegue el export definitivo, el borrado es **completo**. Lo que hay hoy, 
 | Tabla | Filas | ¿Se borra en el reset completo? |
 |---|---|---|
 | `visitas` (`caja='import'`) | 15,050 | **Sí** |
-| `visitas` (`caja='principal'`) | **21** | ⚠️ **PREGUNTAR** — no son del CNT, son de la caja en vivo |
+| `visitas` (`caja='principal'`) | 21 | **Sí** ✅ (ver abajo) |
 | `personas` (`origen='import'`) | 4,955 | **Sí** |
-| `personas` (`origen='caja'`) | **2** | ⚠️ **PREGUNTAR** — mismo caso |
+| `personas` (`origen='caja'`) | 2 | **Sí** ✅ (ver abajo) |
 | `persona_placas` | 222 | **Sí** (se reconstruye con corroboración de 2+ carros) |
 | `stg_cnt`, `stg_names`, `stg_padron` | 240 / 239 / 5,075 | **Sí** (son andamio de la corrida anterior) |
 | `ren_*` (7 tablas) | 8 a 107 | **Sí** |
 | `imp_ligado_conflictos` | 11 | **Sí** |
-| `bak_*` (20 tablas) | — | **Preguntar**: son los respaldos de resets anteriores |
+| `bak_*` (20 tablas) | — | ⚠️ **PREGUNTAR** (ver abajo) |
+
+✅ **La actividad de la caja también se va** (dueño, 24/ago/2026): *"Todo lo que se ha hecho de
+caja es prueba meramente. Se borra toda actividad de caja al momento de hacer el import
+definitivo."* O sea que las 21 visitas y las 2 personas de la caja entran al borrado — el borrado
+de `visitas` y `personas` va **sin `where`**.
+
+⚠️ **Lo único que falta preguntar son las 20 tablas `bak_*`.** Mi recomendación es
+**conservarlas**: son los respaldos de los resets anteriores, y borrarlas justo antes de la
+operación más destructiva del proyecto es exactamente al revés. Si él dice que se van, se van.
 
 ⛔ **LO QUE NO SE TOCA NUNCA, porque es la OPERACIÓN y no el CRM:** `carros`, `etapas`,
 `asignaciones`, `ventas`, `empleados`, `reportes_diarios` y las fotos de Storage. El CRM se
@@ -284,9 +293,9 @@ tablas de verdad, no las 94 kB de antes (ver `CLAUDE.md §11.20`).
 
 ```sql
 -- 1) El CRM, completo (con lo que el dueno haya confirmado de las filas ⚠️)
-delete from public.visitas;          -- o `where caja='import'` si dijo conservar las 21
+delete from public.visitas;          -- SIN where: la actividad de caja tambien se va (24/ago)
 delete from public.persona_placas;
-delete from public.personas;         -- o `where origen='import'` si dijo conservar las 2
+delete from public.personas;         -- SIN where: idem
 
 -- 2) El andamio de la corrida anterior
 drop table if exists public.stg_cnt, public.stg_names, public.stg_padron;
