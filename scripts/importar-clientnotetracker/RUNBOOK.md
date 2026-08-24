@@ -303,14 +303,58 @@ que se va a reconstruir.
 Luego rehacer los pasos **3.1–3.7** con el PDF nuevo y el jalón de Zettle nuevo.
 `import.sql` hace su propio `delete where caja='import'` al inicio, así que re-correrlo es seguro.
 
-### Antes de correrlo, releer estas tres
+### 🚩 EN LA CORRIDA FINAL **NO HAY RENOMBRES** (decisión del dueño, 24/ago/2026)
+
+Textual: *"Ya no habrá renombres. El export completo que te daré será para borrar absolutamente
+todos los clientes y hacer la base desde 0 con los nombres que ya se tienen."*
+
+Y tiene toda la lógica: **un renombre sólo existe cuando hay un "antes" contra el cual comparar.**
+En un borrón y cuenta nueva no lo hay — el padrón del export **es** la verdad, tal como está. Así
+que en esa corrida:
+
+- ⛔ **NO se corre `diff-renombres.sql` ni `aplicar-renombres.sql`.**
+- ⛔ **NO aplican §4a (punto de renombres), §4c ni §4c-bis.** Se quedan escritas porque sí valen
+  para los imports **incrementales** de después, cuando ya haya un padrón contra el cual diferir.
+- ✅ Sí se conserva **§4d** (tickets mal tecleados y repetidos): eso no compara contra un padrón
+  anterior, compara contra Zettle, y sigue haciendo falta.
+
+### 🚩 Cómo se ligan los clientes, y la política de placas (reafirmada el 24/ago/2026)
+
+El dueño: *"con nuestra base de datos y placas y tickets ligadas, podemos ligar a los clientes con
+los números de tickets que hay en el CNT"*. Eso es exactamente lo que hace
+`ligar_visitas_de_import()` (§4e): empata **por número de ticket** contra `ventas`, y de ahí sale
+el carro — con su placa ya leída por la foto y su hora real.
+
+La política de **placa ↔ cliente** tiene **dos reglas distintas**, y la diferencia no es capricho:
+
+| De dónde viene | Qué se necesita | Por qué |
+|---|---|---|
+| **Nuestro programa de caja** (en vivo) | **Se confirma A LA PRIMERA** | El cliente está enfrente, la cajera lo escoge por su nombre y la cámara fotografía **ese** carro en ese momento. La asociación se **presencia**, no se infiere |
+| **Import del ClientNoteTracker** | La **misma placa en 2+ carros** distintos del cliente | Aquí el vínculo se **infiere** de una foto que se pudo haber pegado al carro equivocado — y una foto mal pegada **también** produce una sola coincidencia |
+
+✅ **Comprobado el 24/ago contra la base real: el código ya hace las dos.** La prueba permanente es
+`pruebas/placa-caja-confirma-a-la-primera.sql`, ya en `pruebas/correr.sh`.
+
+> ⚠️ **Y hay que probarlo porque el mecanismo es SUTIL.** La caja llama a
+> `ligar_placa_a_persona(..., 'foto', false)` — o sea pidiendo *no* confirmar — y aun así queda
+> **confirmada**. El motivo: `registrar_visita_con_carro` guarda la placa en `visitas.placa`
+> **antes** de ligarla, `visitas.placa_norm` es columna **generada** sobre esa, y
+> `ligar_placa_a_persona` confirma cuando *"la persona ya trae esta placa en alguna visita"*. Si
+> alguien invierte el orden de esas dos escrituras, **la regla del dueño se rompe en silencio**.
+
+### 🚩 Los lavados que dos clientes reclaman: se revisan juntos
+
+Quedan en `imp_ligado_conflictos` con su motivo, **no se adjudican al azar**. Al terminar el
+import se le presentan al dueño (*"los lavados dobles lo revisamos"*, 24/ago/2026). Donde no hay
+evidencia, el lavado **se queda sin dueño**: adivinar al 50% y dejarlo escrito como un hecho es
+peor que dejarlo vacío (§9 del `CLAUDE.md`).
+
+### Antes de correrlo, releer estas dos
 
 1. **§3.1 — la zona horaria del export.** Sale del teléfono del dueño y ya cambió una vez. Se
    **mide** contra Zettle y se carga en `stg_cnt.tz`; el cotejo de "nunca hay notas después de las
    8 PM" la confirma gratis.
-2. **§4c-bis — los dos puntos ciegos del detector de renombres.** Los renombres se **autorizan**,
-   no se aplican solos.
-3. **§4e — el ligado vive en `ligar_visitas_de_import()`**, una sola función. No copiarlo.
+2. **§4e — el ligado vive en `ligar_visitas_de_import()`**, una sola función. No copiarlo.
 
 ---
 
