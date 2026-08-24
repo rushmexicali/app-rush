@@ -260,16 +260,21 @@ Cuando llegue el export definitivo, el borrado es **completo**. Lo que hay hoy, 
 | `stg_cnt`, `stg_names`, `stg_padron` | 240 / 239 / 5,075 | **Sí** (son andamio de la corrida anterior) |
 | `ren_*` (7 tablas) | 8 a 107 | **Sí** |
 | `imp_ligado_conflictos` | 11 | **Sí** |
-| `bak_*` (20 tablas) | — | ⚠️ **PREGUNTAR** (ver abajo) |
+| `bak_*` (20 tablas) | — | ⛔ **NO** — se conservan (dueño, 24/ago/2026) |
 
 ✅ **La actividad de la caja también se va** (dueño, 24/ago/2026): *"Todo lo que se ha hecho de
 caja es prueba meramente. Se borra toda actividad de caja al momento de hacer el import
 definitivo."* O sea que las 21 visitas y las 2 personas de la caja entran al borrado — el borrado
 de `visitas` y `personas` va **sin `where`**.
 
-⚠️ **Lo único que falta preguntar son las 20 tablas `bak_*`.** Mi recomendación es
-**conservarlas**: son los respaldos de los resets anteriores, y borrarlas justo antes de la
-operación más destructiva del proyecto es exactamente al revés. Si él dice que se van, se van.
+⛔ **Las tablas `bak_*` SE CONSERVAN** (dueño, 24/ago/2026: *"consérvalas"*). Son los respaldos de
+los resets anteriores, y borrarlas **justo antes de la operación más destructiva del proyecto**
+sería exactamente al revés: si el import definitivo sale mal, son lo único que queda del CRM
+viejo. Ocupan poco y no estorban a nadie.
+
+> 👉 **Con esto ya no queda ninguna pregunta abierta del reset.** Las cuatro decisiones (sin
+> renombres, ligado por ticket, las dos reglas de placa, y los lavados dobles se revisan juntos)
+> más ésta y la de la caja están todas contestadas. Falta únicamente el export.
 
 ⛔ **LO QUE NO SE TOCA NUNCA, porque es la OPERACIÓN y no el CRM:** `carros`, `etapas`,
 `asignaciones`, `ventas`, `empleados`, `reportes_diarios` y las fotos de Storage. El CRM se
@@ -303,6 +308,9 @@ drop table if exists public.ren_cand, public.ren_cand_ticket_0815,
                      public.ren_cand_ticket_descartado, public.ren_desaparecen,
                      public.ren_esqueleto, public.ren_nuevas, public.ren_prefijo;
 drop table if exists public.imp_ligado_conflictos;
+
+-- ⛔ Las `bak_*` NO aparecen aqui a proposito: se conservan (dueno, 24/ago).
+--    Si el import definitivo sale mal, son lo unico que queda del CRM viejo.
 ```
 
 ⚠️ **`visitas` tiene `carro_id`, y borrarlas NO toca los carros.** Es un enlace, no el carro: el
