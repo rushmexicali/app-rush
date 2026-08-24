@@ -202,8 +202,13 @@ aviso desaparece); y se comprobó que el corte **aborta de verdad** (304 ms con 
   refrescarse en todo el turno.
 - ~~**Con el wifi COLGADO (no caído) el aviso "Sin conexión" nunca sale**~~ ✅ **ARREGLADO el
   24/ago** (ver abajo). ⏳ pendiente de desplegar en el corte.
-- **El RUNBOOK del import se contradice:** el paso que de verdad se ejecuta sigue diciendo que la
-  zona horaria sale del PDF, que es justo la fuente que el 21/ago se declaró no confiable.
+- ~~**El RUNBOOK del import se contradice** sobre la zona horaria~~ ✅ **HECHO el 24/ago.** El
+  §3.4 decía *"`tz` con la zona que declara el PDF"* y el §3.1 dice justo lo contrario: que el
+  encabezado sale del teléfono del dueño y **no es confiable**, y que la zona se **mide** contra
+  Zettle. Como el §3.4 es el paso que de verdad se ejecuta, ganaba el equivocado. Ahora dice el
+  orden real —cargar con Tijuana, medir el desfase contra `ventas`, corregir `tz` y volver a
+  medir hasta que dé 0— más el cotejo de que no queden notas después de las 8 PM, que por sí solo
+  habría cachado el error del 21/ago.
 
 ### ✅ Los dos de Corregir — APLICADOS el 24/ago/2026 (migración `132`)
 

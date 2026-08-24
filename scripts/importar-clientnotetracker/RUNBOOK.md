@@ -191,10 +191,31 @@ Debe dar ~13,312 filas (una por bloque `Name:`, incluidas las sin ticket).
 drop table if exists public.stg_cnt;
 create table public.stg_cnt (nombre text, dt_local text, es_gratis boolean, monto_cent integer, ticket text);
 ```
-Insertar `display, fecha_24h, es_gratis(true/false), monto_cent|null, ticket|null`, **más `tz`
-con la zona que declara el PDF** (paso 3.1). La columna se agrega sola:
-`alter table public.stg_cnt add column if not exists tz text;` — los tres scripts del import la
-crean si falta, así que no puede quedar a medias.
+Insertar `display, fecha_24h, es_gratis(true/false), monto_cent|null, ticket|null`, **más `tz`**.
+La columna se agrega sola: `alter table public.stg_cnt add column if not exists tz text;` — los
+tres scripts del import la crean si falta, así que no puede quedar a medias.
+
+> 🔴 **`tz` NO es la zona que declara el PDF.** Aquí decía que sí, y contradecía al paso 3.1 —que
+> dice justo lo contrario— desde el 21/ago. Como éste es el paso que de verdad se ejecuta, ganaba
+> el equivocado. **`tz` es la zona en la que RESULTARON estar escritas las horas, medida contra
+> Zettle.** El encabezado del export sale del teléfono del dueño y puede decir cualquier cosa: el
+> 21/ago dijo `America/Ciudad_Juarez` porque *"mi teléfono se jodió con el horario"*.
+>
+> **El orden correcto es cargar, medir y luego corregir `tz`** (hay que tener los datos adentro
+> para poder medirlos):
+>
+> 1. Cargar con `tz = 'America/Tijuana'`, que es la regla del proyecto y el caso normal.
+> 2. Correr la consulta de desfase del paso 3.1 (`dif_min` contra `ventas`). Si el grueso de las
+>    notas cae en **0**, ya está.
+> 3. Si cae en **60** (o en otro número redondo), las horas venían de otra zona: se corrige con
+>    `update public.stg_cnt set tz = '<la zona que explica el desfase>';` y se vuelve a medir hasta
+>    que `dif_min` dé 0.
+> 4. Cotejar además que **no queden notas después de las 8 PM** (paso 3.1). Ese solo cotejo habría
+>    cachado el error del 21/ago: sin corregir, las últimas notas quedaban en 20:21 y 20:22.
+>
+> **Nada de esto se hace a ojo**: si el desfase no queda en 0, el import mete cada visita una hora
+> tarde **y** el dedup de la siguiente tanda —que compara `creado_en` al segundo— deja de
+> reconocerlas y las duplica.
 Verificar: `select count(*), count(*) filter (where es_gratis), sum(monto_cent)/100
 from stg_cnt;` — debe cuadrar con el staging.
 
