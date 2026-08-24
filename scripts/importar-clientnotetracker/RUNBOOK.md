@@ -240,22 +240,77 @@ Comparar contra los conteos del staging. Si no cuadra, **no** seguir.
 
 ## 4. RESET / re-corrida con la base REAL (el caso del dueño)
 
-Cuando llegue el export definitivo y haya que "borrar lo actual y subir lo real":
+> 🔴 **LO QUE DECÍA AQUÍ ERA UN RESET PARCIAL, Y ES JUSTO EL QUE EL DUEÑO RECHAZÓ.**
+> Decía borrar sólo `visitas where caja='import'` y `personas where origen='import'`, dejando
+> vivas las visitas de la caja, `persona_placas` y todas las tablas de trabajo. Textual del dueño
+> el 21/ago/2026: *"Quiero borrar absolutamente todo y hacer un import de cero del CNT y ligar con
+> las fotos que ya tenemos… no como la vez pasada que por decisión tuya no lo hiciste."*
+> Corregido el 24/ago/2026.
+
+Cuando llegue el export definitivo, el borrado es **completo**. Lo que hay hoy, medido el
+24/ago/2026, para que se vea qué alcanza cada línea:
+
+| Tabla | Filas | ¿Se borra en el reset completo? |
+|---|---|---|
+| `visitas` (`caja='import'`) | 15,050 | **Sí** |
+| `visitas` (`caja='principal'`) | **21** | ⚠️ **PREGUNTAR** — no son del CNT, son de la caja en vivo |
+| `personas` (`origen='import'`) | 4,955 | **Sí** |
+| `personas` (`origen='caja'`) | **2** | ⚠️ **PREGUNTAR** — mismo caso |
+| `persona_placas` | 222 | **Sí** (se reconstruye con corroboración de 2+ carros) |
+| `stg_cnt`, `stg_names`, `stg_padron` | 240 / 239 / 5,075 | **Sí** (son andamio de la corrida anterior) |
+| `ren_*` (7 tablas) | 8 a 107 | **Sí** |
+| `imp_ligado_conflictos` | 11 | **Sí** |
+| `bak_*` (20 tablas) | — | **Preguntar**: son los respaldos de resets anteriores |
+
+⛔ **LO QUE NO SE TOCA NUNCA, porque es la OPERACIÓN y no el CRM:** `carros`, `etapas`,
+`asignaciones`, `ventas`, `empleados`, `reportes_diarios` y las fotos de Storage. El CRM se
+reconstruye; la operación no. Las placas que ya leyeron las fotos siguen ahí, y de ahí sale el
+religado.
+
+👉 **La regla de método, que es la que costó:** si veo una razón para conservar algo que él dijo
+borrar, **la digo y él decide** — no la aplico solo. Las tres filas de ⚠️ arriba son exactamente
+eso: no son del ClientNoteTracker, así que **hay que preguntárselas antes**, no decidirlas por él.
+
+### El orden
 
 ```sql
--- 1) Borrar TODO lo importado (no toca lo de la caja en vivo ni los carros)
-delete from public.visitas  where caja  = 'import';
-delete from public.personas where origen = 'import';
--- (opcional) limpiar seeds viejos de carros.cliente que no sean personas:
--- delete from personas where origen='import' and nombre in ('CORTESIA', ...);
+-- 0) RESPALDAR ANTES. Sin esto no hay vuelta atras.
+create table public.bak_personas_<fecha>       as select * from public.personas;
+create table public.bak_persona_placas_<fecha> as select * from public.persona_placas;
+create table public.bak_visitas_map_<fecha>    as select * from public.visitas;
 ```
-Luego rehacer los pasos 3.1–3.7 con el nuevo PDF y el nuevo jalón de Zettle.
-`import.sql` ya hace el `delete where caja='import'` al inicio, así que re-correrlo
-es seguro aunque se olvide el paso 1.
+Y además bajar el respaldo completo por **`/respaldo`** desde la página del dueño — ya baja las 11
+tablas de verdad, no las 94 kB de antes (ver `CLAUDE.md §11.20`).
 
-⚠️ **NO** borrar `visitas` con `caja <> 'import'` (esas son de la caja en vivo) ni
-los `carros`/`ventas` (historial de operación). El import solo vive en
-`origen='import'` / `caja='import'`.
+```sql
+-- 1) El CRM, completo (con lo que el dueno haya confirmado de las filas ⚠️)
+delete from public.visitas;          -- o `where caja='import'` si dijo conservar las 21
+delete from public.persona_placas;
+delete from public.personas;         -- o `where origen='import'` si dijo conservar las 2
+
+-- 2) El andamio de la corrida anterior
+drop table if exists public.stg_cnt, public.stg_names, public.stg_padron;
+drop table if exists public.ren_cand, public.ren_cand_ticket_0815,
+                     public.ren_cand_ticket_descartado, public.ren_desaparecen,
+                     public.ren_esqueleto, public.ren_nuevas, public.ren_prefijo;
+drop table if exists public.imp_ligado_conflictos;
+```
+
+⚠️ **`visitas` tiene `carro_id`, y borrarlas NO toca los carros.** Es un enlace, no el carro: el
+lavado, sus tiempos y su foto siguen igual. Lo que se pierde es *de quién era*, que es justo lo
+que se va a reconstruir.
+
+Luego rehacer los pasos **3.1–3.7** con el PDF nuevo y el jalón de Zettle nuevo.
+`import.sql` hace su propio `delete where caja='import'` al inicio, así que re-correrlo es seguro.
+
+### Antes de correrlo, releer estas tres
+
+1. **§3.1 — la zona horaria del export.** Sale del teléfono del dueño y ya cambió una vez. Se
+   **mide** contra Zettle y se carga en `stg_cnt.tz`; el cotejo de "nunca hay notas después de las
+   8 PM" la confirma gratis.
+2. **§4c-bis — los dos puntos ciegos del detector de renombres.** Los renombres se **autorizan**,
+   no se aplican solos.
+3. **§4e — el ligado vive en `ligar_visitas_de_import()`**, una sola función. No copiarlo.
 
 ---
 
