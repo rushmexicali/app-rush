@@ -2526,6 +2526,17 @@ function cuerpoDetalle(c, enVivo) {
     h += '<div class="ausente">&#9888; Se entregó más rápido de lo posible.' +
          "<br>Casi seguro fue un error o una prueba; no cuenta en el reporte.</div>";
   }
+  // El tercero, que faltaba (133). Un secado de menos de 3 minutos es un
+  // olvido registrado tarde: el supervisor perdio la huella del carro y, al
+  // acordarse, lo asigno y lo entrego de un jalon. El reporte del dueno y el
+  // perfil del trabajador ya lo decian; aqui el numero se leia como si fuera
+  // un secado de verdad. Lo manda la base (segundos_minimos_de_secado), no
+  // un 180 escrito aqui: dos reglas para la misma pregunta siempre se
+  // desfasan.
+  if (c.secado_corto) {
+    h += '<div class="ausente">&#9888; El secado salió demasiado corto para ser real.' +
+         "<br>Se ve como un carro que se olvidó y se cerró de un jalón; su secado no cuenta en los promedios.</div>";
+  }
 
   // Ya entregado dice "Lo secaron"; todavia trabajandose, "Secando ahora".
   var titulo = c.entregado_en != null ? "Lo secaron" : "Secando ahora";

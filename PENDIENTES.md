@@ -195,7 +195,9 @@ aviso desaparece); y se comprobó que el corte **aborta de verdad** (304 ms con 
 - ~~**Corregir de un carro que ya seca le vuelve a poner la hora a las asignaciones**~~ ✅ y
   ~~**Quitar el tipo o el color en Corregir responde "ok" y no borra nada**~~ ✅ — **HECHOS y
   APLICADOS el 24/ago (migración `132`).** Ver abajo.
-- **El desglose del carro presenta como medido un secado que el reporte descarta por ser ficción.**
+- ~~**El desglose del carro presenta como medido un secado que el reporte descarta por ser
+  ficción.**~~ ✅ **HECHO el 24/ago (migración `133`).** La base ya está aplicada; el renglón del
+  front va en el corte. Ver abajo.
 - **En la caja, buscar por apellido esconde clientes sin decirlo** (82 de 107 en el caso medido), y
   justo debajo de la lista recortada está el botón que crea la ficha duplicada.
 - **La lista de tickets se congela en silencio** si el backend falla; tras un 401 no vuelve a
@@ -209,6 +211,45 @@ aviso desaparece); y se comprobó que el corte **aborta de verdad** (304 ms con 
   orden real —cargar con Tijuana, medir el desfase contra `ventas`, corregir `tz` y volver a
   medir hasta que dé 0— más el cotejo de que no queden notas después de las 8 PM, que por sí solo
   habría cachado el error del 21/ago.
+
+### ✅ El secado corto: una sola regla, y el desglose por fin la dice (24/ago, migración `133`)
+
+**El hallazgo era el desglose**, y al ir a arreglarlo salió lo de fondo.
+
+Desde la `064` un secado de **menos de 3 minutos** es imposible: no es trabajo, es un olvido
+registrado tarde. Las otras dos pantallas donde ese número se le muestra a una persona ya lo
+dicen —el reporte lo cuenta aparte y el perfil del trabajador lo rotula *"olvido"* (`106`)—. El
+**desglose del carro** (la ⓘ de la cola y el de Finalizados) no: ahí un secado de 6 segundos se
+leía como un secado de 6 segundos.
+
+🔴 **Y la regla ya estaba escrita en DOS lugares.** Medido, no supuesto: `reporte_del_rango` y
+`perfil_de_secador` tenían cada uno su `180` a mano — y el comentario del primero dice textual
+*"Vive aquí, en un solo lugar"*, que dejó de ser cierto desde la `106`. Agregar el tercer uso a
+mano habría dejado la misma regla en **tres** lugares: es el patrón #1 de `pruebas/README.md` y el
+error que este proyecto ya cometió seis veces.
+
+Ahora la regla vive en `segundos_minimos_de_secado()` y las tres le preguntan. **El valor no
+cambia** (sigue siendo 180): es un cambio de *dónde vive la regla*, no de *cuál es*.
+
+- **De paso:** `perfil_de_secador` traía el filtro de `tiempo_imposible` y su comentario **pegados
+  dos veces, idénticos**. No cambiaba nada, pero el que lo lea mañana se pregunta cuál manda.
+- **El aviso sólo sale con el carro ya entregado.** Mientras se trabaja el secado está corriendo y
+  el desglose lo muestra "en curso"; llamarle olvido a un carro que apenas arranca sería mentir al
+  revés. La prueba lo comprueba con un carro que sigue secando.
+
+⚠️ **Cómo se comprobó que no movía ningún número, y la trampa que salió:** primero se compararon
+los hashes de 41 reportes y 19 perfiles **antes y después de aplicar**, y salieron **distintos** —
+lo que parecía que la migración sí cambiaba cosas. **Era deriva de datos:** el taller estaba
+abierto y en esos 45 minutos entraron 4 carros, se entregaron 3 y se cerraron 8 etapas. La
+comparación válida es **dentro de una sola transacción** (línea base capturada antes, migración
+aplicada, comparación después, todo revertido con el `raise`), y ahí los 41 reportes y los 19
+perfiles salen **idénticos byte a byte**.
+> 🔑 **Regla que queda: con el taller abierto, un hash tomado en dos momentos distintos no compara
+> nada.** La línea base y la comparación tienen que vivir en la misma transacción.
+
+**El renglón del front está commiteado pero sin desplegar** (va en el corte). Comprobado en el
+navegador que los dos estados conviven: con el campo en `true` sale el aviso, con `false` no, y
+**con la forma vieja —sin el campo— tampoco**, así que la base aplicada y el front viejo no chocan.
 
 ### ✅ Los dos de Corregir — APLICADOS el 24/ago/2026 (migración `132`)
 

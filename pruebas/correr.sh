@@ -46,6 +46,7 @@ correr "canje sin saldo (lealtad)"        sql pruebas/canje-sin-saldo.sql
 correr "perfil honesto y Jibble"          sql pruebas/perfil-y-jibble.sql
 correr "editar valida antes de escribir"  sql pruebas/editar-y-foto.sql
 correr "corregir no mueve la hora"        sql pruebas/corregir-no-mueve-la-hora.sql
+correr "una sola regla de secado corto"   sql pruebas/secado-corto-en-un-solo-lugar.sql
 correr "perfil del trabajador paginado"   sql pruebas/perfil-paginado.sql
 correr "el trigger no tumba la venta"     sql pruebas/trigger-y-enlaces.sql
 correr "un lavado, un cliente"            sql pruebas/un-lavado-un-cliente.sql
