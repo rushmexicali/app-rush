@@ -1,11 +1,20 @@
 # =====================================================================
-# RUSH Car Wash — Rescate de ventas
+# RUSH Car Wash - Rescate de ventas
 # Trae una venta desde Zettle y la guarda en la tabla, para cuando el
 # webhook no llego (internet caido, despliegue a media venta, un bug).
 #
 #     powershell -ExecutionPolicy Bypass -File .\scripts\4-recuperar-venta.ps1 -Uuid "e77fd9e1-..."
 #
 # Es seguro repetirlo: si la venta ya esta en la tabla, no la duplica.
+#
+# TAMBIEN SIRVE PARA UNA DEVOLUCION (desde el 24/ago/2026). La respuesta
+# REST llama a la llave del reembolso refundsPurchaseUUID1, y el webhook
+# le dice refundsPurchaseUuid -- la misma trampa que purchaseUUID vs
+# purchaseUUID1 del CLAUDE.md seccion 7. Antes, una devolucion rescatada
+# se guardaba sin que nadie la reconociera: el carro original no se
+# cancelaba y se quedaba en la cola, y no se contaba como devolucion.
+# La migracion 135 le enseno el alias a detalle_venta(), asi que este
+# script NO tiene que tocar el payload: guarda lo que Zettle dio.
 # =====================================================================
 
 param(

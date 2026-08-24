@@ -19,14 +19,67 @@ El método y la decisión de modelos viven en `.claude/skills/auditoria-general/
 > pantalla del dueño. Se subió con el taller abierto **a pedido expreso del dueño**; la regla de
 > §2 sigue siendo esperar al corte cuando no lo pide.
 >
+### ✅ Los dos del crítico de completitud (24/ago, migración `135`)
+
+**1. 🔑 El rescate de una devolución — y el crítico midió bien pero concluyó al revés.** Su
+medición, textual: *"las 70 llaves de la respuesta REST no incluyen `refundsPurchaseUuid`"* —
+**cierto**. Su conclusión, que el dato no viene — **falsa**. Comprobado hoy contra la API real,
+pidiendo una devolución de verdad (la de $300 del 4/ago):
+
+```
+webhook :  "refundsPurchaseUuid"  : "0b1ef160-7eca-4738-8516-c8f1fdcf70d2"
+REST v2 :  "refundsPurchaseUUID1" : "0b1ef160-7eca-4738-8516-c8f1fdcf70d2"   <- el mismo valor
+           "refundsPurchaseUUID"  : "Cx7xYH7KRziFFsjx_c9w0g"                 <- otro formato
+```
+
+Es **exactamente** la trampa que el §7 ya documenta para el campo de al lado (*"el webhook manda
+`purchaseUUID` con guiones; la API REST llama a ese mismo valor `purchaseUUID1`"*). La misma
+trampa, un campo más allá, y se volvió a caer.
+
+**El bug sí era real aunque la explicación fuera otra:** tres cosas vivas cuelgan del nombre exacto
+`refundsPurchaseUuid`, así que una devolución rescatada **no cancelaba el carro original** —se
+quedaba en la cola como si el cliente siguiera esperando— y **no se contaba como devolución**. Y el
+síntoma es mudo: el monto negativo evita crear un carro nuevo, así que nada truena.
+
+> **Dónde se arregló, y por qué ahí:** no en el script. Su trabajo es guardar lo que Zettle dio;
+> interpretarlo es de `detalle_venta()`, que existe precisamente para dar **una sola respuesta** a
+> *"qué trae esta venta"* sin importar la forma — la lección de las migraciones `115` y `118`.
+> Reglas: el nombre del webhook **siempre gana** (nunca se pisa), y sólo se toma el de **guiones**,
+> que es el formato de `carros.purchase_uuid`.
+>
+> ✅ **Medido antes de aplicar: de las 3,071 ventas guardadas, cambian CERO** — ningún payload de
+> webhook trae la forma REST. La mina se desactiva sin mover un solo número, que es la mejor forma
+> de arreglar algo.
+
+**2. `.env.example` ya dice todas las llaves.** Faltaban `REOLINK_IP/USER/PASS`, y `RELECTURA_TOKEN`
+y `LIMPIEZA_TOKEN` no aparecían en ningún archivo del repo. Comprobado que ya no falta ninguna.
+> Los dos tokens llevan su propia nota porque van en **dos lugares** (secreto de la Edge Function
+> *y* de Vault, con el mismo valor). Poner sólo uno deja la tarea muerta en silencio — y **ya pasó**
+> con el obrero de relectura. Desde hoy, además, avisan cuando el secreto falta.
+
 > **Lo que sigue, en este orden:**
 > 1. ~~**Reproducir en el navegador** los cuatro hallazgos del front que nadie ejecutó~~
 >    ✅ **HECHO el 24/ago: tres eran reales, uno no se reprodujo.** Arreglados y probados; ver
 >    abajo. ⏳ **Falta DESPLEGARLOS: tocan la pantalla del supervisor, así que van en el corte**
 >    (§2). El código ya está commiteado.
-> 2. La lista 🔵 que queda más abajo (Corregir, la caja, el RUNBOOK del import).
-> 3. Los dos del crítico de completitud: `4-recuperar-venta.ps1` no sirve para una **devolución**,
->    y `.env.example` ya no dice todas las llaves que producción necesita.
+> 2. ~~La lista 🔵~~ ✅ **COMPLETA el 24/ago** (migraciones `132`–`134` + el canal de avisos).
+> 3. ~~Los dos del crítico de completitud~~ ✅ **HECHOS el 24/ago** (migración `135` y
+>    `.env.example`).
+>
+> 🚩 **LO ÚNICO QUE QUEDA DE ESTA AUDITORÍA ES DESPLEGAR.** La base está aplicada (`132`–`135`).
+> Falta subir, **en el corte y de corrido**:
+>
+> ```
+> git push                                              # docs/ -> GitHub Pages (supervisor + caja)
+> supabase functions deploy app --no-verify-jwt
+> supabase functions deploy zettle-webhook --no-verify-jwt
+> supabase functions deploy sincronizar-jibble --no-verify-jwt
+> supabase functions deploy limpiar-fotos --no-verify-jwt
+> ```
+>
+> Y verificar después contra la API en vivo (`/cola`, `/secadores`, `/entregados`, `/personas?q=`,
+> `/reporte?fecha=`). ⚠️ **No hay `deno` en esta máquina, así que el compilado de las Edge
+> Functions lo hace el `deploy`**: si algo no compila, sale ahí y nada se publica.
 >
 > **Antes de subir cualquier cosa:** `bash pruebas/correr.sh`, y sumarle un caso por cada hallazgo
 > que se arregle. ⚠️ Si se toca `correr.sh`, comprobar que el banner `TODO PASO` siga saliendo —
