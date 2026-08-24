@@ -1,6 +1,20 @@
 #!/bin/bash
 # Descubre QUE firma Zettle, midiendo en vez de suponiendo.
 #
+# ✅ YA SE DESCUBRIO (24/ago/2026). El esquema es:
+#
+#     HMAC-SHA256(llave, timestamp + "." + payload DECODIFICADO)
+#
+# Este script reportaba "ninguna combinacion coincidio" porque probaba
+# "timestamp.payload" con el payload TAL COMO VIAJA (escapado dentro del
+# JSON de afuera), y lo que se firma es la cadena ya desescapada. Estaba a
+# un desescapado de distancia.
+#
+# Para comprobar el esquema contra todos los avisos guardados, usa:
+#     bash scripts/comprobar-firma-zettle.sh
+# Este archivo se conserva por si algun dia Zettle cambia el esquema y hay
+# que volver a buscarlo.
+#
 # Toma el ultimo aviso bueno de `webhook_bitacora` (cuerpo crudo + la cabecera
 # `x-izettle-signature`), y prueba las combinaciones posibles con la llave
 # `ZETTLE_SIGNING_KEY` hasta encontrar cual reproduce la firma real.
