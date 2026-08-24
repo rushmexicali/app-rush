@@ -789,6 +789,158 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 11.10 La auditoría con refutadores, resuelta en un día (23/ago/2026, migraciones `128`–`131`)
+
+Los seis puntos priorizados de la auditoría del 21–22/ago, más cuatro de la lista menor. El dueño
+pidió subirlo todo el mismo día; se hizo con el taller abierto, en tandas, verificando cada una
+contra la API en vivo. **Nada de lo que ve el supervisor cambió** — las cuatro migraciones son base
+y el único front que se tocó es el reporte del dueño.
+
+Antes de eso contestó las cinco preguntas abiertas. La más útil fue la que **evitó** trabajo:
+
+### 🔑 `Faros` nunca debe crear unidad — y el arreglo que yo proponía habría creado el problema
+
+Un `Faros` de $600 se cobró el 21/ago y nunca apareció en el teléfono del supervisor. Está en la
+categoría `Extras`, que no crea carro, y eso olía al bug del **Super Brillo de $1,300 invisible**
+que la migración `041` arregló. Iba a proponer que creara carro.
+
+Textual del dueño: *"la venta de faros solo puede suceder de 2 maneras. 1. el carro entra y pide un
+paquete + el de faros. La otra es que, al momento de que está en secado, el secador le recomienda un
+pulido de faros y el cliente va a caja caminando a pagar el servicio. El servicio de faros nunca va
+sin lavado, por lo tanto los faros nunca generan una unidad nueva."*
+
+El segundo caso produce un **ticket aparte para un carro que ya está en la cola secándose**. Si
+`Faros` creara unidad, ahí entraría un carro fantasma duplicado del que se está secando. Medido
+antes de decidir: **1 sola venta de `Faros` en toda la historia**, sola en su ticket. La regla ya
+estaba bien.
+
+> La lección es la de siempre aquí: el patrón se parecía al del Super Brillo y no lo era. Preguntar
+> costó un mensaje; el arreglo habría costado carros fantasma todos los días.
+
+Las otras cuatro: la caja **no** parte servicios en dos cobros (así que el brinco de placas mal
+pegadas del 21/ago es captura, no falso positivo del candado); "Devoluciones" cuenta **sólo**
+reembolsos; los avisos se pueden marcar como atendidos; y **el 19/jul no se recongela**.
+
+### 🔴 La llave pública: el arreglo obvio no sirvió, y se supo probando (`128`)
+
+De 124 funciones en `public`, `anon` alcanzaba **119** — ocho de ellas `SECURITY DEFINER`, cuatro
+escriben o borran. El revoke ya se había hecho el 19/ago y **volvió**, porque Supabase deja puesto
+un `ALTER DEFAULT PRIVILEGES … GRANT EXECUTE … TO anon` y toda función nueva nace otorgada.
+
+Lo estructural parecía obvio: revocar ese default. **No sirvió.** Una función creada después —ya
+comprometido el cambio, en otra transacción— nació con:
+
+```
+{=X/postgres, postgres=X/postgres, service_role=X/postgres}
+ ^^^^^^^^^^^ esto es PUBLIC
+```
+
+`anon` no la alcanza por concesión propia: **le llega por PUBLIC**. Es palabra por palabra la trampa
+que §11.50 ya documentaba del revoke del 19/ago, y se volvió a caer en ella. Y agregarle
+`from public` al `ALTER DEFAULT PRIVILEGES` **tampoco bastó**: `pg_default_acl` se veía correcto
+(`{postgres=X, service_role=X}`) mientras las funciones seguían naciendo abiertas.
+
+La garantía terminó donde no depende de esa sutileza: un **event trigger**
+(`cerrar_funciones_nuevas`), el mismo patrón que este proyecto ya usa en `rls_auto_enable`, que
+revoca al terminar cada `CREATE FUNCTION` y **se traga su propio error** — una salvaguarda nunca
+puede tumbar una migración.
+
+> 🔑 **Se encontró creando una función de prueba y preguntándole si `anon` la alcanzaba. Leyendo el
+> catálogo no se veía.** `pruebas/llave-publica.sql` comprueba justamente eso, y **puede fallar**:
+> esa misma aserción reventó contra producción antes del event trigger.
+
+`anon` quedó en **38**: las 35 de `pg_trgm`/`unaccent` (de `supabase_admin`, no tocan datos) más los
+3 triggers, que se dejan intactos igual que el 19/ago — PostgREST no los expone, Postgres no
+comprueba EXECUTE al disparar un trigger, y uno de ellos es el camino por donde entra el dinero.
+`authenticated` entró al revoke también: hoy hay **0 usuarios** en `auth.users`, así que cerrar esa
+puerta no cuesta nada.
+
+### La cortesía llega al import: cinco clientes recuperaron su lavado (`129`)
+
+`visitas.es_cortesia` era `true` en **1 de 15,051** visitas activas. Una cortesía (`Gratis` +
+variante que **no** empieza con `6to`) *"ni suma sello ni consume gratis"* (§11.70), y esa regla vive
+en `clase_de_gratis()` — que el camino de la **caja** consulta y el del **import** no. *El camino que
+no llama a la función se brinca la regla*, otra vez.
+
+Medido contra una línea base de **4,957** personas: se movieron **8**, y **nadie perdió nada**.
+
+| Persona | Canjes | Disponibles |
+|---|---|---|
+| `reynaldo inojosa ramirez` | 9 → **5** | 0 → **1** |
+| `Gregorio Coronel` | 4 → **2** | 0 → **1** |
+| `ANICETO MIRELES UYOHA` | 6 → **5** | 1 → **2** |
+| `cristian rodriguez` · `CRISTIAN VALENZUELA` | 1 → **0** | 0 → **1** |
+| `CECILIA LARA` | 0 → **1** | 0 → 0 |
+
+- **Dónde quedó la regla:** no en los tres scripts del import —copiarla tres veces es como se
+  desfasan las cosas aquí— sino dentro de `ligar_visitas_de_import()`, la función que la `118` creó
+  **justamente** porque los tres la llamaban copiada. Es el único cuello por donde pasa todo import.
+- `clase_de_gratis_del_ticket(ticket)` resuelve contra `ventas` (webhook, con `detalle_venta()`) y
+  contra **`zettle_compras`**, cuyo payload tiene **otra forma**: `productos[].nombre/variante`, en
+  español. Ése era el detalle que hacía que la primera medición diera 249 en vez de 1,070.
+- ⚠️ **Un ticket irresoluble devuelve NULL y no se toca nada.** Son 41 visitas con `es_gratis` del
+  ClientNoteTracker sin ticket que lo respalde: desmarcarlas a ciegas sería quitarle un lavado a
+  alguien por falta de dato.
+
+### Los comodines, el índice muerto y una prueba que no podía fallar (`130` + la suite)
+
+- **`buscar_personas('%')` devolvía 25 clientes cualquiera** y `buscar_vehiculos('%')` 50 placas: la
+  cajera veía una lista con cara de resultado bueno y podía tocar al cliente equivocado. La regla de
+  escapar vivía en `como_literal()` y sólo 1 de las 3 búsquedas la usaba. En `buscar_vehiculos` se
+  escapa **una vez en el CTE `q`** y quedan cubiertos los cuatro `like`. Comprobado contra línea
+  base: las **siete búsquedas normales dan idéntico**.
+- **`ventas_purchase_number_idx` no servía a nada vivo** (estaba sobre la forma envuelta del aviso,
+  la que la `115` declaró equivocada) y se evaluaba en cada `insert`. Reemplazado por
+  `ventas_recibo_idx`, sobre la expresión del join del import: **165 ms y 9,479 buffers → 2.5 ms y 3**.
+- 🔴 **La prueba del dry-run del import no podía fallar.** Corría sobre `stg_cnt` con sus filas ya
+  importadas: el dedup las descartaba todas, el `INSERT` se ejercitaba con **cero** filas y la
+  aserción (`grep -q DRYRUN`) salía igual con 0 que con 240. Ahora siembra una fila en la misma
+  transacción que revierte y exige `visitas +[1-9]`.
+  > ⚠️ **Y ese arreglo rompió el cierre de `correr.sh`**: una edición con `awk` se comió el bloque
+  > que cuenta los fallos, así que la suite salía con código 0 pasara lo que pasara — justo la clase
+  > de bug que se estaba arreglando. Se detectó porque **faltó el banner `TODO PASO`**. Regla nueva
+  > en `pruebas/README.md`: al tocar `correr.sh`, comprobar que el banner salga.
+
+### El reporte del dueño (`131` + `docs/reporte.html`)
+
+- 🔴 **"Devoluciones" se inventaba: pintaba 31 donde hubo 6.** Calculaba `cancelados − borrados`, y
+  eso no es una devolución. El backend ya entregaba el número bueno desde la `120` y la pantalla
+  nunca se actualizó. Ahora lee `r.devoluciones`, y las **25 cancelaciones a mano** salen en su
+  propia tarjeta con su nombre. **De paso sale a la luz la única devolución DESPUÉS de entregar que
+  hay en toda la historia** — la falla de servicio más cara que describe el §13, y que era invisible.
+- 🔴 **Las cuatro alertas se borraban solas cuando el backend fallaba:** un 500 se pintaba
+  **idéntico a "no hay nada que reportar"**. `pedirJSON` ya trae la guarda de la `105`, más
+  `listaDe()` —una lista que no llegó **no** es una lista vacía— y un mensaje visible: *"No se pudo
+  comprobar X. Esto **no** quiere decir que no haya: quiere decir que la consulta falló."* Se le
+  sumaron los otros dos consumidores de la misma clase que la auditoría no nombró.
+- **Corte de 20 s**, el último que faltaba de las tres pantallas. **El respaldo lleva el suyo de
+  120 s**: son 11 tablas y ~37,000 renglones, y a 20 s se abortaría uno que iba bien.
+- **Los avisos del sistema se marcan como atendidos.** El primero que existió ya era falso: pedía
+  autorizar un borrado de 176 fotos huérfanas **que ya se había hecho**.
+  > 🔑 **Una ocurrencia NUEVA reabre el aviso.** `anotar_aviso` deduplica por día, así que sin
+  > cuidado uno marcado a las 10 AM escondería el mismo fallo de las 6 PM. Atendido significa *"ya lo
+  > resolví"*, no *"no me lo vuelvas a decir"*.
+- **El titular de "Calidad de la entrega" ya cuadra con su tabla** (decía 2 arriba y la tabla sumaba
+  3). No era error de ninguno: el titular cuenta **eventos** y la tabla cuenta **personas**, porque
+  `rechazos` lleva una fila por secador a propósito. Faltaba decirlo.
+
+**Verificado EN EL NAVEGADOR**, que es lo que la auditoría señaló como su propio límite: se ejercitó
+`pintarReporte` con los números reales, se forzó un **500** y las cuatro alertas pasaron de callar a
+avisar, se recorrió el botón *"Ya lo atendí"* completo (POST con `{"id":14}`, la lista se refresca,
+el aviso desaparece) y se comprobó que el corte **aborta de verdad**. Lo publicado quedó **byte a
+byte igual al repo** (mismo md5).
+
+> 📌 **`docs/sw.js` NO se tocó, a propósito.** `reporte.html` no está en su lista de básicos y la
+> estrategia es red-primero, así que el cambio se ve al instante. Subirle la versión habría purgado
+> la copia sin conexión del supervisor a media operación sin ganar nada.
+
+> ⚠️ **Un error mío, anotado porque la regla que sale de él vale:** el bloque de comprobación de la
+> `131` llama a `anotar_aviso`, que **escribe** — y al aplicar la migración de verdad dejó un aviso
+> `zz-prueba` visible en el panel del dueño. La comprobación de que los avisos falsos se pueden
+> apagar produjo un aviso falso. Se neutralizó marcándolo atendido, con la función que esa misma
+> migración crea. **Una comprobación que llama a algo que escribe tiene que limpiar lo que escribió,
+> o sólo puede vivir en el ensayo.**
+
 ## 11.15 La auditoría del 20/ago, resuelta de un jalón (21/ago/2026, migraciones `119`–`126`)
 
 El dueño pidió subirlo **todo el mismo día, sin esperar al corte**. Se le dijo que la regla de §2
