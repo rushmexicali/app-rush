@@ -56,6 +56,7 @@ correr "el aviso plano y las placas dudosas" sql pruebas/aviso-plano.sql
 
 correr "la llave publica no alcanza nada" sql pruebas/llave-publica.sql
 correr "la cortesia del import"       sql pruebas/cortesia-del-import.sql
+correr "avisos atendidos"             sql pruebas/avisos-atendidos.sql
 
 # El dry-run del import REVIERTE por diseno (termina en `raise`), asi que se
 # puede correr contra produccion: es la unica prueba que ejercita el archivo

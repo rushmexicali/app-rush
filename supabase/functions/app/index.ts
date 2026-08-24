@@ -1358,6 +1358,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ avisos: data ?? [] });
   }
 
+  // --- Marcar un aviso como ATENDIDO (migracion 131) -------------------
+  //
+  // Sin esto los avisos solo caducaban a los 7 dias, y el primero que existio
+  // ya era falso: pedia autorizar un borrado de fotos huerfanas que ya se
+  // habia hecho. Un canal de alertas que muestra cosas resueltas se deja de
+  // leer, y entonces no avisa de nada.
+  //
+  // No borra la fila -- solo la saca de la lista -- y es REVERSIBLE (`atendido:
+  // false`), por si se toca por error. Y si el mismo aviso vuelve a ocurrir,
+  // `anotar_aviso` lo reabre solo: atendido significa "ya lo resolvi", no "no
+  // me lo vuelvas a decir".
+  if (ruta === "/aviso-atendido" && req.method === "POST") {
+    const cuerpo = await req.json().catch(() => null);
+    const id = Number(cuerpo?.id);
+    if (!Number.isFinite(id)) return json({ error: "falta id" }, 400);
+    const atendido = cuerpo?.atendido !== false;
+    const { data, error } = await db.rpc("marcar_aviso_atendido", { p_id: id, p_atendido: atendido });
+    if (error) { console.error("marcar_aviso_atendido:", error); return json({ error: error.message }, 500); }
+    return json(data ?? { ok: false, error: "sin respuesta" });
+  }
+
   // --- Carros con placa DUDOSA (el candado atajo una placa repetida) ---
   //
   // Tres funciones escriben `carros.placa_dudosa` y hasta el 21/ago/2026

@@ -297,11 +297,32 @@ function cargarCodigo() {
   try { CODIGO = localStorage.getItem("rush_codigo") || ""; } catch (e) { CODIGO = ""; }
 }
 
+// Toda petición corta a los 20 s. Era la ÚNICA de las tres pantallas sin corte
+// (el supervisor y la caja ya lo tienen): una petición colgada con el wifi del
+// taller dejaba el reporte en blanco para siempre, sin decir nada, y la única
+// salida era recargar sin saber por qué.
+//
+// El respaldo NO usa este corte: son 11 tablas y ~37,000 renglones, y a 20 s
+// se abortaría una descarga que iba bien. Ver `pedirJSONRespaldo`.
+var PEDIR_CORTE_MS = 20000;
+
 function pedir(ruta, opts) {
   opts = opts || {};
   opts.headers = Object.assign({ "x-codigo": CODIGO }, opts.headers || {});
   opts.cache = "no-store";
-  return fetch(API + ruta, opts);
+  var reloj = null;
+  if (typeof AbortController === "function" && !opts.signal) {
+    var corta = new AbortController();
+    opts.signal = corta.signal;
+    reloj = setTimeout(function () { corta.abort(); }, opts.corteMs || PEDIR_CORTE_MS);
+  }
+  return fetch(API + ruta, opts).then(function (r) {
+    if (reloj) clearTimeout(reloj);
+    return r;
+  }, function (e) {
+    if (reloj) clearTimeout(reloj);
+    throw e;
+  });
 }
 
 function pedirCodigo(fallo) {
@@ -497,9 +518,33 @@ function pintarReporte(r) {
   // parte.
   //
   // Como el resto de las tarjetas condicionales: sólo salen cuando no son cero.
+  //
+  // 🔴 "DEVOLUCIONES" SE INVENTABA, y era el único número falso que el dueño
+  // estaba leyendo. Esta línea decía:
+  //
+  //     var devoluciones = Math.max(0, (r.cancelados || 0) - (r.borrados || 0));
+  //
+  // o sea "los cancelados que no borró el supervisor", que NO es una
+  // devolución. La migración `120` (21/ago) ya calcula las de verdad en el
+  // backend —una venta que apunta a otra con `refundsPurchaseUuid`— y esta
+  // pantalla nunca se actualizó. Medido en toda la historia: pintaba **31**
+  // donde hubo **6**, y el 29/jul decía 18 cuando fueron 0.
+  //
+  // Importa porque el `CLAUDE.md §13` define una devolución como *"una falla de
+  // servicio que se pagó con dinero para no perder al cliente"*: leer 31 fallas
+  // donde hubo 6 cambia la conclusión, no el decimal.
+  //
+  // Decisión del dueño (23/ago): la tarjeta cuenta SÓLO los reembolsos de
+  // Zettle, y las cancelaciones a mano salen aparte con su nombre — no
+  // desaparecen (la migración `083` pide que se puedan ver), pero dejan de
+  // disfrazarse de devolución.
   var rech = r.rechazos || {};
-  var devoluciones = Math.max(0, (r.cancelados || 0) - (r.borrados || 0));
-  if (rech.eventos || devoluciones) {
+  var devoluciones = r.devoluciones || 0;
+  var trasEntregar = r.devoluciones_tras_entregar || 0;
+  // Las canceladas a mano que NO son un reembolso: cancelados, menos los que
+  // borró el supervisor, menos las devoluciones de verdad.
+  var canceladas = Math.max(0, (r.cancelados || 0) - (r.borrados || 0) - devoluciones);
+  if (rech.eventos || devoluciones || canceladas) {
     html += "<h2>Calidad de la entrega</h2>";
     html += '<div class="numeros">';
     if (rech.eventos) {
@@ -509,9 +554,27 @@ function pintarReporte(r) {
     }
     if (devoluciones) {
       html += tarjeta(devoluciones, "Devoluciones",
-                "Se canceló el cobro con el carro todavía en la cola");
+                "Se le regresó el dinero al cliente (reembolso en Zettle)");
+    }
+    if (canceladas) {
+      html += tarjeta(canceladas, "Cancelaciones a mano",
+                "Se canceló el cobro sin reembolso. No son devoluciones");
     }
     html += '</div>';
+
+    // La devolución DESPUÉS de entregar es la falla de servicio más cara que
+    // describe el §13: el rechazo se ataja antes de que el cliente se vaya y
+    // ésta se ataja cuando ya se fue molesto. Va aparte y en rojo porque no se
+    // lee igual que una devolución de un carro que nunca salió.
+    if (trasEntregar) {
+      html += '<div class="aviso alerta">⚠ <b>' + trasEntregar +
+              (trasEntregar === 1
+                 ? " devolución fue de un carro YA ENTREGADO"
+                 : " devoluciones fueron de carros YA ENTREGADOS") +
+              '.</b> El cliente se fue con el carro y aun así se le regresó el dinero. ' +
+              'Es la falla de servicio más cara: el trabajo se hizo, la gente se ocupó, ' +
+              'y el cliente igual quedó mal.</div>';
+    }
 
     var porSec = r.rechazos_por_secador || [];
     if (porSec.length) {
@@ -525,8 +588,21 @@ function pintarReporte(r) {
                 "<td>" + escapar(motivos.join(", ") || "—") + "</td></tr>";
       });
       html += "</table>";
+      // El titular cuenta EVENTOS y la tabla cuenta PERSONAS, así que cuando un
+      // carro lo secaban dos, la tabla suma más que el titular (medido: decía 2
+      // arriba y 3 abajo). No es un error de ninguno de los dos — es que
+      // `rechazos` lleva una fila por secador a propósito, para saber a quién
+      // entrenar. Lo que faltaba era decirlo, igual que se dice con los carros
+      // sin secador de la sección de arriba.
+      var sumaTabla = 0;
+      porSec.forEach(function (s) { sumaTabla += (s.rechazos || 0); });
       html += '<div class="aviso">El objetivo no es castigar: es saber <b>a quién entrenar y en qué</b>. ' +
-              'Un rechazo se cuenta como UN evento aunque haya faltado más de una cosa.</div>';
+              'Un rechazo se cuenta como UN evento aunque haya faltado más de una cosa.' +
+              (sumaTabla > (rech.eventos || 0)
+                 ? ' <b>Por eso esta tabla suma ' + sumaTabla + ' y arriba dice ' + (rech.eventos || 0) +
+                   ':</b> un carro que secaban dos personas es un solo rechazo, pero se le anota a las dos.'
+                 : '') +
+              '</div>';
     }
   }
 
@@ -634,19 +710,15 @@ var placasTimer = null;
 
 function cargarPlacas(q) {
   placasQ = q || "";
-  pedir("/placas" + (q ? "?q=" + encodeURIComponent(q) : ""))
-    .then(function (r) {
-      // Sin esto, un 401 (código vencido) caía en `d.placas || []` y pintaba
-      // "Todavía no hay placas leídas" — que es mentira y suena a que el
-      // negocio no tiene datos.
-      if (r.status === 401) { pedirCodigo(true); throw new Error("codigo"); }
-      return r.json();
-    })
+  // El 401 ya se atajaba aquí (un código vencido pintaba "Todavía no hay placas
+  // leídas", que es mentira). Faltaba el resto de la clase: con `d.placas || []`
+  // un 500 decía exactamente lo mismo. Ahora `pedirJSON` cubre los dos.
+  pedirJSON("/placas" + (q ? "?q=" + encodeURIComponent(q) : ""))
     .then(function (d) {
       if ((q || "") !== placasQ) return;   // llegó tarde: ya se tecleó otra cosa
       var cont = document.getElementById("tablaplacas");
       if (!cont) return;
-      cont.innerHTML = tablaPlacas(d.placas || []);
+      cont.innerHTML = tablaPlacas(listaDe(d, "placas"));
       // Cada placa lleva al perfil de la placa (en la vista Clientes).
       cont.querySelectorAll("button[data-placa]").forEach(function (b) {
         b.addEventListener("click", function () { irAPlaca(b.getAttribute("data-placa")); });
@@ -700,13 +772,12 @@ function irACliente(id) {
 // placas repetidas, no deja nada cuando es cero.
 function pedirFotosPendientes(desde, hasta) {
   if (!desde) return;
-  pedir("/fotos-pendientes?desde=" + desde + "&hasta=" + hasta)
-    .then(function (r) { return r.json(); })
+  pedirJSON("/fotos-pendientes?desde=" + desde + "&hasta=" + hasta)
     .then(function (d) {
       var cont = document.getElementById("fotos-pendientes");
       if (!cont) return;
-      var esp = (d && d.esperando) || 0;
-      var rin = (d && d.se_rindieron) || 0;
+      var esp = d.esperando || 0;
+      var rin = d.se_rindieron || 0;
       if (!esp && !rin) { cont.innerHTML = ""; return; }
       var html = "";
       if (esp) {
@@ -722,17 +793,20 @@ function pedirFotosPendientes(desde, hasta) {
       }
       cont.innerHTML = html;
     })
-    .catch(function () { /* es un extra: si falla, el reporte no se cae */ });
+    .catch(function (e) {
+      if (e && e.message === "codigo") return;
+      var cont = document.getElementById("fotos-pendientes");
+      if (cont) cont.innerHTML = noSePudoComprobar("si quedaron fotos sin leer");
+    });
 }
 
 function pedirRepetidas(desde, hasta) {
   if (!desde) return;
-  pedir("/placas-repetidas?desde=" + desde + "&hasta=" + hasta)
-    .then(function (r) { return r.json(); })
+  pedirJSON("/placas-repetidas?desde=" + desde + "&hasta=" + hasta)
     .then(function (d) {
       var cont = document.getElementById("repetidas");
       if (!cont) return;
-      var reps = (d && d.repetidas) || [];
+      var reps = listaDe(d, "repetidas");
       if (!reps.length) { cont.innerHTML = ""; return; }
       cont.innerHTML = avisoRepetidasHTML(reps);
       // Como en la tabla de Operación: la placa cambia a la vista Clientes
@@ -744,7 +818,11 @@ function pedirRepetidas(desde, hasta) {
         b.addEventListener("click", function () { abrirTicket(b.getAttribute("data-ticket")); });
       });
     })
-    .catch(function () { /* es un extra: si falla, el reporte no se cae */ });
+    .catch(function (e) {
+      if (e && e.message === "codigo") return;
+      var cont = document.getElementById("repetidas");
+      if (cont) cont.innerHTML = noSePudoComprobar("si hubo placas repetidas");
+    });
 }
 
 // --- Avisos de las tareas de fondo ------------------------------------
@@ -757,13 +835,20 @@ function pedirRepetidas(desde, hasta) {
 //
 // Va ARRIBA de las otras alertas y no depende del día elegido: si algo se
 // rompió en el fondo, eso importa antes que cualquier número del reporte.
+// Cada aviso trae su botón "Ya lo atendí" (migración 131). Sin él sólo
+// caducaban a los 7 días, y el PRIMER aviso que existió ya era falso: pedía
+// autorizar un borrado de fotos huérfanas que ya se había hecho, y se iba a
+// quedar en pantalla una semana. Un canal de alertas que muestra cosas
+// resueltas se deja de leer, y entonces no avisa de nada.
+//
+// No borra nada y se puede deshacer. Y si el mismo problema vuelve a ocurrir,
+// el aviso se reabre solo — marcarlo no lo silencia hacia adelante.
 function pedirAvisos() {
-  pedir("/avisos?dias=7")
-    .then(function (r) { return r.json(); })
+  pedirJSON("/avisos?dias=7")
     .then(function (d) {
       var cont = document.getElementById("avisos");
       if (!cont) return;
-      var arr = (d && d.avisos) || [];
+      var arr = listaDe(d, "avisos");
       if (!arr.length) { cont.innerHTML = ""; return; }
       var html = '<div class="aviso alerta"><b>⚠ ' + arr.length +
                  (arr.length === 1 ? " aviso del sistema" : " avisos del sistema") +
@@ -773,11 +858,29 @@ function pedirAvisos() {
                 escapar(fechaCorta(a.hasta)) + " " + escapar(hora(a.hasta)) +
                 " — <b>" + escapar(a.origen) + "</b>: " + escapar(a.detalle || a.motivo) +
                 (a.veces > 1 ? " (" + a.veces + " veces)" : "") +
+                (a.id ? ' · <button class="enlace" data-atendido="' + escapar(String(a.id)) +
+                        '">Ya lo atendí</button>' : "") +
                 "</div>";
       });
       cont.innerHTML = html + "</div>";
+      cont.querySelectorAll("button[data-atendido]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          b.disabled = true;
+          b.textContent = "Guardando…";
+          postJSON("/aviso-atendido", { id: Number(b.getAttribute("data-atendido")) })
+            .then(function () { pedirAvisos(); })
+            .catch(function () {
+              b.disabled = false;
+              b.textContent = "No se pudo — reintentar";
+            });
+        });
+      });
     })
-    .catch(function () { /* es un extra: si falla, el reporte no se cae */ });
+    .catch(function (e) {
+      if (e && e.message === "codigo") return;
+      var cont = document.getElementById("avisos");
+      if (cont) cont.innerHTML = noSePudoComprobar("si hay avisos del sistema");
+    });
 }
 
 // --- Placas que el candado ATAJÓ -------------------------------------
@@ -795,12 +898,11 @@ function pedirAvisos() {
 // quién era.
 function pedirDudosas(desde, hasta) {
   if (!desde) return;
-  pedir("/placas-dudosas?desde=" + desde + "&hasta=" + hasta)
-    .then(function (r) { return r.json(); })
+  pedirJSON("/placas-dudosas?desde=" + desde + "&hasta=" + hasta)
     .then(function (d) {
       var cont = document.getElementById("dudosas");
       if (!cont) return;
-      var arr = (d && d.dudosas) || [];
+      var arr = listaDe(d, "dudosas");
       if (!arr.length) { cont.innerHTML = ""; return; }
       cont.innerHTML = avisoDudosasHTML(arr);
       cont.querySelectorAll("button[data-placa]").forEach(function (b) {
@@ -810,7 +912,11 @@ function pedirDudosas(desde, hasta) {
         b.addEventListener("click", function () { abrirTicket(b.getAttribute("data-ticket")); });
       });
     })
-    .catch(function () { /* es un extra: si falla, el reporte no se cae */ });
+    .catch(function (e) {
+      if (e && e.message === "codigo") return;
+      var cont = document.getElementById("dudosas");
+      if (cont) cont.innerHTML = noSePudoComprobar("si el candado atajó alguna placa");
+    });
 }
 
 function avisoDudosasHTML(arr) {
@@ -937,15 +1043,14 @@ function cargarReporte(ruta, esRango) {
 }
 
 function arrancar() {
-  pedir("/reportes")
-    .then(function (r) {
-      if (r.status === 401) { pedirCodigo(true); throw new Error("codigo"); }
-      return r.json();
-    })
+  // Con `d.dias || []` un 500 dejaba el selector de días VACÍO y sin decir nada,
+  // que se lee como "no hay ningún día con datos". Ya cae al `catch`, que sí
+  // dice qué pasó.
+  pedirJSON("/reportes")
     .then(function (d) {
       var sel = document.getElementById("dia");
       sel.innerHTML = "";
-      (d.dias || []).forEach(function (x) {
+      listaDe(d, "dias").forEach(function (x) {
         var o = document.createElement("option");
         o.value = x.fecha;
         o.textContent = x.fecha + (x.congelado_en ? "" : "  (en curso)");
@@ -1001,8 +1106,12 @@ document.getElementById("respaldo").addEventListener("click", function () {
 
   function avisar(t) { boton.textContent = t; }
 
+  // Corte propio y largo: una página del respaldo son hasta 1,000 renglones de
+  // payloads crudos, y con los 20 s del resto de la pantalla se abortaría una
+  // descarga que iba bien. Un respaldo a medias es peor que ninguno, porque
+  // nadie se entera hasta que lo necesita.
   function pedirJSONRespaldo(ruta) {
-    return pedir(ruta).then(function (r) {
+    return pedir(ruta, { corteMs: 120000 }).then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.json();
     }).then(function (d) {
@@ -1090,11 +1199,54 @@ document.getElementById("campo").addEventListener("keydown", function (ev) {
 // buscando a una persona o una placa; no es la pantalla del supervisor.
 // =====================================================================
 
-function pedirJSON(ruta) {
-  return pedir(ruta).then(function (r) {
+// --- Un error del backend se tiene que VER como error -----------------
+//
+// La migración `105` hizo que el servidor marque `ok:false` en TODA respuesta
+// de error, y arregló el ayudante de las otras dos pantallas. Ésta se quedó
+// fuera: `pedirJSON` devolvía el JSON tal cual, así que un 500 llegaba a los
+// consumidores como un objeto sin los campos que esperan y se pintaba
+// **idéntico a "no hay nada que reportar"** — que es justo lo contrario de lo
+// que pasó.
+//
+// Se arregla AQUÍ y no en cada consumidor, por la misma razón que en la caja:
+// como clase son seis líneas, y el séptimo consumidor nace igual la semana
+// entrante.
+function pedirJSON(ruta, opts) {
+  return pedir(ruta, opts).then(function (r) {
     if (r.status === 401) { pedirCodigo(true); throw new Error("codigo"); }
+    if (!r.ok) throw new Error("El servidor respondió " + r.status);
     return r.json();
+  }).then(function (d) {
+    if (!d || d.ok === false) {
+      throw new Error((d && d.error) || "El servidor respondió con error");
+    }
+    return d;
   });
+}
+
+// Una LISTA que no llegó no es una lista vacía: es un error. Devolver `[]`
+// aquí es justamente lo que convierte una falla en "no hay nada".
+function listaDe(d, campo) {
+  var v = d && d[campo];
+  if (!Array.isArray(v)) throw new Error("La respuesta no trae la lista `" + campo + "`");
+  return v;
+}
+
+function postJSON(ruta, cuerpo) {
+  return pedirJSON(ruta, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(cuerpo || {})
+  });
+}
+
+// Lo que se pinta cuando una de las cuatro alertas NO se pudo comprobar.
+// Callar aquí es exactamente el bug: el dueño leería "no hay placas repetidas"
+// cuando lo cierto es "no se sabe".
+function noSePudoComprobar(que) {
+  return '<div class="aviso alerta">⚠ <b>No se pudo comprobar ' + que + '.</b> ' +
+         'Esto <b>no</b> quiere decir que no haya: quiere decir que la consulta falló. ' +
+         'Vuelve a cargar la página.</div>';
 }
 
 // --- Switch entre las tres vistas ---

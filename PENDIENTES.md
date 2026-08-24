@@ -12,68 +12,89 @@ Corrida con `Workflow`: 11 frentes en paralelo, **cada hallazgo atacado por refu
 independientes** (dos lentes en los graves, una en los medianos), más un crítico de completitud.
 El método y la decisión de modelos viven en `.claude/skills/auditoria-general/SKILL.md`.
 
-> ### 👉 POR DÓNDE RETOMAR (sesión del 22/ago cerrada; se sigue el lunes 24)
+> ### 👉 POR DÓNDE RETOMAR (al 23/ago/2026, todo desplegado y verificado en vivo)
 >
-> **Nada de esta auditoría se desplegó.** Todo lo de abajo está pendiente; el árbol de trabajo
-> quedó limpio y el informe publicado en
-> <https://claude.ai/code/artifact/014aca39-2c86-4724-98b9-f982a64ef119>.
+> **Los seis puntos que estaban priorizados ya están hechos**, con migraciones `128`–`131`, cinco
+> pruebas nuevas en `pruebas/correr.sh` (14 grupos, en verde) y verificación en el navegador de la
+> pantalla del dueño. Se subió con el taller abierto **a pedido expreso del dueño**; la regla de
+> §2 sigue siendo esperar al corte cuando no lo pide.
 >
-> **Lo primero, en este orden:** (1) las «Devoluciones» del reporte — una línea, y es el único
-> número falso que el dueño está leyendo hoy; (2) la guarda de error y el corte de tiempo del
-> reporte, que van en el mismo despliegue; (3) la cortesía del import; (4) los permisos de la llave
-> pública; (5) el índice del ticket y los comodines; (6) la prueba del import que no puede fallar.
->
-> **Los 1–2 tocan la pantalla del dueño**, así que van con front y back juntos y en el corte
-> (`CLAUDE.md §2`). Los 4–6 son sólo base y pueden ir antes.
+> **Lo que sigue, en este orden:**
+> 1. **Reproducir en el navegador** los cuatro hallazgos del front que nadie ejecutó (supervisor
+>    atrapado en Finalizados, cronómetro que no se apaga, foto que se borra sola, aviso de "sin
+>    conexión" con el wifi colgado). Son lectura de código. **No arreglarlos a ciegas.**
+> 2. La lista 🔵 que queda más abajo (Corregir, la caja, el RUNBOOK del import).
+> 3. Los dos del crítico de completitud: `4-recuperar-venta.ps1` no sirve para una **devolución**,
+>    y `.env.example` ya no dice todas las llaves que producción necesita.
 >
 > **Antes de subir cualquier cosa:** `bash pruebas/correr.sh`, y sumarle un caso por cada hallazgo
-> que se arregle.
+> que se arregle. ⚠️ Si se toca `correr.sh`, comprobar que el banner `TODO PASO` siga saliendo —
+> el 23/ago una edición se comió el bloque que cuenta los fallos y la suite salía verde pasara lo
+> que pasara.
 >
-> ⚠️ **No arreglar a ciegas los hallazgos del front** (supervisor atrapado en Finalizados,
-> cronómetro que no se apaga, foto que se borra sola, aviso de "sin conexión"): **nadie los
-> reprodujo en un navegador**, son lectura de código. Reproducirlos primero.
->
-> ✅ **Ya no espera nada del dueño: las cinco preguntas se contestaron el 23/ago.** Ver la sección
-> "Lo que necesitaba tu palabra" más abajo. En corto: `Faros` se queda como está (nunca crea
-> unidad), la caja **no** parte servicios en dos cobros, "Devoluciones" cuenta sólo reembolsos con
-> las cancelaciones aparte, los avisos se van a poder marcar como atendidos, y el 19/jul no se
-> recongela.
-
+> ✅ **Ya no espera nada del dueño: las cinco preguntas se contestaron el 23/ago.** Ver "Lo que
+> necesitaba tu palabra" más abajo.
 
 > 🔑 **Lo que el pase adversarial cambió, y es la razón de tenerlo:** de **18 hallazgos marcados
 > `alta` por quien los encontró, sólo 2 sobrevivieron como altas** — y son el mismo bug visto desde
 > dos frentes distintos. **9 se refutaron por completo.** Sin este pase, dieciséis números inflados
 > habrían entrado a esta lista como urgentes.
 
-### 🔴 Lo único confirmado como ALTA — y por los cuatro refutadores que lo atacaron
+### ✅ HECHO el 23/ago/2026 — los tres del reporte del dueño (migración `131` + `docs/reporte.html`)
 
-1. **El reporte inventa las "Devoluciones": pinta 31 donde hubo 6.**
-   `docs/reporte.html:501` calcula `devoluciones = cancelados − borrados` en vez de leer
-   `r.devoluciones`, que el backend **ya entrega** desde la migración `120` (21/ago). La migración
-   arregló el backend y la pantalla nunca se actualizó.
-   - Medido: el 29/jul la tarjeta dice **18** y las devoluciones reales son **0** (los 18 son
-     cancelaciones a mano, `cancelado_motivo` nulo, ninguna con reembolso de Zettle detrás).
-     Histórico completo: pantalla **31**, real **6**. Un `grep` de `devoluciones` en todo `docs/`
-     da 4 líneas, las 4 en ese cálculo: `r.devoluciones` y `r.devoluciones_tras_entregar` no se
-     leen en ningún archivo del front.
-   - Se verificó contra la página **publicada** en GitHub Pages, no sólo contra el repo: idéntica
-     byte por byte.
-   - ⚠️ **Contradice lo que el `CLAUDE.md §11.15` ya da por hecho** (*"Ahora se cuentan las de
-     verdad"*). Es cierto del backend y falso de la pantalla, que es donde el dueño lee. Y el §13
-     define una devolución como *"una falla de servicio que se pagó con dinero para no perder al
-     cliente"*: está leyendo 31 fallas donde hubo 6.
-   - Arreglo: una línea. Es lo primero que hay que subir.
+1. ~~**El reporte inventa las "Devoluciones": pinta 31 donde hubo 6**~~ ✅ **CERRADO.** La tarjeta
+   ya lee `r.devoluciones` (6 en toda la historia) en vez de `cancelados − borrados` (31). Decisión
+   del dueño: las **25 cancelaciones a mano** salen en **su propia tarjeta**, con su nombre — no
+   desaparecen (la `083` pide que se puedan ver) pero dejan de disfrazarse de devolución.
+   - **Y de paso sale a la luz la devolución DESPUÉS de entregar**, que el §13 llama la falla de
+     servicio más cara y que hasta hoy era invisible: hay **1** en toda la historia y ahora se
+     anuncia en rojo, aparte, porque no se lee igual que una devolución de un carro que nunca salió.
+2. ~~**Las cuatro alertas del reporte se borran solas cuando el backend falla**~~ ✅ **CERRADO,
+   y con la clase completa.** `pedirJSON` de `docs/reporte.html` ya trae la guarda de la `105`
+   (`!r.ok` y `d.ok === false`), más `listaDe()` —una lista que no llegó **no** es una lista
+   vacía— y un mensaje visible: *"No se pudo comprobar X. Esto **no** quiere decir que no haya:
+   quiere decir que la consulta falló."*
+   - Se arregló en el ayudante, no en los seis sitios: como clase son seis líneas y el séptimo
+     consumidor nace igual la semana entrante.
+   - **Se le sumaron los otros dos consumidores de la misma clase** que la auditoría no nombró:
+     `cargarPlacas` (un 500 decía "no hay placas leídas") y `arrancar` (un 500 dejaba el selector
+     de días **vacío**, que se lee como "no hay ningún día con datos").
+3. ~~**El reporte es la única de las tres pantallas sin corte de tiempo**~~ ✅ **CERRADO.** 20 s,
+   igual que el supervisor y la caja. **El respaldo lleva su propio corte de 120 s**: son 11 tablas
+   y ~37,000 renglones, y a 20 s se abortaría una descarga que iba bien — un respaldo a medias es
+   peor que ninguno.
 
-### 🟠 La clase que se arregló ayer y dejó fuera a la tercera pantalla
+**Y dos más de la lista 🔵, que caían en la misma pantalla:**
 
-Tres frentes la reportaron por separado; **es un solo bug**.
+- ✅ **Los avisos del sistema se pueden marcar como atendidos** (migración `131`, decisión del
+  dueño). El primero que existió ya era falso: pedía autorizar un borrado de 176 fotos huérfanas
+  **que ya se había hecho**, y se iba a quedar una semana. No borra la fila y se puede deshacer.
+  > 🔑 **Una ocurrencia NUEVA reabre el aviso.** `anotar_aviso` deduplica por día, así que sin
+  > cuidado un aviso marcado a las 10 AM escondería el mismo fallo de las 6 PM. Atendido significa
+  > *"ya lo resolví"*, no *"no me lo vuelvas a decir"*.
+- ✅ **El titular de "Calidad de la entrega" ya cuadra con su tabla.** Decía 2 arriba y la tabla
+  sumaba 3. No era error de ninguno: el titular cuenta **eventos** y la tabla cuenta **personas**,
+  porque `rechazos` lleva una fila por secador a propósito. Faltaba decirlo, y ahora lo dice — sólo
+  cuando de verdad no cuadran.
 
-2. **Las cuatro alertas del reporte se borran solas cuando el backend falla.** Placas repetidas,
-   placas dudosas, fotos pendientes y avisos del sistema: un 500 se pinta **idéntico** a "no hay
-   nada que reportar". `pedirJSON` de `docs/reporte.html` es el único ayudante de las tres
-   pantallas **sin** la guarda de error que la `105` puso en las otras dos.
-3. **El reporte es la única de las tres pantallas sin corte de tiempo.** Una petición colgada la
-   deja en blanco para siempre, sin decir nada. El supervisor y la caja ya cortan a los 20 s.
+**Cómo se verificó, que es lo que la auditoría pidió:** **en el navegador**, no leyendo el código.
+Se ejercitó `pintarReporte` con los números reales (66 cancelados, 35 borrados, 6 devoluciones,
+1 tras entregar) y salió `Devoluciones 6` · `Cancelaciones a mano 25` · la alerta del carro ya
+entregado; se comprobó que con todo en cero **no se pinta la sección**; se forzó un **500** y las
+cuatro alertas pasaron de callar a decir *"No se pudo comprobar"*; se recorrió el botón
+*"Ya lo atendí"* completo (POST a `/aviso-atendido` con `{"id":14}`, la lista se refresca y el
+aviso desaparece); y se comprobó que el corte **aborta de verdad** (304 ms con `corteMs: 300`).
+
+> ⚠️ **Un error mío, anotado:** el bloque de comprobación de la `131` llama a `anotar_aviso`, que
+> **escribe** — y al aplicarla de verdad dejó un aviso `zz-prueba` visible en el panel del dueño.
+> O sea que la comprobación de que los avisos falsos se pueden apagar produjo un aviso falso. Se
+> neutralizó marcándolo atendido (con la función que esa misma migración crea) y el bloque ahora
+> borra su propia fila. **Regla que queda:** una comprobación que llama a algo que escribe tiene
+> que limpiar lo que escribió, o sólo puede vivir en el ensayo.
+>
+> 📌 **`docs/sw.js` NO se tocó, a propósito.** `reporte.html` no está en su lista de básicos y la
+> estrategia es red-primero, así que el cambio se ve al instante. Subirle la versión habría
+> purgado la copia sin conexión del supervisor a media operación sin ganar nada.
 
 ### ✅ Seguridad — HECHO el 23/ago/2026 (migración `128`)
 
@@ -168,11 +189,6 @@ Tres frentes la reportaron por separado; **es un solo bug**.
 
 ### 🔵 Lo demás que SIGUE pendiente, agrupado por consecuencia
 
-- **Un titular que no cuadra con su tabla** en "Calidad de la entrega": dice 2 rechazos, la tabla
-  de abajo suma 3.
-- **`anotar_aviso` no se puede apagar:** el reporte muestra ahora mismo una alerta pidiendo
-  autorizar el borrado de 176 fotos huérfanas **que ya se borraron anoche**. El primer aviso del
-  sistema que existe ya es falso.
 - **El canal de avisos se cableó a 2 de los ~80 `console.error`**, y no al modo de falla que lo
   motivó.
 - **Corregir de un carro que ya seca le vuelve a poner la hora a las asignaciones** aunque no se
