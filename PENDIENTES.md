@@ -6,6 +6,41 @@
 
 ---
 
+## 👉 POR DÓNDE RETOMAR — cierre del 24/ago/2026
+
+**Nada quedó a medias.** Repo limpio, 0 commits sin subir, suite en verde (19 grupos), y todo lo
+de hoy aplicado **y** desplegado: migraciones `132`–`136`, las cuatro Edge Functions y el front
+(supervisor + caja). El dueño pidió subirlo el mismo día sin esperar al corte.
+
+### Lo que hay que atender, en orden
+
+1. ⏳ **El export del ClientNoteTracker.** El dueño lo manda **al finalizar el día**. Con eso corre
+   el **import definitivo**: borrón y cuenta nueva del CRM completo.
+   > ✅ **Ya no queda ninguna decisión pendiente** — las seis están contestadas y escritas en
+   > `scripts/importar-clientnotetracker/RUNBOOK.md §4`: sin renombres, ligado por ticket, las dos
+   > reglas de placa, los lavados dobles se revisan juntos, la actividad de caja se borra y las
+   > `bak_*` se conservan.
+   > ⚠️ **Releer §3.1 antes de correrlo:** la zona horaria del export se **mide** contra Zettle, no
+   > se lee del PDF.
+
+2. 👀 **La firma de Zettle está en SOMBRA.** Al cierre del 24/ago: **16 ventas reales procesadas,
+   16 firmas cuadradas, 0 desacuerdos** (más los 213 avisos históricos).
+   > **Cuándo pasar a rechazar:** cuando lleve varios días con **cero** avisos
+   > `zettle-webhook / firma_no_cuadra` y volumen normal. Se comprueba con
+   > `bash scripts/comprobar-firma-zettle.sh`. Al hacerlo se quitan las dos cosas marcadas
+   > `⏳ TEMPORAL` en `zettle-webhook/index.ts`.
+   > 🔑 Y el cero significa *cuadran todas*, no *no se comprueba*: se verificó que el detector
+   > detecta, mandando una firma corrompida a propósito.
+
+3. 🆕 **"No asignar a cliente" (migración `136`) está publicado y sin uso todavía.** Vale
+   preguntarle al dueño en unos días si la cajera lo está usando — la app de la caja ya lleva
+   tres periodos reportada como no usada, así que el hábito es la incógnita, no el código.
+
+4. 🔵 **Lo que sigue abierto de la auditoría:** nada. Los 6 priorizados, la lista 🔵 completa y los
+   dos del crítico de completitud están cerrados (ver abajo).
+
+---
+
 ## 🔍 AUDITORÍA GENERAL del 21–22/ago/2026 — 79 hallazgos, 68 veredictos de refutación
 
 Corrida con `Workflow`: 11 frentes en paralelo, **cada hallazgo atacado por refutadores
