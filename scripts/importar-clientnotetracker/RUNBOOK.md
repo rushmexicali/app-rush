@@ -303,22 +303,38 @@ delete from public.persona_placas;
 delete from public.personas;         -- SIN where: idem
 
 -- 2) El andamio de la corrida anterior
-drop table if exists public.stg_cnt, public.stg_names, public.stg_padron;
+drop table if exists public.stg_names, public.stg_padron;
 drop table if exists public.ren_cand, public.ren_cand_ticket_0815,
                      public.ren_cand_ticket_descartado, public.ren_desaparecen,
                      public.ren_esqueleto, public.ren_nuevas, public.ren_prefijo;
-drop table if exists public.imp_ligado_conflictos;
 
+-- ⛔ `imp_ligado_conflictos` NO se dropea. `ligar_visitas_de_import()` le hace
+--    `delete` al empezar pero NO la crea: sin la tabla, el import entero truena.
+--    Se limpia sola, asi que dropearla no gana nada y cuesta el import.
+-- ⛔ `stg_cnt` tampoco, si ya viene cargada con el export nuevo: es el staging
+--    que se esta por importar. Se recrea en el paso 3.4, no aqui.
 -- ⛔ Las `bak_*` NO aparecen aqui a proposito: se conservan (dueno, 24/ago).
 --    Si el import definitivo sale mal, son lo unico que queda del CRM viejo.
 ```
+
+> 🔴 **El `drop table if exists public.imp_ligado_conflictos` estuvo escrito aqui hasta el
+> 24/ago/2026, y habria tumbado el import completo.** Es la misma forma de falla que la migracion
+> `114` produjo el 19/ago (§4e): un `do $$` sin manejador que revienta y no deja entrar **ni una**
+> visita. Se encontro leyendo `pg_get_functiondef('ligar_visitas_de_import()')` **antes** de correr
+> el reset, no ejecutandolo. 👉 **Antes de dropear una tabla de andamio, comprueba quien la lee.**
 
 ⚠️ **`visitas` tiene `carro_id`, y borrarlas NO toca los carros.** Es un enlace, no el carro: el
 lavado, sus tiempos y su foto siguen igual. Lo que se pierde es *de quién era*, que es justo lo
 que se va a reconstruir.
 
-Luego rehacer los pasos **3.1–3.7** con el PDF nuevo y el jalón de Zettle nuevo.
-`import.sql` hace su propio `delete where caja='import'` al inicio, así que re-correrlo es seguro.
+Luego rehacer los pasos **3.1–3.7** con el PDF nuevo y el jalón de Zettle nuevo, **con
+`limpiar-tickets.sql` entre el 3.4 y el 3.6** (§4d).
+
+> 💡 **Lo que funcionó el 24/ago y conviene repetir: cargar el staging ANTES de borrar, y mandar el
+> borrado y el import en UNA sola petición.** La API de administración corre cada petición en una
+> transacción implícita, así que si el import truena el borrado se revierte solo — y el CRM nunca
+> se queda vacío entre dos peticiones. Ensayarlo antes es gratis: el mismo archivo con un
+> `raise exception` al final da los números finales sin escribir nada.
 
 ### 🚩 EN LA CORRIDA FINAL **NO HAY RENOMBRES** (decisión del dueño, 24/ago/2026)
 
@@ -526,6 +542,18 @@ vez, y los dos en silencio:
 el ticket `26258` quedó en dos visitas; **Zettle desempata por fecha** (era del 8/ago, así que era
 de Leonel Gallardo, no de Arturo Coronel, cuya nota es del 7/ago) — al otro se le quita el ticket
 **y el monto**, si no se cuenta el mismo dinero dos veces.
+
+✅ **Desde el 24/ago/2026 esto ya es un script: `limpiar-tickets.sql`.** Hace los tres cotejos y
+resuelve cada uno con la misma regla —se descarta el **ticket**, nunca la visita— y revienta si al
+terminar queda algún ticket repetido. Es **idempotente** (correrlo dos veces reporta 0/0/0), así
+que se corre siempre, sin decidir nada a mano. En el reset del 24/ago quitó **443** marcadores
+`0`–`5`, **70** números que Zettle no tiene y **190** repetidos.
+
+⚠️ **El orden importa y está fijado adentro:** los repetidos se resuelven **al final**. Si (C)
+corriera primero, los 281 marcadores `1` se pelearían entre sí y 280 saldrían "perdedores" de un
+desempate que no significa nada.
+
+Las consultas de abajo siguen sirviendo para **mirar** qué va a pasar antes de aplicarlo:
 
 Correr **antes** del import:
 

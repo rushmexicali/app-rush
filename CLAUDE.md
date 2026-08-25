@@ -789,6 +789,103 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 11.05 Borrón y cuenta nueva: el CRM se reconstruyó desde cero (24/ago/2026)
+
+El dueño mandó el export **completo** del ClientNoteTracker (18/ago/2025 → 24/ago/2026) y pidió el
+reset que llevaba pedido desde el 21/ago: *"Desligar todas las placas de los clientes. Borrar todos
+los clientes, y armarla desde 0 con este nuevo import."* Se hizo entero. **No se tocó ni un dato de
+la operación.**
+
+| | Antes | Después |
+|---|---|---|
+| Visitas | 15,073 | **15,340** |
+| Clientes | 4,957 | **4,991** |
+| Lavados ligados a su carro | 2,240 | **2,523** |
+| Placas ligadas a un cliente | 223 (216 confirmadas) | **273, todas corroboradas** |
+| Gratis a honrar | 240 en 239 personas | **237 en 235** |
+| Gasto conciliado | — | **$3,358,699.94** |
+
+- **El borrado fue sin `where`**: se fueron también las 23 visitas y las 2 personas de la caja
+  (*"todo lo que se ha hecho de caja es prueba meramente"*). Las 20 tablas `bak_*` se conservaron,
+  y se les sumaron las de este día.
+- **Cero renombres**, por decisión del dueño: en un borrón no hay un "antes" contra el cual diferir,
+  así que el padrón del export **es** la verdad. No se corrió `diff-renombres.sql`.
+- **Cero conflictos de ligado.** `imp_ligado_conflictos` quedó vacía, así que los *"lavados dobles
+  que revisamos juntos"* no existieron esta vez. No es suerte: los tickets repetidos se resolvieron
+  **antes** de importar (ver abajo), así que ninguna visita llegó a pelearse un carro.
+
+### 🔑 El método que hay que repetir: cargar antes, borrar y reconstruir en UNA petición
+
+El staging se cargó y se limpió **antes** de borrar nada. Después, el borrado y el import se
+mandaron **juntos en una sola petición** — la API de administración corre cada petición en una
+transacción implícita, así que si el import hubiera tronado el borrado se revertía solo, y el CRM
+nunca estuvo vacío entre dos llamadas. Los dos pasos se ensayaron antes con un `raise exception` al
+final, que da los números finales sin escribir nada.
+
+**Los cotejos, todos antes de escribir:**
+
+- **La zona horaria se midió, no se leyó.** El encabezado decía `America/Tijuana`, pero eso sale del
+  teléfono del dueño y ya mintió una vez (§11.25). Medido contra Zettle sobre 2,647 notas: **0 o −1
+  minuto** (el −1 es que el CNT guarda minutos y Zettle segundos). El cotejo gratis también cuadró:
+  **0 notas después de las 8 PM**, salvo 45 del 18/ago/2025, el día en que se sembró el CNT.
+- **Cotejo mes por mes, los 13 meses exactos** contra el texto del export. 15,340 = 15,340.
+- La suite completa (`pruebas/correr.sh`) pasó después, con su banner `TODO PASO`.
+
+### 🔴 Dos minas encontradas leyendo, no ejecutando
+
+1. **El RUNBOOK mandaba `drop table if exists public.imp_ligado_conflictos` — y eso habría tumbado
+   el import completo.** `ligar_visitas_de_import()` le hace `delete` al empezar pero **no la
+   crea**: sin la tabla, el `do $$` revienta y no entra **ni una** visita. Es palabra por palabra la
+   forma de falla que la migración `114` produjo el 19/ago y que dejó el CRM muerto cinco días
+   (§11.25). Se encontró pidiéndole a Postgres la definición de la función antes de correr el reset.
+   👉 **Antes de dropear una tabla de andamio, comprueba quién la lee.**
+2. **`grep "^Name:"` pierde 407 visitas en este PDF y no se queja.** El export trae **2,046
+   páginas** y `pdftotext` mete un salto de página **pegado** a la primera línea `Name:` de cada
+   una. `staging.awk` las agarra porque busca `Name:` **sin anclar** — pero cualquier consulta nueva
+   que ancle al inicio de línea cuenta de menos con cara de estar completa.
+
+### Los tickets basura ya son un script, no una decisión a mano
+
+El §4d del RUNBOOK eran tres consultas que alguien tenía que mirar y resolver de memoria. Ahora es
+`limpiar-tickets.sql`, idempotente y con la regla escrita en el archivo: **se descarta el TICKET,
+nunca la visita** — el cliente vino de verdad y quitarle la visita le quita un sello que se ganó.
+Quitó:
+
+| | | |
+|---|---|---|
+| **443** | marcadores `0`–`5` | El `1` aparece **281 veces en 80 días distintos**. Un número de venta es único; esto es la cajera poniendo un relleno |
+| **70** | números que Zettle no tiene | Ceros a la izquierda (`02373`), cifras fuera de rango (`164501`, con cara de teléfono) y los que Zettle **todavía no emite** (`27943`) — éstos son una **mina con fecha**: el día que Zettle llegue a ese número, el dedup de un import futuro descarta la visita buena creyéndola repetida |
+| **190** | repetidos dentro del export | Zettle desempata por hora: gana la nota más cercana a la venta |
+
+⚠️ **El orden está fijado adentro y no es cosmético:** los repetidos se resuelven **al final**. Si
+corrieran primero, los 281 marcadores `1` se pelearían entre sí y 280 saldrían "perdedores" de un
+desempate que no significa nada.
+
+Costo aceptado: **$29,812 de gasto quedaron sin atribuir** (de $3,388,512 a $3,358,700). Ese dinero
+estaba pegado a la venta de **otra** persona; dejarlo era contar el mismo pago dos veces.
+
+### El respaldo, que ahora sí se puede hacer desde aquí
+
+El RUNBOOK mandaba bajar `/respaldo` antes del reset, y eso era **un botón en la página del dueño**:
+no se podía hacer desde una sesión de trabajo, o sea que el paso previo a la operación más
+destructiva del proyecto dependía de que alguien abriera el navegador. Ahora es
+`scripts/bajar-respaldo.sh`. Bajó **39,095 renglones, 24 MB, las 11 tablas cuadrando con el
+manifiesto**, más los `bak_*_0824` dentro de la base.
+
+> ⚠️ **Se escribió mal a la primera y falló en las 11 tablas**, por una trampa del formato que vale
+> anotar: en el **manifiesto** `filas` es un número, pero en una **página** `filas` es el **arreglo
+> de renglones** — el conteo viene en `n` y el cursor en `siguiente`. Lo bueno es que falló
+> ruidosamente (0 de 3,081) en vez de bajar de menos y verse completo, que es el modo de falla que
+> §11.20 describe como el que de verdad importa.
+
+### Lo que quedó fuera, dicho de frente
+
+- **15 fichas del padrón no tienen una sola nota** y por eso no son personas hoy (`aejandra mora`,
+  `LUISG ERARD OR OM ERO`, `josw alcacer`…). Son nombres tecleados mal y abandonados: sin visitas no
+  hay lealtad que preservar. Si el cliente vuelve, la caja lo da de alta.
+- El padrón trae 5,118 nombres y quedaron 4,991 personas: 15 sin notas y **112 que colapsan al
+  normalizar** (dos fichas con el mismo nombre se funden, regla de siempre).
+
 ## 11.10 La auditoría con refutadores, resuelta en un día (23/ago/2026, migraciones `128`–`131`)
 
 Los seis puntos priorizados de la auditoría del 21–22/ago, más cuatro de la lista menor. El dueño
