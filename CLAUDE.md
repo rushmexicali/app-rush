@@ -789,6 +789,133 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 11.03 Cierre del 19–24/ago/2026 — seis días, 452 lavados: el taller bien, la captura se aflojó el viernes
+
+Primer cierre de operación desde el del 17–18/ago (§11.60). **452 lavados en seis días**, todos
+entregados. Lo operativo está limpio; lo que hay que leer es un solo día malo de captura y que dos
+señales viejas siguen exactamente donde estaban.
+
+| Día | | Lavados | Espera | Secado | Encimados | Afectados por olvido |
+|---|---|---|---|---|---|---|
+| 19/ago | Miércoles | 71 | 37.8 | 28.1 | 20 (28%) | 2 (3%) |
+| 20/ago | Jueves | 28 | 45.7 | 31.5 | 1 (4%) | 0 |
+| **21/ago** | **Viernes** | **96** | **54.6** | **43.0** | 46 (48%) | **19 (20%)** |
+| 22/ago | Sábado | **112** | 46.6 | 35.3 | 58 (52%) | 6 (5%) |
+| 23/ago | Domingo | 72 | 53.5 | 40.7 | 33 (46%) | 9 (12%) |
+| 24/ago | Lunes | 73 | 47.4 | 34.9 | 29 (40%) | 4 (5%) |
+
+> El **20/ago con 28 lavados ya está explicado** por el dueño (§11.25): *"día nublado, no hubo casi
+> trabajo"*. No es la app. Sus promedios salen de muy poca muestra y no se comparan contra un día
+> de 112.
+
+### 🟠 El 21/ago: el día más lento del periodo es en buena parte captura
+
+19 de 96 carros afectados (20%): 8 con secado menor a 3 minutos, 9 con más de 75, y 2 cerrados
+automáticamente. Quitándolos:
+
+```
+espera  54.6 -> 49.6 min      secado  43.0 -> 36.8 min
+```
+
+O sea que **6 de los 43 minutos de "secado" de ese día son un carro olvidado y entregado de golpe**,
+no trabajo. Es el mismo patrón del 6/ago y del 11/ago (§11.75). El 23/ago repite en chico (9 de 73,
+secado 40.7 → 35.6). Los otros cuatro días la distorsión es de 0 a 1.9 min, o sea que **los tiempos
+son taller, no captura** — salvo esos dos.
+
+### ✅ Higiene operativa: el mejor renglón del periodo
+
+- **0 rechazos, 0 devoluciones** en los seis días.
+- **Línea 1 impecable:** 138 express, **138 en la línea 1**, 0 no-express adentro, y **0 carros que
+  nunca se asignaron**.
+- **0 placas repetidas** (`placas_repetidas_del_rango`), cuarto periodo seguido en cero.
+- **El obrero de relectura (`104`) está al día:** 0 fotos pendientes, 0 que se rindieron, y **0
+  avisos del sistema sin atender**. Nada del apagón del 17/ago se repitió: `foto sin intento de
+  lectura` es **0 los seis días**.
+- Sólo **3 borrados de supervisor** (1 el 21, 2 el 23) y 2 tiempos imposibles descartados.
+
+### 🔵 El candado de placa duplicada trabajó 14 veces
+
+Atajó **14 escrituras** que se iban a pegar al carro equivocado (1 · 0 · **6** · 1 · 4 · 2), contra
+5 en el periodo del 15–16/ago. **Seis de ellas el 21/ago**, el mismo día del bache de captura — las
+dos cosas huelen al mismo turno apurado.
+
+Varias se ven mal pegadas a simple vista porque **el color de la nota no cuadra**: el carro 2722
+(`GRIS`) traía la placa del 2723, que es un Volvo XC40 **blanco**; el 3153 (`AMARILLO`) la del 3156,
+un Honda Civic **gris**. La nota de la cajera vuelve a ser el testigo independiente (§12.1).
+
+> ⚠️ **Y el carro atajado se queda sin placa, sin marca y sin submarca — eso es correcto, no un
+> bug.** Los tres campos salen de **la misma foto**; si la foto es sospechosa, todo lo que dice lo
+> es. Escribir la marca "porque es otro campo" sería pegarle al carro los datos de otro.
+
+### Calidad de datos
+
+| Día | Nota de caja | Foto | Placa leída | Marca | Submarca |
+|---|---|---|---|---|---|
+| 19/ago | 70/72 (97%) | 100% | 55 (**76%**) | 96% | 82% |
+| 20/ago | 27/28 (96%) | 100% | 27 (96%) | 100% | 89% |
+| 21/ago | 92/96 (96%) | 100% | 77 (80%) | 92% | 81% |
+| 22/ago | 110/112 (98%) | 99% | 100 (89%) | 97% | 81% |
+| 23/ago | 73/73 (**100%**) | 100% | 62 (85%) | 92% | 88% |
+| 24/ago | 73/73 (**100%**) | 97% | 67 (92%) | 95% | 85% |
+
+🟠 **El 76% de placa del 19/ago es el más bajo, y NO es la foto.** De los 63 carros del periodo con
+foto y sin placa, **45 sí sacaron marca de esa misma foto** — o sea que la imagen servía y lo que no
+se dejó leer fue la placa. Por tipo: 21 camionetas y 17 pickups contra 24 automóviles, consistente
+con lo que dijo el dueño de las pickups grandes (§11.70), aunque los automóviles ya no son
+despreciables.
+
+### Analítica por persona — los seis días juntos
+
+Completos (con aspirado), una persona:
+
+| Persona | Carros | Secado | Encimados |
+|---|---|---|---|
+| Jesús Gil | 52 | 43.8 | 30 (58%) |
+| Pablo Cruz | 47 | 44.3 | 27 (57%) |
+| Edgar Reyes | 43 | **37.1** | 14 (33%) |
+| Mario Hernández | 34 | 40.3 | 11 (32%) |
+| Walter Rodríguez | 31 | 53.1 | 19 (**61%**) |
+| Jaime Gallegos | 26 | 45.1 | 10 (38%) |
+| Jorge Luna | 22 | 48.1 | 9 (41%) |
+| Luis Chávez | 18 | 39.1 | 5 (28%) |
+| Luis Luna | 16 | **55.6** | 8 (50%) |
+| José Cruz | 10 | 47.7 | 2 (**20%**) |
+| Saul de Anda | 7 | **30.2** | 0 (**0%**) |
+
+Express: **Saul Ramirez 48 carros a 15.9 min con sólo 19% de encimados** — la línea 1 vuelve a ser
+suya y es el mejor dato del periodo. Después Walter Rodríguez 28 a 18.6, Jesús Gil 16 a 19.2, Pablo
+Cruz 10 a 20.4, Edgar Reyes 8 a 13.7.
+
+**Cómo leerla:**
+- 🔴 **Luis Luna, quinto periodo seguido como el más lento** (55.6 min) con apenas 50% de encimados.
+  Ya no hay forma de atribuirlo a la carga: es la señal más consistente que ha dado este proyecto y
+  la que más vale preguntar en el taller.
+- 🔴 **José Cruz es la misma señal en chico:** 47.7 min con **20%** de encimados, el segundo más bajo
+  de saturación. Lento sin nada que lo explique.
+- **Walter Rodríguez se movió a completos y ahí sale en 53.1 min, pero con 61% de encimados** — la
+  saturación más alta de todos. Su número no se lee igual que el de Luis Luna: a él sí le entraban
+  carros encima. En express sigue bien (18.6).
+- **Edgar Reyes, tercer periodo seguido como el mejor dato limpio:** 43 carros a 37.1 min con 33%.
+- **Luis Chávez se recuperó** (39.1 con 28%), después del 46.6 sin saturación del 15–16/ago que
+  quedó marcado como señal a vigilar. Ya no hay nada que preguntar ahí.
+- ✅ **Jaime Gallegos (38%) y Jorge Luna (41%) salen con saturación normal**, que es la confirmación
+  en operación real del arreglo de la migración `105` (§11.50): sus "100% de encimados" de 15 días
+  seguidos eran dos carros cancelados del 24/jul envenenando el contador.
+
+**Horas:** el viernes 21 tuvo **tres picos** (11 carros a las 8, 14 a las 12, 13 a las 17) y el
+sábado 22 fue plano con el pico a la 1 PM (17). Sigue mandando el día de la semana sobre la hora.
+
+### 🟠 Lo que sigue igual, sin novedad
+
+- **El rechazo de entrega lleva 34 días sin un solo uso** (desde el 21/jul). El dueño ya avisó
+  (§11.30) que es raro que se rechace y que no le sorprende; la salida *"← No, sí quedó bien"* se
+  puso el 19/ago para que el cero no fuera culpa de la pantalla. Sigue en cero.
+- **La caja nueva sigue sin usarse.** Medido por el retraso de la foto: la mediana es **11.3 min**
+  después del cobro, o sea el supervisor al asignar. Sólo **6 fotos** de las ~450 llegaron en menos
+  de 2 minutos. Se vendieron **50 lavados gratis** (46 de ellos `6to`) en seis días.
+- ✅ **`6to Express`: 0 casos nuevos** en el periodo. El hallazgo sigue abierto (§11.75 punto 1) pero
+  no se disparó.
+
 ## 11.05 Borrón y cuenta nueva: el CRM se reconstruyó desde cero (24/ago/2026)
 
 El dueño mandó el export **completo** del ClientNoteTracker (18/ago/2025 → 24/ago/2026) y pidió el
