@@ -47,24 +47,37 @@ begin
   get diagnostics b = row_count;
 
   -- (C) El mismo ticket en dos notas del MISMO export. Zettle desempata por
-  --     fecha: gana la nota mas cercana a la hora de la venta; la otra pierde
-  --     ticket y monto, pero sigue siendo visita.
-  --     ⚠️ Esto tiene que correr DESPUES de (A) y (B), o los 281 marcadores
-  --     `1` se pelearian entre si y 280 de ellos saldrian "perdedores" de un
-  --     desempate que no significa nada.
-  with d as (
-    select s.ctid as fila,
-           row_number() over (
+  --     hora: gana la nota mas cercana a la venta; la otra pierde ticket y
+  --     monto, pero SIGUE siendo visita.
+  --
+  --     ⚠️ Corre DESPUES de (A) y (B), o los 281 marcadores `1` se pelearian
+  --     entre si y 280 saldrian "perdedores" de un desempate sin sentido.
+  --
+  --     🔑 SI EL EMPATE ES EXACTO, NO GANA NADIE. Pasa cuando dos clientes
+  --     distintos traen el mismo ticket en el MISMO minuto (una ficha partida:
+  --     la cajera anoto la misma visita con dos nombres). Ahi Zettle no aporta
+  --     ninguna evidencia, y adivinar al 50% deja escrito como hecho algo que
+  --     no lo es: se le quita el ticket a los dos y el lavado se queda sin
+  --     dueno. Es la regla del §11.35 del CLAUDE.md, y ademas es lo unico
+  --     reproducible — hasta el 24/ago/2026 el ganador salia del orden fisico
+  --     de las filas y dos corridas del mismo export daban resultados
+  --     distintos (12 filas de 15,340 bailaban).
+  with r as (
+    select s.ctid as fila, s.ticket,
+           rank() over (
              partition by s.ticket
              order by abs(extract(epoch from (
-                       (s.dt_local::timestamp at time zone coalesce(s.tz,'America/Tijuana')) - zh.hora))) asc,
-                      s.dt_local asc) rn
+                       (s.dt_local::timestamp at time zone coalesce(s.tz,'America/Tijuana')) - zh.hora)))) rk
     from public.stg_cnt s join zh on zh.n::text = s.ticket
     where s.ticket is not null
       and s.ticket in (select ticket from public.stg_cnt where ticket is not null
-                       group by ticket having count(*) > 1))
+                       group by ticket having count(*) > 1)),
+  con_ganador as (
+    select ticket from r where rk = 1 group by ticket having count(*) = 1)
   update public.stg_cnt s set ticket = null, monto_cent = null
-  from d where d.fila = s.ctid and d.rn > 1;
+  from r
+  where r.fila = s.ctid
+    and (r.rk > 1 or r.ticket not in (select ticket from con_ganador));
   get diagnostics c = row_count;
 
   select count(*) into quedan from (

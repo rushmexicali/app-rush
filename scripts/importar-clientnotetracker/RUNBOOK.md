@@ -81,6 +81,38 @@ Estos archivos: `staging.awk`, `import.sql`, este RUNBOOK.
 
 ---
 
+## 2-bis. El camino corto (24/ago/2026) — tres comandos
+
+Los pasos 3.1–3.7 y el §4 se derivaron a mano tres veces antes de que alguien los escribiera. Ya
+están escritos, y **los tres scripts hacen exactamente lo que dice el resto de este archivo**:
+
+```bash
+# 1. PDF -> texto, Zettle, staging y lotes. SOLO LECTURA, no toca nada.
+bash scripts/importar-clientnotetracker/preparar-import.sh <export.pdf> <carpeta>
+
+# 2. Carga stg_cnt, la cuadra contra el archivo, MIDE la zona horaria contra
+#    Zettle y limpia los tickets. Toca stg_cnt y NADA del CRM.
+bash scripts/importar-clientnotetracker/cargar-staging.sh <carpeta>
+
+# 3. El reset. Ensayalo primero (ver su encabezado: un raise exception y listo).
+bash scripts/releer-fotos/q.sh scripts/importar-clientnotetracker/reset-total.sql
+```
+
+**El orden no es casual: los dos primeros no tocan el CRM.** Cuando se llega al 3, el staging ya
+está cargado, medido y limpio, así que el borrado y el import van juntos en una sola petición y el
+CRM no pasa ni un segundo vacío. Y antes del 3, siempre:
+
+```bash
+bash scripts/bajar-respaldo.sh "C:/Users/luis_/Desktop/respaldo-rush-AAAA-MM-DD"
+```
+
+> Para un import **incremental** (lo normal en vivo) se usan los mismos 1 y 2, pero en vez del
+> reset se corre `import-incremental.sql` (§4b). El paso 2 sirve igual: la medición de la zona y la
+> limpieza de tickets hacen falta en las dos rutas.
+
+El resto de este archivo explica **por qué** cada paso hace lo que hace. Se lee cuando algo no
+cuadra, que es cuando de verdad importa.
+
 ## 3. Pasos
 
 Sea `$W` una carpeta de trabajo. Todo intermedio vive ahí.
@@ -547,7 +579,7 @@ de Leonel Gallardo, no de Arturo Coronel, cuya nota es del 7/ago) — al otro se
 resuelve cada uno con la misma regla —se descarta el **ticket**, nunca la visita— y revienta si al
 terminar queda algún ticket repetido. Es **idempotente** (correrlo dos veces reporta 0/0/0), así
 que se corre siempre, sin decidir nada a mano. En el reset del 24/ago quitó **443** marcadores
-`0`–`5`, **70** números que Zettle no tiene y **190** repetidos.
+`0`–`5`, **70** números que Zettle no tiene y **196** repetidos (los 6 empates exactos se quedan sin dueño: nadie conserva el ticket).
 
 ⚠️ **El orden importa y está fijado adentro:** los repetidos se resuelven **al final**. Si (C)
 corriera primero, los 281 marcadores `1` se pelearían entre sí y 280 saldrían "perdedores" de un

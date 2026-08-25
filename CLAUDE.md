@@ -800,10 +800,10 @@ la operación.**
 |---|---|---|
 | Visitas | 15,073 | **15,340** |
 | Clientes | 4,957 | **4,991** |
-| Lavados ligados a su carro | 2,240 | **2,523** |
+| Lavados ligados a su carro | 2,240 | **2,521** |
 | Placas ligadas a un cliente | 223 (216 confirmadas) | **273, todas corroboradas** |
 | Gratis a honrar | 240 en 239 personas | **237 en 235** |
-| Gasto conciliado | — | **$3,358,699.94** |
+| Gasto conciliado | — | **$3,357,349.94** |
 
 - **El borrado fue sin `where`**: se fueron también las 23 visitas y las 2 personas de la caja
   (*"todo lo que se ha hecho de caja es prueba meramente"*). Las 20 tablas `bak_*` se conservaron,
@@ -855,13 +855,13 @@ Quitó:
 |---|---|---|
 | **443** | marcadores `0`–`5` | El `1` aparece **281 veces en 80 días distintos**. Un número de venta es único; esto es la cajera poniendo un relleno |
 | **70** | números que Zettle no tiene | Ceros a la izquierda (`02373`), cifras fuera de rango (`164501`, con cara de teléfono) y los que Zettle **todavía no emite** (`27943`) — éstos son una **mina con fecha**: el día que Zettle llegue a ese número, el dedup de un import futuro descarta la visita buena creyéndola repetida |
-| **190** | repetidos dentro del export | Zettle desempata por hora: gana la nota más cercana a la venta |
+| **196** | repetidos dentro del export | Zettle desempata por hora: gana la nota más cercana a la venta. Si el empate es **exacto**, no gana nadie (ver abajo) |
 
 ⚠️ **El orden está fijado adentro y no es cosmético:** los repetidos se resuelven **al final**. Si
 corrieran primero, los 281 marcadores `1` se pelearían entre sí y 280 saldrían "perdedores" de un
 desempate que no significa nada.
 
-Costo aceptado: **$29,812 de gasto quedaron sin atribuir** (de $3,388,512 a $3,358,700). Ese dinero
+Costo aceptado: **$31,162 de gasto quedaron sin atribuir** (de $3,388,512 a $3,357,350). Ese dinero
 estaba pegado a la venta de **otra** persona; dejarlo era contar el mismo pago dos veces.
 
 ### El respaldo, que ahora sí se puede hacer desde aquí
@@ -885,6 +885,51 @@ manifiesto**, más los `bak_*_0824` dentro de la base.
   hay lealtad que preservar. Si el cliente vuelve, la caja lo da de alta.
 - El padrón trae 5,118 nombres y quedaron 4,991 personas: 15 sin notas y **112 que colapsan al
   normalizar** (dos fichas con el mismo nombre se funden, regla de siempre).
+
+
+### 🔴 El desempate no era reproducible, y se cachó escribiendo el script
+
+Al convertir los andamios de la corrida en scripts del repo, se corrió el pipeline **otra vez sobre
+el mismo PDF** y se comparó contra el staging que de verdad se importó. **12 filas de 15,340 salían
+distintas.** No era aleatoriedad del import: eran **empates exactos** en el desempate de tickets
+repetidos — dos clientes distintos con **el mismo ticket en el mismo minuto**, así que la distancia
+a la venta de Zettle empataba y el ganador salía del **orden físico de las filas**.
+
+Son fichas partidas: la cajera anotó la misma visita con dos nombres (`FRANCISCO JAVIER ZAPATA
+SANCHEZ` / `Francisco Zapata`, `osvaldo valdivia` / `OSWALDO VILLELA`).
+
+El primer arreglo fue desempatar por nombre — determinista, pero **una moneda al aire con reglas**.
+El correcto ya estaba escrito en este archivo (§11.35): **donde no hay evidencia, el lavado se queda
+sin dueño.** Si el empate es exacto, Zettle no aporta nada, y adivinar al 50% deja escrito como
+hecho algo que no lo es. Ahora **nadie** se queda el ticket.
+
+Con la regla buena los empates exactos resultaron ser **6**, no 3 — tres coincidían por casualidad.
+Se alinearon las 6 visitas en el CRM: perdieron ticket y monto (**$1,350**), y **2 de ellas estaban
+ligadas a un carro**, o sea que dos lavados estaban acreditados a un cliente que podía no ser el
+suyo. Ésa es la parte que importa: el dinero se puede reponer, el historial de placas de otra
+persona no.
+
+> 💡 **La lección de método: el script no sólo ahorra trabajo, es el que encuentra el bug.** Hacerlo
+> a mano una vez no revela que el resultado no sea reproducible; correrlo dos veces y comparar, sí.
+
+### Los tres comandos, para que la próxima no se derive de nuevo
+
+Todo el procedimiento vive ahora en `scripts/importar-clientnotetracker/` (RUNBOOK §2-bis):
+
+| | Qué hace | Qué toca |
+|---|---|---|
+| `preparar-import.sh <pdf> <carpeta>` | PDF → texto, Zettle de las dos fuentes, staging y lotes | **nada**, sólo lee |
+| `cargar-staging.sh <carpeta>` | Carga `stg_cnt`, la cuadra contra el archivo, **mide** la zona horaria y limpia tickets | sólo `stg_cnt` |
+| `reset-total.sql` | Borrado + import, en una sola transacción | el CRM |
+
+**El orden importa:** los dos primeros no tocan el CRM, así que cuando se llega al tercero el
+staging ya está cargado, medido y limpio — y el CRM no pasa ni un segundo vacío. Verificado: el
+pipeline reproduce los archivos **byte por byte** y los mismos 15,340 / 14,518 / $3,357,349.94.
+
+> ⚠️ **Después del import, `stg_cnt` y `visitas` NO son idénticas, y está bien.** Las **cortesías**
+> entran con `es_gratis=true` y `ligar_visitas_de_import()` las reclasifica a `es_cortesia=true` +
+> `es_gratis=false`. El 24/ago fueron 11 filas. Ésa es la única diferencia legítima; cualquier otra
+> sí es un problema.
 
 ## 11.10 La auditoría con refutadores, resuelta en un día (23/ago/2026, migraciones `128`–`131`)
 
