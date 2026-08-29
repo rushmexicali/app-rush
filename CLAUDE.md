@@ -861,9 +861,63 @@ lleva `where`.
 > la cajera deja de llenarlo, el reset borra datos reales que no vuelven. Por eso el reset ahora
 > reporta `CAJA se borraron N visitas; M sin respaldo en el CNT` — se calcula **antes** del borrado,
 > que es la única ventana en que se puede. Es **aviso, no candado**: una visita registrada después
-> del corte del export cae ahí de forma legítima (el 28/ago las 16 salieron así, porque el staging
-> cargado sólo llegaba al 27). Lo que hay que vigilar es que esa M sea ~0 **después** de cargar un
-> export que ya cubra esos días.
+> del corte del export cae ahí de forma legítima. Lo que hay que vigilar es que esa M sea ~0
+> **después** de cargar un export que ya cubra esos días.
+
+### 🔴 Y ese aviso cachó un bug en su PRIMER uso: el parser perdía tickets en silencio
+
+Esa misma noche llegó el export completo (2,075 páginas, 15,568 notas) y el aviso salió en
+**1 de 16**: la visita de `jorge Alberto Flores figueroa` no tenía respaldo. Investigándola —en vez
+de encogerse de hombros con un 1 de 16— resultó que **la nota sí estaba en el CNT y el ticket sí
+estaba escrito**; lo que fallaba era `staging.awk`.
+
+La guardia era el literal **`Ticket:`**, con dos puntos y esa capitalización exacta. Las dos líneas
+que extraen el número ya normalizaban mayúsculas, así que **el único punto roto era la guardia**:
+
+```
+Ticke26179      Ticket26121     TickeT 23163     TIcket:19158
+Ticket 21019    Ticket !11349   TicketGRATIS10849    27860   ← a secas
+```
+
+**23 tickets del export se perdían así, en cada import, desde siempre.** Y callando: la visita
+entraba sin ticket, sin monto y sin ligarse a su carro.
+
+- El arreglo vive en **`es_linea_de_ticket()`**: es línea de ticket si dice algo parecido a "tick",
+  como sea que se haya escrito, **o** si la nota es un número pelón.
+- **Se aflojó la GUARDIA, no la extracción.** Y no filtra basura a propósito: qué números **no**
+  son tickets (los marcadores `0`–`5`, los que Zettle no tiene) lo sigue decidiendo
+  `limpiar-tickets.sql`, que corre después. Una sola regla, en un solo lugar — y es justamente lo
+  que vuelve seguro aflojar aquí.
+- **Medido antes de tocar**, que es lo que lo hizo seguro: en la zona de notas hay **4** líneas de
+  puros dígitos y **ninguna es un número de página**; y **23** contienen "tick" sin ser `Ticket:`.
+- **Comprobado contra línea base:** el staging regenerado difiere en **26 filas y ni una más**, todas
+  del grupo identificado. Recupera **$4,641** de gasto y **3 lavados gratis** que se contaban como
+  pagados (`Ticket GRATOS 21965`, `TicketGRATIS10849`, y uno que Zettle confirma), o sea tres
+  clientes a los que el negocio les debía un lavado que ya habían cobrado.
+
+### El import quedó aplicado
+
+| | |
+|---|---|
+| Visitas | **15,568** (= `stg_cnt`, y cuadra **mes por mes en los 13 meses** contra el texto del PDF) |
+| Clientes | **5,037** |
+| Ligadas a su lavado | **2,744** · **0 conflictos** en `imp_ligado_conflictos` |
+| Gasto | **$3,412,990.94** |
+| Gratis a honrar | **234 en 233 personas** |
+| Placas | **320 en 302 clientes**, todas corroboradas |
+| Caja | 16 visitas borradas, **0 sin respaldo** |
+| Operación | **intacta**: 3,337 carros, 9,832 etapas, 3,331 asignaciones, 40 reportes |
+
+- La zona horaria se **midió** contra Zettle (Tijuana confirmada) y el cotejo gratis pasó: **0 notas
+  después de las 8 PM**.
+- 🔑 **La mejor corroboración del arreglo de la `137`:** Alfredo Carballo quedó en **$5,380 con 25
+  visitas**, *exactamente* el número que había producido el relleno de la migración — dos caminos
+  independientes llegando al mismo resultado.
+- El reset es **idempotente**: correrlo en seco otra vez da los mismos 15,568 / 5,037 / 2,744 /
+  $3,412,990.94.
+- 🟠 **El duplicado de Montiel sigue, y ahora se sabe de quién es:** `Cesar Ernesto Montiel Moya` y
+  `cesar montiel` vienen **los dos del CNT**, así que no fue un error de la caja. Sigue esperando la
+  palabra del dueño.
 
 ## 11.03 Cierre del 19–24/ago/2026 — seis días, 452 lavados: el taller bien, la captura se aflojó el viernes
 
