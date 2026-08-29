@@ -52,6 +52,15 @@ usarse**. Esta carpeta es donde dejan de tirarse.
    > siembra el dry-run dice `visitas +0`, o sea que la aserción nueva sí lo
    > rechaza.
    >
+   > 🔄 **Reapuntada el 28/ago:** ese día el import incremental quedó retirado
+   > (cada import es borrón y cuenta nueva), así que la prueba ejercitaba un
+   > archivo que ya nadie corre — la misma falla de fondo, otra vez: *medir el
+   > camino equivocado se ve igual que pasar*. Ahora corre **`reset-total.sql`**
+   > con su `raise notice` final convertido en `raise exception`, y exige que
+   > importe personas y visitas, que ligue al menos un lavado, y que la
+   > operación (`carros`) quede intacta. **Toma candados sobre `visitas` unos
+   > 7 s**: se corre antes de desplegar, y desplegar va en el corte.
+   >
    > ⚠️ Y de paso, el propio arreglo rompió el cierre de `correr.sh` (se comió
    > el bloque que cuenta los fallos, así que la suite salía con código 0
    > pasara lo que pasara). Se detectó porque **faltaba el banner `TODO PASO`**

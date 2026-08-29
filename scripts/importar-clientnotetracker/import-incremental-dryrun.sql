@@ -1,44 +1,35 @@
 -- =====================================================================
--- DRY-RUN del import incremental. MISMO cuerpo que import-incremental.sql,
--- pero cuenta cuántas visitas/personas AGREGARÍA y termina en `raise` para
--- REVERTIR todo (no escribe nada). Requiere public.stg_cnt ya cargado con el
--- export nuevo (RUNBOOK paso 4b). Corre esto ANTES del import real para ver
--- el número; si cuadra, corre import-incremental.sql.
+-- ⛔ RETIRADO EL 28/ago/2026 POR DECISION DEL DUENO. NO SE CORRE.
+--
+--    Textual: "Cada import de ahora en adelante sera borron y cuenta nueva
+--    siempre. Nada de actualizar la base de datos actual. Asi nos evitamos
+--    problema."
+--
+-- POR QUE, con el numero que lo motivo: el 28/ago la app de la caja se uso
+-- por primera vez en operacion real (16 visitas) Y la cajera siguio llenando
+-- el ClientNoteTracker en paralelo. El dedup de este archivo solo compara
+-- contra `v.caja = 'import'`:
+--
+--     where v.caja='import' and ( v.ticket = s.ticket or ... )
+--
+-- o sea que una visita registrada por la CAJA es invisible para el, y el
+-- import metia una SEGUNDA visita por el mismo lavado -> sello doble. Es el
+-- mismo bug de lealtad que ya se limpio a mano en §11.35.
+--
+-- El reset lo resuelve de raiz porque `delete from public.visitas` no lleva
+-- `where`: la actividad de caja se borra y el CNT queda como unica fuente.
+--
+--     bash scripts/releer-fotos/q.sh scripts/importar-clientnotetracker/reset-total.sql
+--
+-- El cuerpo viejo vive en el historial de Git (commit 09ca75b y anteriores).
+-- Documenta como se dedupeaba; si algun dia el CNT deja de llenarse en
+-- paralelo, ahi esta el punto de partida — pero entonces hay que arreglarle
+-- el dedup ANTES de revivirlo.
 -- =====================================================================
-alter table public.stg_cnt add column if not exists tz text;
-
-do $$
-declare v0 int; v1 int; p0 int; p1 int; lig int; r jsonb;
+do $candado$
 begin
-  select count(*) into v0 from public.visitas where caja='import';
-  select count(*) into p0 from public.personas where origen='import';
-
-  insert into public.personas (nombre, nombre_norm, visitas_seed, sellos_iniciales, origen)
-  select (array_agg(nombre order by dt_local desc))[1], public.normalizar_nombre(nombre), 0, 0, 'import'
-  from public.stg_cnt where public.normalizar_nombre(nombre) is not null
-  group by public.normalizar_nombre(nombre)
-  on conflict (nombre_norm) where origen='import'
-  do update set nombre = excluded.nombre, actualizado_en = now();
-
-  insert into public.visitas (persona_id, es_gratis, estado, caja, es_prueba, creado_en, monto, ticket)
-  select p.id, s.es_gratis, 'activa', 'import', false,
-         (s.dt_local::timestamp at time zone coalesce(s.tz, 'America/Tijuana')),
-         (s.monto_cent::numeric/100), s.ticket
-  from public.stg_cnt s
-  join public.personas p on p.nombre_norm = public.normalizar_nombre(s.nombre) and p.origen='import'
-  where not exists (
-    select 1 from public.visitas v where v.caja='import'
-      and ( (s.ticket is not null and v.ticket = s.ticket)
-         or (v.persona_id = p.id
-             and v.creado_en = (s.dt_local::timestamp at time zone coalesce(s.tz, 'America/Tijuana'))) )
-  );
-
-  r := public.ligar_visitas_de_import();
-
-  select count(*) into v1 from public.visitas where caja='import';
-  select count(*) into p1 from public.personas where origen='import';
-  select count(*) into lig from public.visitas where caja='import' and carro_id is not null;
-
-  raise exception 'DRYRUN visitas +% (% -> %) | personas +% (% -> %) | ligadas ahora % | ligado %',
-    v1-v0, v0, v1, p1-p0, p0, p1, lig, r;
-end $$;
+  raise exception E'IMPORT INCREMENTAL RETIRADO (28/ago/2026).\n'
+    '  Cada import es borron y cuenta nueva. Corre reset-total.sql.\n'
+    '  Razon: el dedup de este archivo no ve las visitas de la caja\n'
+    '  (`where v.caja=''import''`) y duplicaria los sellos.';
+end $candado$;

@@ -30,10 +30,47 @@ do $$
 declare
   d_vis int; d_pp int; d_per int;
   n_per int; n_vis int; n_lig int;
+  n_caja int; n_huerf int;
   r jsonb;
 begin
-  -- 1) EL BORRADO. Sin `where`: la actividad de caja tambien se va
-  --    (dueno, 24/ago/2026: "todo lo que se ha hecho de caja es prueba").
+  -- 1) EL BORRADO. Sin `where`: la actividad de la CAJA tambien se va, y eso
+  --    es a proposito. La razon CAMBIO el 28/ago/2026 y hay que leerla, porque
+  --    la vieja ya no es cierta:
+  --
+  --      antes (24/ago): "todo lo que se ha hecho de caja es prueba".
+  --      HOY:            la caja esta en uso REAL, pero la cajera sigue
+  --                      llenando el ClientNoteTracker EN PARALELO, asi que
+  --                      cada visita de caja ya viene tambien en el export.
+  --                      Conservarlas seria contar el mismo lavado dos veces
+  --                      -> sello doble (el bug de §11.35).
+  --
+  --    🔴 SI ALGUN DIA EL CNT DEJA DE LLENARSE, ESTE `delete` BORRA DATOS
+  --       REALES QUE NO VUELVEN. Antes de correr el reset, comprueba que el
+  --       export cubra lo que la caja registro:
+  --
+  --         select count(*) from public.visitas v
+  --          where v.caja <> 'import' and v.ticket is not null
+  --            and not exists (select 1 from public.stg_cnt s where s.ticket = v.ticket);
+  --
+  --       Debe dar 0. NO hace falta correrla a mano: el reset la calcula solo
+  --       y la reporta al final como "caja sin respaldo en el CNT". Es un
+  --       AVISO, no un candado — una visita registrada DESPUES del corte del
+  --       export cae ahi de forma legitima, y abortar el reset por eso seria
+  --       peor que reportarlo. NO hace
+  --       falta correrla a mano: el reset la calcula solo y la reporta abajo
+  --       como . Es aviso, NO candado — una
+  --       visita registrada DESPUES del corte del export cae ahi de forma
+  --       legitima, y abortar el reset por eso seria peor.
+  --    Se cuenta ANTES de borrar, que es la unica ventana en que se puede:
+  --    cuantas visitas de la caja se van, y de esas cuantas NO vienen en el
+  --    export (o sea las que de verdad se pierden). Ver el aviso del final.
+  select count(*), count(*) filter (
+           where v.ticket is null
+              or not exists (select 1 from public.stg_cnt s where s.ticket = v.ticket))
+    into n_caja, n_huerf
+    from public.visitas v
+   where v.caja <> 'import' and v.estado = 'activa';
+
   delete from public.visitas;        get diagnostics d_vis = row_count;
   delete from public.persona_placas; get diagnostics d_pp  = row_count;
   delete from public.personas;       get diagnostics d_per = row_count;
@@ -90,11 +127,13 @@ begin
     '  ligado    %\n'
     '  gratis a honrar % en % personas\n'
     '  gasto %\n'
+    '  CAJA      se borraron % visitas; % sin respaldo en el CNT\n'
     '  INTACTO   carros %  etapas %  asignaciones %  ventas %  reportes %',
     d_vis, d_pp, d_per, n_per, n_vis, n_lig, r,
     (select coalesce(sum(disponibles),0) from public.lealtad_por_persona),
     (select count(*) from public.lealtad_por_persona where disponibles>0),
     (select round(coalesce(sum(monto),0),2) from public.visitas),
+    n_caja, n_huerf,
     (select count(*) from public.carros), (select count(*) from public.etapas),
     (select count(*) from public.asignaciones), (select count(*) from public.ventas),
     (select count(*) from public.reportes_diarios);

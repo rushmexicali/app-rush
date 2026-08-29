@@ -62,14 +62,16 @@ correr "la llave publica no alcanza nada" sql pruebas/llave-publica.sql
 correr "la cortesia del import"       sql pruebas/cortesia-del-import.sql
 correr "avisos atendidos"             sql pruebas/avisos-atendidos.sql
 
+correr "la visita de caja guarda su ticket" sql pruebas/visita-de-caja-con-ticket.sql
+
 # El dry-run del import REVIERTE por diseno (termina en `raise`), asi que se
 # puede correr contra produccion: es la unica prueba que ejercita el archivo
 # de verdad, de punta a punta, en vez de una copia de su logica.
-# ⚠️ Corre con una fila SEMBRADA. Hasta el 23/ago la asercion era `grep -q
-# DRYRUN`, que sale igual con 0 filas que con 240 -- y despues de un import
-# `stg_cnt` queda con sus filas ya importadas, o sea que el INSERT se
-# ejercitaba con CERO y la prueba no podia fallar. Ver pruebas/dryrun-import.sh.
-correr "el dry-run del import corre e inserta" bash pruebas/dryrun-import.sh
+# ⚠️ Desde el 28/ago apunta a `reset-total.sql`, no al incremental: ese quedo
+# retirado ese dia (cada import es borron y cuenta nueva) y una prueba sobre el
+# camino que ya nadie corre no mide nada. Toma candados sobre `visitas` unos 7
+# segundos; ver el encabezado de pruebas/dryrun-import.sh.
+correr "el reset del import corre en seco" bash pruebas/dryrun-import.sh
 
 echo ""
 echo "=============================================================="

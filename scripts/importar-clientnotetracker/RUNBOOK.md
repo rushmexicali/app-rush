@@ -106,9 +106,23 @@ CRM no pasa ni un segundo vacío. Y antes del 3, siempre:
 bash scripts/bajar-respaldo.sh "C:/Users/luis_/Desktop/respaldo-rush-AAAA-MM-DD"
 ```
 
-> Para un import **incremental** (lo normal en vivo) se usan los mismos 1 y 2, pero en vez del
-> reset se corre `import-incremental.sql` (§4b). El paso 2 sirve igual: la medición de la zona y la
-> limpieza de tickets hacen falta en las dos rutas.
+> 🔑 **SIEMPRE ES BORRÓN Y CUENTA NUEVA. Ya no hay import incremental.** Decisión del dueño el
+> 28/ago/2026, textual: *"Cada import de ahora en adelante será borrón y cuenta nueva siempre. Nada
+> de actualizar la base de datos actual. Así nos evitamos problema."*
+>
+> El problema que evita: ese mismo día la app de la caja entró en uso real (16 visitas) **y la
+> cajera siguió llenando el ClientNoteTracker en paralelo**. El dedup del incremental sólo compara
+> contra `v.caja = 'import'`, así que una visita de la caja le es invisible y habría metido una
+> **segunda** visita por el mismo lavado — sello doble, el bug de §11.35. El reset lo resuelve solo
+> porque su `delete from public.visitas` no lleva `where`.
+>
+> `import.sql`, `import-incremental.sql` e `import-incremental-dryrun.sql` quedaron **con candado**:
+> si alguien los corre, abortan con la razón escrita. El cuerpo viejo está en el historial de Git.
+>
+> ⚠️ Esto vuelve al CNT la **única** fuente de la lealtad. El reset ahora reporta
+> `CAJA se borraron N visitas; M sin respaldo en el CNT` — si esa M no es ~0 después de cargar un
+> export que ya cubra esos días, la cajera dejó de llenar el CNT y el reset está perdiendo datos
+> reales.
 
 El resto de este archivo explica **por qué** cada paso hace lo que hace. Se lee cuando algo no
 cuadra, que es cuando de verdad importa.
@@ -473,7 +487,7 @@ autoritativa), `diff-renombres.sql`, `aplicar-renombres.sql`, `religar-placas-co
 5. (autorizado) aplicar-renombres.sql
 6. staging normal (3.2 Zettle, 3.3 staging.awk) → stg_cnt
 6b. COTEJO DE TICKETS MAL TECLEADOS (ver 4d) — ANTES de importar
-7. import-incremental.sql
+7. reset-total.sql          (era import-incremental.sql; retirado el 28/ago/2026)
 8. religar-placas-corroboradas.sql
 9. Cotejo final: visitas por día en la base == filas por día del staging_full.tsv
 ```
@@ -636,9 +650,13 @@ estar a nombre de dos clientes. El paso de ligado del import hacía un `update .
 un `do $$` sin manejador **se caía el bloque entero: no entraba NI UNA visita**. El encabezado de
 la propia `114` ya decía que al import le faltaba esa comprobación; lo que faltaba era ponérsela.
 
-Ahora el ligado es **`public.ligar_visitas_de_import()`** y los tres scripts (`import.sql`,
-`import-incremental.sql`, el dryrun) la llaman. Antes traían el mismo `update` **copiado tres
-veces** — tres copias de la misma regla es exactamente como se desfasan las cosas en este proyecto.
+Ahora el ligado es **`public.ligar_visitas_de_import()`** y quien importa la llama. Antes el mismo
+`update` estaba **copiado tres veces** (`import.sql`, `import-incremental.sql` y el dryrun) — tres
+copias de la misma regla es exactamente como se desfasan las cosas en este proyecto.
+
+> Desde el 28/ago/2026 el único que la llama es **`reset-total.sql`**: los otros tres quedaron con
+> candado (§2-bis). Que el ligado ya viviera en una sola función es lo que hizo barato retirarlos —
+> no hubo que tocar ni una línea de esa lógica.
 
 Los tres candados que pone, uno por cada error ya pagado:
 
@@ -683,7 +701,14 @@ completo en vez de una copia de su lógica.
 
 ---
 
-## 4b. INCREMENTAL — agregar solo los días nuevos (RECOMENDADO en vivo)
+## 4b. INCREMENTAL — ⛔ RETIRADO EL 28/ago/2026, NO SE USA
+
+> **Ya no se corre. Cada import es borrón y cuenta nueva (§2-bis).** El dedup de abajo sólo mira
+> `v.caja = 'import'`, así que no ve las visitas de la app de la caja y duplicaría los sellos.
+> Los tres archivos abortan si alguien los corre. Todo lo que sigue en esta sección se conserva
+> como historia: describe cómo dedupeaba, que es el punto de partida si algún día el
+> ClientNoteTracker deja de llenarse en paralelo y hay que revivirlo — **arreglándole el dedup
+> primero**.
 
 En vez del RESET (borrar todo y re-importar), en el flujo en vivo el dueño sube un
 export **de los días nuevos** (o del día, filtrado con Start/End date en el app) y

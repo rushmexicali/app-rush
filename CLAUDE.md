@@ -789,6 +789,82 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 11.02 La caja entró en operación real (28/ago/2026, migración `137`)
+
+El 28/ago la app de la caja se usó por primera vez en serio: **16 visitas de 13:48 a 15:35**. Salió
+bien, y destapó dos cosas — una que se arregló y otra que el dueño resolvió con una regla.
+
+### Cómo se comportó, medido
+
+| | |
+|---|---|
+| **Cobertura** | 16 de 17 carros de la ventana. El único que se les fue es el **4887** (15:25, `Manual / Completo Grande`), y quedó justo entre dos que sí se registraron |
+| **Ritmo** | mediana de **50 segundos** entre el cobro y el registro |
+| **Ligado al lavado** | **16 de 16.** Cero visitas sueltas — la operación atómica de §11.70 hizo su trabajo |
+| **Cámara de caja** | marca y submarca en **16 de 16**; placa en **11 de 16 (69%)**. El supervisor rescató 3 más al asignar → 14/16 (88%) |
+| **Canje** | 1 (6to Lavado). Los otros 5 gratis del día se cobraron antes de las 12, fuera de la ventana |
+| **Errores** | 0 `placa_dudosa`, 0 rechazos de la RPC, 0 avisos del sistema |
+
+La foto era buena en las 16 y lo que no se dejó leer fue la **placa** — el mismo patrón de las
+pickups grandes que motivó el botón "Tomar foto otra vez" (§11.70).
+
+🟠 **Un posible duplicado:** `CESAR ERNESTO MONTIEL MOYA` se dio de alta nuevo aunque ya existía
+`cesar montiel` (1 visita, $400, 5/nov/2025). El buscador es por subcadena, así que "montiel" debió
+mostrárselo. Los otros 5 clientes nuevos del día sí se ven nuevos. **Falta preguntarle al dueño** si
+es la misma persona antes de fusionar — regla de siempre, 1000% o nada.
+
+### 🔴 Lo que se arregló: la visita de caja no guardaba ticket ni monto
+
+`registrar_visita_con_carro` **nunca** escribió esas dos columnas, mientras que todas las visitas
+del ClientNoteTracker sí las traen. Dos formas de guardar lo mismo, que es como se desfasan las
+cosas en este proyecto.
+
+Lo que costaba: `persona_json` calcula el gasto con `sum(v.monto)`, así que **un lavado registrado
+por la caja sumaba $0** al historial del cliente. Alfredo Carballo tenía 25 visitas y $5,110; su
+lavado de ese día no aparecía. Mientras más se usara la caja, más se degradaba el dato.
+
+- El ticket sale de **`recibo_del_carro()`**, función nueva que le pregunta a `detalle_venta()`. **No
+  se desarma el payload a mano**: ese error ya se corrigió tres veces (`115`, `118`, `130`).
+- **`ligar_visitas_de_import()` NO se reescribió.** Hace la misma pregunta en bloque y con la misma
+  expresión; son ~90 líneas de reglas con sus razones escritas, y reescribirlas para cambiar una
+  expresión es el movimiento que ya salió mal (§11.45). En su lugar, el **grupo B** de
+  `pruebas/visita-de-caja-con-ticket.sql` comprueba que las dos contesten **lo mismo** sobre todos
+  los carros reales: si alguien cambia una nada más, la prueba avisa.
+- **Nunca bloquea:** si la venta todavía no llegó a `ventas`, el ticket queda nulo y la visita se
+  registra igual. Es la lección de la fecha en milisegundos (§7) — la cajera no se detiene por un
+  dato secundario.
+- Las 16 se rellenaron hacia atrás. Verificado: **16/16 con ticket y monto** ($3,880), Alfredo pasó
+  a $5,380, y el CNT quedó **intacto** (15,499 visitas, $3,392,729.94, sus 825 sin ticket sin tocar).
+
+### 🔑 La regla nueva: TODO import es borrón y cuenta nueva
+
+El dueño confirmó que **la cajera sigue llenando el ClientNoteTracker en paralelo**, y decidió:
+*"Cada import de ahora en adelante será borrón y cuenta nueva siempre. Nada de actualizar la base
+de datos actual. Así nos evitamos problema."*
+
+Resuelve un bug que estaba armado y todavía no había disparado: el dedup del import incremental
+sólo compara contra `v.caja = 'import'`, así que **una visita de la caja le es invisible** y el
+siguiente import habría metido una segunda visita por el mismo lavado → **sello doble**. Es el bug
+de §11.35 por otra puerta. El reset lo resuelve de raíz porque su `delete from public.visitas` no
+lleva `where`.
+
+- **`import.sql`, `import-incremental.sql` y `import-incremental-dryrun.sql` quedaron con candado:**
+  si alguien los corre, abortan con la razón escrita. El cuerpo viejo vive en Git.
+- **La prueba del dry-run se reapuntó a `reset-total.sql`**, el archivo que sí se usa. Una prueba
+  sobre el camino que ya nadie corre no mide nada — la misma falla de fondo que el crítico de la
+  auditoría del 22/ago ya había cazado una vez en esta misma prueba.
+- **El comentario que justificaba el borrado sin `where` estaba viejo y era peligroso.** Decía
+  *"todo lo que se ha hecho de caja es prueba"* (dueño, 24/ago). Ya no es cierto: la caja está en
+  uso real. La regla sigue en pie, pero por otra razón — el CNT la respalda.
+
+> ⚠️ **El costo, dicho de frente: esto vuelve al CNT la ÚNICA fuente de la lealtad.** Si algún día
+> la cajera deja de llenarlo, el reset borra datos reales que no vuelven. Por eso el reset ahora
+> reporta `CAJA se borraron N visitas; M sin respaldo en el CNT` — se calcula **antes** del borrado,
+> que es la única ventana en que se puede. Es **aviso, no candado**: una visita registrada después
+> del corte del export cae ahí de forma legítima (el 28/ago las 16 salieron así, porque el staging
+> cargado sólo llegaba al 27). Lo que hay que vigilar es que esa M sea ~0 **después** de cargar un
+> export que ya cubra esos días.
+
 ## 11.03 Cierre del 19–24/ago/2026 — seis días, 452 lavados: el taller bien, la captura se aflojó el viernes
 
 Primer cierre de operación desde el del 17–18/ago (§11.60). **452 lavados en seis días**, todos
