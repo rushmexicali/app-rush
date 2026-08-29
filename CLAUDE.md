@@ -789,6 +789,129 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 11.01 Cierre del 25–28/ago/2026 — cuatro días, 252 lavados: el mejor dato del proyecto, y cambió media plantilla
+
+Continúa el cierre del 19–24/ago (§11.03). **252 lavados en cuatro días**, todos entregados. La
+calidad de datos llegó a su mejor nivel registrado y la higiene operativa está impecable; lo que hay
+que leer es un **cambio de plantilla** que explica casi todo lo demás.
+
+| Día | | Lavados | Espera | Secado (compl.) | Express | Encimados | Afectados por olvido |
+|---|---|---|---|---|---|---|---|
+| 25/ago | Martes | 61 | 52.0 | 47.2 | 16.9 | 23 (38%) | 5 (8%) |
+| 26/ago | Miércoles | 46 | 39.1 | **26.7** | 19.7 | 10 (22%) | 3 (7%) |
+| 27/ago | Jueves | 66 | 45.3 | 35.3 | 15.3 | 20 (30%) | 2 (3%) |
+| 28/ago | Viernes | **79** | 42.3 | 40.6 | 18.9 | 22 (28%) | 2 (3%) |
+| **Total** | | **252** | **44.8** | **38.5** | **18.1** | 75 (45% de los completos) | 12 (5%) |
+
+### ✅ La captura ya casi no distorsiona nada
+
+Es lo mejor que ha dado el proyecto. Quitando los olvidos, los promedios se mueven así:
+
+```
+25/ago  espera 52.0 -> 48.2    secado 38.0 -> 34.5     <- el unico dia con distorsion real
+26/ago  espera 39.1 -> 39.3    secado 22.4 -> 23.9
+27/ago  espera 45.3 -> 44.9    secado 30.9 -> 30.6
+28/ago  espera 42.3 -> 42.4    secado 30.6 -> 31.0
+```
+
+En tres de los cuatro días la diferencia es **menor a medio minuto**, y en dos el promedio *sube* al
+quitar los olvidos. O sea que **los tiempos son taller, no captura** — sin matices, por primera vez.
+
+- **Foto: 252 de 252 (100%)** los cuatro días. Nunca había pasado.
+- **Nota de caja: 253 de 256 (99%)**, con dos días al 100%.
+- **Placa leída 219 (87%)**, marca 244 (97%), submarca 227 (90%).
+- **0 placas repetidas** (`placas_repetidas_del_rango`), quinto periodo seguido en cero.
+- **0 fotos sin intento de lectura, 0 pendientes, 0 que se rindieron.** El obrero de la `104` al día.
+- **0 tiempos imposibles** los cuatro días.
+- **Línea 1 impecable:** 89 express, **89 en la línea 1**, 0 no-express adentro. Los 3 express que
+  aparecen "fuera" el 27 son borrados de supervisor que nunca se asignaron.
+- **0 rechazos y 0 devoluciones**, incluida la que ocurre después de entregar.
+
+### 🔑 El hallazgo: cambió media plantilla y el reporte lo estaba diciendo
+
+Dos nombres nuevos aparecen de golpe en la analítica, y dos veteranos desaparecieron:
+
+| Persona | Primer carro | Último carro | Carros de por vida |
+|---|---|---|---|
+| **Carlos Alfredo Ponce García** | **25/ago** | 28/ago | 18 |
+| **Carlos Daniel PedroMiguel** | **26/ago** | 28/ago | 13 |
+| Jorge Antonio Luna Martín | 20/jul | **22/ago** | 204 |
+| José Cruz Encino | 20/jul | **22/ago** | 165 |
+| Jose Manuel Nuñez (supervisor) | 22/jul | **25/ago** | 113 |
+
+**Esto no se puede leer como "el taller se hizo más lento".** Los dos que se fueron traían 369
+lavados de experiencia entre los dos; los dos que entraron llevan 31 en total. Es la explicación más
+probable del 47.2 del martes 25 —el primer día de Carlos Ponce— y hay que tenerla enfrente antes de
+juzgar cualquier número individual de este periodo.
+
+> 📌 **Brayan Islas Ordoñez** está en Jibble y aparece en la grilla, pero **nunca se le ha asignado
+> un carro** (0 de por vida). O no seca, o el supervisor no lo está usando.
+
+### Analítica por persona — los cuatro días juntos
+
+Completos (con aspirado), una persona:
+
+| Persona | Carros | Secado | Encimados |
+|---|---|---|---|
+| Pablo Cruz | 28 | 42.5 | 9 (32%) |
+| Jesús Gil | 20 | 34.4 | 8 (40%) |
+| Mario Hernández | 20 | 37.1 | 6 (30%) |
+| Edgar Reyes | 19 | **30.7** | 6 (32%) |
+| Luis Chávez | 15 | 36.2 | 3 (20%) |
+| **Carlos Ponce** | 14 | **53.2** | 7 (**50%**) |
+| Luis Luna | 12 | 40.6 | 2 (**17%**) |
+| Jaime Gallegos | 9 | 39.4 | 3 (33%) |
+| Saul de Anda | 6 | 47.8 | 2 (33%) |
+| **Carlos Daniel** | 6 | **27.5** | 1 (17%) |
+| Walter Rodríguez | 5 | 46.0 | 3 (60%) |
+| Carlos Alonso | 4 | 37.1 | 0 (0%) |
+
+Express: **Walter Rodríguez 21 a 18.2 min**, **Saul Ramirez 17 a 17.8**, Pablo Cruz 10 a 19.8,
+**Jesús Gil 9 a 15.5**.
+
+**Cómo leerla:**
+- ✅ **Edgar Reyes es el mejor dato limpio, cuarto periodo seguido:** 19 carros a **30.7 min** con
+  32% de encimados. Viene de 37.1 en el periodo anterior — mejoró.
+- 🟢 **Carlos Daniel entró fuerte:** 27.5 min en sus primeros 6 completos. Con esa muestra no es
+  conclusión, pero es la mejor primera semana registrada.
+- 🟠 **Carlos Ponce sale último (53.2 min, 50% de encimados) y lleva tres días en el puesto.** No es
+  una señal de rendimiento todavía: es un secador nuevo al que además le están entrando carros
+  encima la mitad de las veces. Vale volver a mirarlo en el próximo cierre, no ahora.
+- 🔵 **Luis Luna se corrigió solo.** Llevaba **cinco periodos seguidos** como el más lento (55.6 min
+  el periodo pasado) y este quedó en **40.6 con apenas 17% de encimados** — el segundo porcentaje de
+  saturación más bajo. Era la señal más consistente del proyecto y dejó de serlo; conviene saber qué
+  cambió, porque eso es lo que hay que repetir.
+- **Pablo Cruz sigue siendo el de más volumen** (28 completos + 10 express) a 42.5 min.
+
+### 🟠 Dos rachas de descuido, las dos en la misma ventana del día
+
+- **27/ago, 17:13 → 19:35: cuatro carros nunca asignados**, borrados por el supervisor entre 39 y 42
+  minutos después de entrar. Es exactamente el patrón del 16/ago y del 11/ago: **la app se suelta en
+  la última parte del turno**. Van tres veces.
+- **25/ago, 11:44 → 12:57: cuatro carros con 75, 89, 91 y 129 minutos de "secado"**, todos en una
+  hora. Un olvido de mediodía puesto al día de golpe — y es la razón completa de que ese día sea el
+  único con distorsión de captura.
+
+### Carga por hora y por día
+
+```
+08:19  09:22  10:27  11:23  12:30  13:25  14:23  15:18  16:16  17:18  18:21  19:10
+```
+
+El pico está a las **12** (30 carros en cuatro días) y el día es plano de 8 a 18. Sigue mandando el
+día de la semana: martes 61, miércoles 46, jueves 66, **viernes 79**.
+
+### 🟠 Lo que sigue igual
+
+- **El rechazo de entrega lleva 38 días sin un solo uso** (desde el 21/jul). El dueño ya avisó que
+  es raro que se rechace; la salida *"← No, sí quedó bien"* del 19/ago no cambió nada.
+- **La caja sólo se usó el 28/ago** (§11.02) y sólo registró **1 canje**. Se vendieron **20 lavados
+  `6to`** en los cuatro días, así que la lealtad sigue dependiendo por completo del CNT.
+- **`6to Express`: 1 caso** en el periodo. El hallazgo sigue abierto (§11.75 punto 1).
+- 🟡 **Hay un aviso del sistema sin atender los cuatro días: 24 fotos huérfanas** en Storage que ya
+  no apunta ningún carro (las deja "Tomar foto otra vez"). No se borran solas a propósito — hace
+  falta autorizarlo.
+
 ## 11.02 La caja entró en operación real (28/ago/2026, migración `137`)
 
 El 28/ago la app de la caja se usó por primera vez en serio: **16 visitas de 13:48 a 15:35**. Salió
