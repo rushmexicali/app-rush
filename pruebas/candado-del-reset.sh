@@ -21,6 +21,22 @@ cd "$(dirname "$0")/.." || exit 1
 ORIGEN=scripts/importar-clientnotetracker/reset-total.sql
 T="${TMPDIR:-/tmp}/rush-candado-$$"
 
+# CUANTAS visitas de caja no tiene respaldo HOY. No se escribe a mano: crece
+# con cada venta que la caja registra despues del ultimo export del CNT, que
+# desde el 31/ago ya no se vuelve a generar. Un numero fijo dejaria de cuadrar
+# en la siguiente venta y la prueba fallaria sin que nada este roto.
+cat > "$T-n.sql" <<'SQL'
+select count(*) sin_respaldo from public.visitas v
+ where v.caja <> 'import' and v.estado = 'activa'
+   and (v.ticket is null or not exists
+        (select 1 from public.stg_cnt s where s.ticket = v.ticket));
+SQL
+YA=$(bash scripts/releer-fotos/q.sh "$T-n.sql" | gawk 'match($0,/"sin_respaldo":"?[0-9]+/){v=substr($0,RSTART,RLENGTH); sub(/.*:"?/,"",v); print v}')
+cat /dev/null > "$T-n.sql"
+[ -n "$YA" ] || { echo "  FALLA: no se pudo contar las de caja sin respaldo"; exit 1; }
+# La prueba siembra UNA mas, asi que el candado va a pedir YA+1.
+ESPERADO=$((YA + 1))
+
 # Una visita de caja con un ticket que el export NO puede tener.
 SIEMBRA="insert into public.visitas (persona_id, es_gratis, es_cortesia, estado, caja, es_prueba, ticket, monto)
 select id, false, false, 'activa', 'principal', false, '99999999', 123.45 from public.personas limit 1;"
@@ -68,7 +84,7 @@ fi
 # ---------------------------------------------------------------- caso 3
 # Con el permiso EXACTO, si deja pasar. Se revierte con un raise al final.
 { echo "$SIEMBRA"
-  echo "select set_config('rush.perdida_aceptada', '1', false);"
+  echo "select set_config('rush.perdida_aceptada', '$ESPERADO', false);"
   cat "$ORIGEN"
   echo "do \$\$ begin raise exception 'ENSAYO CANDADO: el override dejo pasar'; end \$\$;"
 } > "$T-2.sql"

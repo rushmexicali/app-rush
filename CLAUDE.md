@@ -1223,6 +1223,116 @@ Front y back **juntos y en el corte**, como manda §2. `sw.js` v16 (`caja.html` 
 > el mismo Camry plata. Ese par va a discrepar seguido sin que nadie se equivoque, así que el
 > detector tendría que tratarlos como el mismo color.
 
+## 11.005 Los sellos arrancan de cero en el último gratis usado (31/ago/2026, migraciones `142`–`143`)
+
+Primer día con la caja como única fuente, y llegaron dos reportes de que el ClientNoteTracker y la
+app no decían lo mismo. Investigándolos salieron **tres cosas distintas**, y las tres hacían falta
+para que los números cuadraran.
+
+### Lo que NO era un bug
+
+**Oscar Ponce Gámez**: el MRT decía que le tocaba su gratis; la app decía que no. **Se lo llevó esa
+misma mañana a las 08:39**, ticket 28205, un `Gratis / 6to Express`. El MRT ya no se llena desde
+el 31/ago, así que no se enteró. Los dos sistemas estaban de acuerdo hasta el momento del cobro.
+
+Y lo que el dueño leyó como contradicción —*"tenía el gratis Y APARTE 2/5"*— es correcto: son dos
+cosas distintas, lo que ya se ganó y cuánto lleva del siguiente.
+
+### 🔴 Lo que sí era un bug: `GRATIS PENDIENTE`
+
+En el export hay 46 notas con la palabra "pendiente", y **significan dos cosas opuestas**. Textual
+del dueño:
+
+> *"Cuando dice Gratis pendiente es que se les guardaba el gratis y seguían acumulando sellos.
+> Cuando dice Gratis pendiente y aparte tiene un número de ticket, es que se había utilizado ese
+> lavado gratis acumulado con anterioridad."*
+
+| Forma | Qué es | Cómo se importaba | Cuántas |
+|---|---|---|---|
+| `GRATIS PENDIENTE` **sin** ticket | Se le guarda el gratis. **No es un lavado** | ❌ como lavado **pagado** | **31** |
+| `pendiente` **con** ticket | **Usó** el gratis guardado | ❌ como lavado **pagado** | **15** |
+
+La primera le regalaba un sello que nadie se ganó. La segunda es peor: sumaba sello **y** no
+restaba el gratis. **28 de 30 marcadores traen un lavado real del mismo cliente ese mismo día** —
+son anotaciones al margen, no visitas.
+
+> El `RUNBOOK` ya decía *"'pendiente' NO cuenta, se le guarda al cliente"*, y por eso nunca se
+> contaron como canje. Nadie dijo que **tampoco son un lavado**, y por ahí se coló desde el primer
+> import.
+
+### 🔑 Y la regla de fondo: el contador reinicia en el canje
+
+El gerente puso una regla que la app no conocía: **los lavados acumulados ya no existen**. Textual
+del dueño: *"el contador empieza desde 0 desde que utilizó el último gratis"*.
+
+Antes: `disponibles = floor(total_pagados / 5) − canjes`.
+Ahora: `disponibles = floor(pagados_desde_el_último_canje / 5)`.
+
+⚠️ **No es "ya no se acumulan".** Quien nunca ha canjeado acumula igual que antes (10 pagados = 2
+gratis). Lo que cambia es el momento del canje: antes conservaba el excedente, ahora se borra.
+
+### Cómo se supo que la regla era la correcta
+
+El dueño verificó **siete clientes a mano** en el MRT y pasó los números. Las tres piezas juntas
+dan **7 de 7**; quitando cualquiera, deja de dar:
+
+| Cliente | Él | La regla |
+|---|---|---|
+| Karla Mora Melchor | 3/5, 0 gratis | 3/5, 0 ✅ |
+| Gabriela Benítez | 0/5, 0 | 0/5, 0 ✅ |
+| Ignacio Lozoya | 3/5, 0 | 3/5, 0 ✅ |
+| Manuel Parra Salazar | 4/5, 0 | 4/5, 0 ✅ |
+| Norma Leticia Gutiérrez | 1/5, 0 | 1/5, 0 ✅ |
+| Sara Gabriela Reyes | 0/5, 0 | 0/5, 0 ✅ |
+| Víctor Manuel Hernández | 3/5, 0 | 3/5, 0 ✅ |
+
+**Sara es la prueba de que la 2 y la 3 se necesitan mutuamente:** su `GRATIS PENDIENTE COBRADO
+26690` del 14/ago es su último canje, y como no hubo lavados después queda en 0/5. Si esa nota
+siguiera contando como pagada, no daría.
+
+> 💡 **Y el padrón del export sólo trae nombre y apellido: el contador del MRT nunca se exportó.**
+> Por eso no se pudo derivar de las notas hasta que el dueño explicó la regla del gerente. Cuando
+> un número no se puede reconstruir, la respuesta está en la operación, no en el dato.
+
+### Impacto, medido antes de aplicar
+
+```
+lavados gratis por honrar   245 -> 226     20 clientes pierden uno, 2 lo ganan
+clientes con gratis         244 -> 226
+```
+
+Los 2 que **ganan** no son un error: canjearon más de lo que tenían y hoy arrastraban la deuda con
+`greatest(0, ...)`; al reiniciar en el último canje se les perdona. Es coherente con la regla.
+
+### 🔴 Dos trampas que salieron al construirlo, y las dos se encontraron corriendo, no leyendo
+
+1. **Un reset futuro revivía el bug.** `stg_cnt` conserva las 46 notas crudas, así que
+   `reset-total.sql` las volvería a meter como pagadas — y en silencio: la cuenta de gratis caía
+   de 226 a 224. **Se vio en el dry-run de la suite.** La lista se guardó en
+   `cnt_notas_especiales` (`143`) y el reset ahora llama a `aplicar_notas_especiales_del_cnt()`.
+   La lista vive en **un solo lugar**; el reset no la copia.
+
+2. **La función no era idempotente y se comía un lavado bueno por corrida.**
+   `CINTIA MENDOZA ORDUÑO` tiene **dos** visitas sin ticket en el mismo minuto — el marcador y un
+   lavado real (12358) al que `limpiar-tickets.sql` le quitó el número. El `distinct on` elegía
+   una; ya descartada ésa, la siguiente corrida elegía la otra. **Se detectó corriéndola dos veces
+   y comparando** — la misma lección del desempate del import (§11.05): hacerlo bien una vez no
+   prueba que sea reproducible. El lavado que se descartó de más se restauró (`275749`), y el tope
+   ahora depende del trabajo ya hecho, no del orden.
+
+### La suite se tuvo que volver dinámica
+
+`dryrun-import.sh` y `candado-del-reset.sh` traían el número de visitas de caja sin respaldo
+**escrito a mano**. Desde que el CNT se retiró ese número **crece con cada venta**, así que las dos
+pruebas empezaron a fallar sin que nada estuviera roto. Ahora lo preguntan.
+
+> ✅ **Y eso fue el candado de la `§11.002` funcionando de verdad, en su primer día:** el reset se
+> negó a correr porque habría borrado las 17 visitas que la caja llevaba registradas ese día.
+
+Respaldos: `bak_lealtad_0831` (la lealtad de todos antes del cambio) y
+`bak_visitas_pendientes_0831` (las 46 filas exactas que se tocaron).
+Prueba: `pruebas/sellos-desde-el-ultimo-gratis.sql`.
+
 ## 11.01 Cierre del 25–28/ago/2026 — cuatro días, 252 lavados: el mejor dato del proyecto, y cambió media plantilla
 
 Continúa el cierre del 19–24/ago (§11.03). **252 lavados en cuatro días**, todos entregados. La

@@ -143,6 +143,16 @@ begin
   -- 5) Ligado a los carros reales por ticket == purchaseNumber. Vive en UNA
   --    funcion; lo que no liga queda anotado en imp_ligado_conflictos.
   r := public.ligar_visitas_de_import();
+
+  -- 5-bis) Las notas especiales del CNT ("GRATIS PENDIENTE"). Sin esto, un
+  --        reset REVIVE el bug que la 142 arreglo: los 31 marcadores vuelven
+  --        a contar como lavado pagado y los 15 canjes disfrazados vuelven a
+  --        contar como pagados. Se vio en el dry-run de la suite (la cuenta
+  --        de gratis caia de 226 a 224) — no leyendo el codigo.
+  --
+  --        La lista NO se copia aqui: vive en `cnt_notas_especiales` (143) y
+  --        esta funcion es el unico lugar que la aplica. Es idempotente.
+  perform public.aplicar_notas_especiales_del_cnt();
   select count(*) into n_lig from public.visitas where carro_id is not null;
 
   -- Guardas: si algo de esto no se cumple, la transaccion entera se cae.

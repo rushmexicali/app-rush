@@ -18,12 +18,32 @@ set -u
 cd "$(dirname "$0")/.." || exit 1
 
 ORIGEN=scripts/importar-clientnotetracker/reset-total.sql
+AYUDA="${TMPDIR:-/tmp}/rush-dryrun-cuenta-$$.sql"
 TMP="${TMPDIR:-/tmp}/rush-dryrun-$$.sql"
 
 # El unico cambio es el raise final. Si el archivo dejara de tener ese ancla,
 # el sed no hace nada, no aparece DRYRUN y la prueba falla — que es lo correcto:
 # significa que el archivo cambio y hay que volver a ver esta prueba.
-sed "s/raise notice E'RESET TOTAL/raise exception E'DRYRUN RESET TOTAL/" "$ORIGEN" > "$TMP"
+# 🔑 EL CANDADO DEL RESET (30/ago) HAY QUE ABRIRLO PARA PODER ENSAYARLO.
+# Desde que el CNT se retiro, cada visita que la caja registra despues del
+# ultimo export queda "sin respaldo", y el reset se niega a correr. Eso es
+# lo correcto en produccion, pero aqui estorbaria: este ensayo REVIERTE.
+# El numero NO se escribe a mano — se pregunta, porque crece cada dia que
+# la caja trabaja. Un numero fijo dejaria de cuadrar en la siguiente venta.
+cat > "$AYUDA" <<'SQL'
+select count(*) sin_respaldo from public.visitas v
+ where v.caja <> 'import' and v.estado = 'activa'
+   and (v.ticket is null or not exists
+        (select 1 from public.stg_cnt s where s.ticket = v.ticket));
+SQL
+N=$(bash scripts/releer-fotos/q.sh "$AYUDA" | gawk 'match($0,/"sin_respaldo":"?[0-9]+/){v=substr($0,RSTART,RLENGTH); sub(/.*:"?/,"",v); print v}')
+cat /dev/null > "$AYUDA"
+[ -n "$N" ] || { echo "  FALLA: no se pudo contar las visitas de caja sin respaldo"; exit 1; }
+echo "  visitas de caja sin respaldo en el export: $N (el candado pide ese numero)"
+
+{ echo "select set_config('rush.perdida_aceptada', '$N', false);"
+  sed "s/raise notice E'RESET TOTAL/raise exception E'DRYRUN RESET TOTAL/" "$ORIGEN"
+} > "$TMP"
 
 SALIDA=$(bash scripts/releer-fotos/q.sh "$TMP" 2>&1)
 cat /dev/null > "$TMP"   # no se borra: ver la memoria "no usar Remove-Item"
