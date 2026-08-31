@@ -43,6 +43,7 @@ correr "sintaxis de docs/*.html" \
 
 # --- Contra la base -------------------------------------------------------
 correr "canje sin saldo (lealtad)"        sql pruebas/canje-sin-saldo.sql
+correr "borrar unidad sin espera"      sql pruebas/borrar-unidad-sin-espera.sql
 correr "sellos desde el ultimo gratis"  sql pruebas/sellos-desde-el-ultimo-gratis.sql
 correr "perfil honesto y Jibble"          sql pruebas/perfil-y-jibble.sql
 correr "editar valida antes de escribir"  sql pruebas/editar-y-foto.sql

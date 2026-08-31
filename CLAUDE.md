@@ -270,31 +270,48 @@ salida."*
   `cancelados`) y la página del dueño lo muestra cuando no es cero. Verificado byte a byte: el
   resto del reporte quedó idéntico en 6 días.
 
-**Cuándo aparece y cuándo se habilita** — pensado para que el supervisor (de la tercera edad)
-no borre por accidente una unidad que iba bien:
+**Cuándo aparece** — y desde el 31/ago/2026 aparece **siempre habilitado**:
 
-  | Estado del carro | El botón aparece | Se habilita a los |
+  | Estado del carro | El botón aparece | Habilitado |
   |---|---|---|
-  | **Sin asignar** (prelavado) | sí | **30 min** sin asignar |
-  | **Secando** | sí | **2 h** secando (un carro 2 h "secando" es un olvido, nadie tarda eso) |
+  | **Sin asignar** (prelavado) | sí | **desde el primer segundo** |
+  | **Secando** | sí | **desde el primer segundo** |
   | Cualquier otro | no | — |
 
-  Antes de cumplir el tiempo el botón **se ve apagado, no desaparece** (mismo patrón que la
-  cámara: un botón que aparece solo confunde). El umbral vive en `BORRAR_UMBRAL` (front) y se
-  aplica por estado. Como la firma de `pintar()` no incluye el tiempo, quien prende el botón al
-  cruzar el umbral es `actualizarRelojes()` (cada segundo), no un rebuild.
+> 🔑 **Los umbrales de tiempo se quitaron el 31/ago/2026 (migración `144`).** Decisión del dueño,
+> textual: *"Haz que el botón de borrar unidad ya no se active por tiempo. Déjalo permanentemente
+> activado"*. Antes se veía apagado hasta cumplir **30 min sin asignar** o **2 h secando**, y la
+> base además rechazaba la llamada. **Las dos rejas se fueron.** Existían para que el supervisor
+> (de la tercera edad) no borrara por accidente una unidad que iba bien; en la operación real
+> resultaron estorbo, porque el día que hay que limpiar la cola el carro que sobra casi nunca
+> lleva media hora esperando.
+>
+> ⚠️ **Lo que esto cuesta:** un toque por error ahora sí saca el carro de la cola. Se recupera
+> (`cancelado_en = null`), pero hay que darse cuenta.
+>
+> ⚠️ **Y el orden con la caja importa más que antes.** `registrar_visita_con_carro` **rechaza** un
+> lavado cancelado (*"Ese lavado está cancelado"*). Si se borra la unidad antes de que la cajera
+> registre al cliente, **ese sello se pierde y no hay forma de ponerlo**. Antes los 30 minutos
+> hacían ese cruce casi imposible (la caja registra a los ~40 s del cobro); ahora la ventana está
+> abierta desde el primer segundo.
+>
+> **Si algún día vuelve un umbral, tiene que volver a `actualizarRelojes()` y no a `pintar()`:**
+> la firma de `pintar()` no incluye el tiempo, así que el botón no se prendería hasta que cambiara
+> algún dato del carro. Queda dicho en el código, donde vivía.
 
-- **Los candados de verdad viven en la base** (`borrar_unidad`, migraciones `083`+`084`): solo
-  `prelavado` con 30+ min, o `secando` con 2h+ desde el inicio de la etapa de secado abierta.
-  Así una llamada suelta no puede borrar un carro bueno aunque el front falle. El "2 h secando"
-  se mide desde la etapa `secando` con `fin is null` — el mismo dato que cuenta el reloj.
-- **Confirma antes de borrar** (es una acción que quita el carro de la lista). Es idempotente:
-  borrarlo dos veces no truena.
+- **El candado que queda en la base** (`borrar_unidad`, migración `144`): sólo se borra un carro
+  que siga **en la cola** (`prelavado` o `secando`). Un entregado no se borra por aquí — para eso
+  está "Restaurar" en Finalizados. Así una llamada suelta no puede sacar del reporte un lavado ya
+  cerrado. Los umbrales de tiempo de las migraciones `083`/`084` ya no existen.
+- **Confirma antes de borrar**, y ahora **esa confirmación es la única protección que hay** — antes
+  era la segunda. Es idempotente: borrarlo dos veces no truena.
 
-Probado con `do $$ ... raise` (secando 3h borra, 1h rechaza, prelavado 40min borra, recién
-entrado rechaza; `entregado_en`/etapas/`creado_en` intactos) y contra la API real
-(no destructivo). El front se verificó por **geometría** en el navegador: el botón queda
-arriba del reloj sin encimarlo, y una tarjeta sin botón se ve idéntica a antes.
+Probado con `do $$ ... raise` contra la base real (un carro recién entrado SÍ se borra, uno
+secando recién asignado también, un entregado NO, un id inexistente contesta sin tronar, y
+es idempotente); `entregado_en`, etapas y `creado_en` quedan intactos. El front se ejercitó
+EN EL NAVEGADOR con el arnés de `pruebas/front-supervisor/`: dos carros de 12 min y 3 min
+salen con el botón **habilitado**, la geometría se mantiene (el botón arriba del reloj, sin
+encimarlo, y el reloj corriendo) y el toque completo llega a `POST /borrar`.
 
 **Los secadores asignados salen en la tarjeta** (20/jul/2026), debajo del servicio y del mismo
 tamaño, para que el dueño los vea sin abrir el carro. Vienen de la cola (`/cola` ya los daba).

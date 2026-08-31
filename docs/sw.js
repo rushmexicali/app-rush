@@ -49,7 +49,11 @@
 //  v16 (30/ago/2026) — la foto tambien lee el COLOR y la foto manda sobre la
 //                     nota de caja (migracion 141). La caja pasa el color
 //                     que leyo la camara junto con placa/marca/submarca/tipo.
-var CACHE = "rush-v16";
+//  v17 (31/ago/2026) — "Borrar unidad" deja de esperar: ya no se apaga
+//                     hasta los 30 min sin asignar ni las 2 h secando.
+//                     Queda habilitado desde el primer segundo, y los
+//                     candados de tiempo tambien se fueron de la base.
+var CACHE = "rush-v17";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest",

@@ -880,14 +880,18 @@ var ACCIONES = {
   secando:     "ENTREGAR"
 };
 
-// El boton "Borrar unidad" aparece en dos casos, cada uno con su propio
-// tiempo. Antes de cumplirlo se ve apagado. En segundos porque asi cuenta el
-// reloj de la tarjeta (que mide el tiempo en la etapa abierta). El candado
-// de verdad vive en la base (borrar_unidad); esto solo evita el toque por
-// error.
-//   prelavado -> 30 min SIN ASIGNAR
-//   secando   -> 2 h en secado (un carro 2 h "secando" es un olvido)
-var BORRAR_UMBRAL = { prelavado: 30 * 60, secando: 2 * 60 * 60 };
+// El boton "Borrar unidad" aparece en los dos estados en que el carro sigue
+// EN LA COLA, y desde el primer segundo: el dueno quito los umbrales de
+// tiempo el 31/ago/2026 ("dejalo permanentemente activado").
+//
+// ⚠️ Antes se veia apagado hasta cumplir 30 min sin asignar o 2 h secando, y
+// la base ademas lo rechazaba. Las dos rejas se fueron. LO QUE QUEDA ES LA
+// CONFIRMACION de abajo: es la unica, asi que no se quita.
+//
+// Los demas estados no llevan boton (un entregado se recupera desde
+// Finalizados con "Restaurar", no se borra desde aqui), y la base tambien lo
+// impide.
+var BORRAR_ESTADOS = { prelavado: true, secando: true };
 
 // Los colores más vistos en la operación real. Un solo botón por color:
 // BLANCA y BLANCO son el mismo color y contarlos aparte ensucia el
@@ -1079,20 +1083,13 @@ function pintar() {
     // base la placa vive SIEMPRE sin guiones (para casar caja<->supervisor).
     if (c.placa) html += '<div class="placa">' + escapar(c.placa_display || c.placa) + '</div>';
     // Columna derecha: el reloj SIEMPRE, y ENCIMA de el el boton de borrar
-    // cuando aplica (prelavado o secando). Se apaga hasta cumplir el tiempo
-    // de su estado. Los demas estados no tienen boton: el .medidor queda con
-    // solo el reloj y se ve identico a antes.
-    var umbralB = BORRAR_UMBRAL[c.estado];
+    // cuando el carro sigue en la cola (prelavado o secando). Va HABILITADO
+    // desde el primer segundo (31/ago/2026). Los demas estados no tienen
+    // boton: el .medidor queda con solo el reloj y se ve identico a antes.
     html +=   '<div class="medidor">';
-    if (umbralB != null) {
-      var atrib;
-      if (seg >= umbralB) {
-        atrib = ' title="Sacar de la cola sin contar sus tiempos"';
-      } else {
-        var esperaTxt = c.estado === "secando" ? "las 2 h secando" : "los 30 min sin asignar";
-        atrib = ' disabled title="Se habilita a ' + esperaTxt + '"';
-      }
-      html += '<button class="borrar" data-borrar="' + c.id + '"' + atrib + '>Borrar unidad</button>';
+    if (BORRAR_ESTADOS[c.estado]) {
+      html += '<button class="borrar" data-borrar="' + c.id + '"' +
+              ' title="Sacar de la cola sin contar sus tiempos">Borrar unidad</button>';
     }
     html +=     '<div class="reloj">' + reloj(seg) + '</div>';
     html +=   '</div>';
@@ -1224,14 +1221,12 @@ function actualizarRelojes() {
     // El rojo de demora se maneja con la clase en la tarjeta: togglearla
     // NO recrea el boton, asi que los guiones siguen corriendo.
     el.classList.toggle("demorado", demorado);
-    // El boton de borrar se habilita solo al cruzar el umbral de su estado
-    // (30 min sin asignar, o 2 h secando). Se hace AQUI y no en pintar()
-    // porque pintar() no se corre cada segundo (la firma no incluye el
-    // tiempo): si esperara a un rebuild, el boton no se prenderia hasta que
-    // cambiara algun dato del carro.
-    var btnBorrar = el.querySelector(".borrar");
-    var umbralB = BORRAR_UMBRAL[c.estado];
-    if (btnBorrar && umbralB != null) btnBorrar.disabled = seg < umbralB;
+    // ⛔ Aqui vivia el codigo que HABILITABA el boton de borrar al cruzar su
+    // umbral (30 min sin asignar / 2 h secando). Se fue el 31/ago/2026: el
+    // boton ya nace habilitado en pintar(), asi que no hay nada que prender
+    // cada segundo. Si algun dia vuelve un umbral, tiene que volver AQUI y no
+    // en pintar(): pintar() no se corre cada segundo (su firma no incluye el
+    // tiempo), y el boton no se prenderia hasta que cambiara algun dato.
   }
 }
 
