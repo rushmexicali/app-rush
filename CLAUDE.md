@@ -812,9 +812,55 @@ carros duplicados. Quitando los olvidos la distorsión es chica (espera 52.6 a 4
 los borró en barridas (10:48, 14:16, 16:03–16:11, 17:06). Ninguno alcanzó a tener línea. Sólo 54
 de 129 pasaron por la app, así que **el dato de secado de ese día sale de una quinta parte**.
 
-No es un bug: es "Borrar unidad" haciendo su trabajo sobre una cola que nadie trabajó. Lo que
-dice es que el flujo de dos toques no aguantó 180 carros. Es el mismo patrón del 11/ago y del
-27/ago, pero de otra magnitud.
+No es un bug: es "Borrar unidad" haciendo su trabajo sobre una cola que nadie trabajó.
+
+> 🔴 **Aquí decía que "el flujo de dos toques no aguantó 180 carros". ERA FALSO, y los datos del
+> propio sábado lo desmienten.** Medido hora por hora, entraron contra asignados:
+>
+> ```
+> SÁBADO 29 (180 carros)              DOMINGO 30 (129 carros)
+>  8h  12/8    12h  19/17              8h   6/5    12h  14/0
+>  9h  16/15   13h  11/11              9h  12/6    13h  15/0
+> 10h  16/18   14h  20/18             10h  15/7    14h  16/0
+> 11h  23/21   15h  15/15             11h  13/1    15h  11/0
+>              16h  12/14                          16h  10/14  <- una ráfaga
+>              17h  19/9                           17h  11/0
+>              18h  12/10                          18h   4/0
+>              19h   5/5                           19h   2/0
+> ```
+>
+> **El sábado la app siguió el ritmo del taller las doce horas con 51 carros MÁS.** El domingo se
+> dejó de usar a las 11 de la mañana. No es capacidad del flujo.
+
+**La ráfaga de las 4 PM es la prueba.** A las 16:07–16:11 —en cuatro minutos— se asignaron catorce
+carros de golpe, que llevaban esperando **92, 90, 88, 80, 60, 56 y 51 minutos**. Eso no es trabajo:
+es alguien que agarró el teléfono, vio la cola llena y la puso al día. **La última asignación del
+día fue a las 16:42**, y entraron 27 carros más sin que nadie tocara el aparato.
+
+| | Sábado | Domingo |
+|---|---|---|
+| Carros | 180 | 129 |
+| **Pasaron por la app** | **161 (89%)** | **33 (26%)** |
+| Personas con carros asignados | **13** | **8** |
+| Ventana de uso | 08:14 → 19:21 | 08:32 → **16:42** |
+| Cerrados solos a las 8:30 | 0 | **28** |
+
+### 🔑 La causa, dicha por el dueño el mismo día
+
+*"Se calentó la tablet al estar cobrando afuera con las altas temperaturas de Mexicali. En cuanto
+pudo hacer uso de la app, las registró todas de golpe. Fue un evento extraordinario por el alto
+flujo."*
+
+⚠️ **Pero el aparato que se calentó NO fue el de la caja**, y eso importa para no buscar el
+problema donde no está. La caja trabajó **todas las horas del domingo sin un solo hueco**: la foto
+llegó a los **0.4–0.9 minutos** del cobro en las doce horas, 113 de 129 carros. El que se quedó
+mudo de 11 a 16 y de 16:42 en adelante fue el **teléfono del supervisor**.
+
+👉 **Y eso vuelve a la app parte del problema, no sólo víctima.** El teléfono del supervisor
+sostiene la pantalla prendida a propósito (el `candado` de §11.50) y consulta `/cola` **cada 3
+segundos**, todo el turno, al sol de Mexicali en agosto. Es carga térmica que la app misma genera.
+Si esto se repite el próximo verano, ahí es donde hay que mirar: sombra o ventilación primero, y
+si no alcanza, bajar la frecuencia del sondeo o dejar dormir la pantalla cuando no hay cola.
 
 ### La nota de caja se cayó, y es un turno concreto
 
@@ -1107,6 +1153,75 @@ ellos con un gratis de por medio. Ésos incluyen gente genuinamente distinta (`M
 `MARIO HERNANDEZ`, `GUILLERMO GARCIA` vs `IVAN GUILLERMO GARCIA`) y **no se pueden fusionar sin
 mirarlos uno por uno**. Respaldo de la lealtad previa en `bak_lealtad_0830`.
 
+
+
+---
+
+## 11.004 La foto también lee el COLOR, y la foto manda (30/ago/2026, migración `141`)
+
+La cajera dejó de poner la nota de venta el fin de semana. La razón, dicha por ella: **pensó que
+con el sistema nuevo de cobro ya no se ponía**. Antes de darle una instrucción se midió quién tenía
+razón, comparando los carros del 29–30/ago con nota contra los que no:
+
+| | Sin nota (106) | Con nota (203) |
+|---|---|---|
+| Tipo de unidad | **96%** | 100% |
+| Marca | **96%** | 85% |
+| Placa | **96%** | 74% |
+| Cliente | **88%** | 70% |
+| **Color** | 🔴 **1%** | **95%** |
+
+**Tenía razón en todo menos en el color** — la caja y la cámara ya cubren tipo, marca, placa y
+cliente mejor que la nota. Lo único que se perdía era el color, y se perdía entero.
+
+El color importa por dos cosas: es como el supervisor **encuentra el carro en el patio** ("BLANCO"
+se ve a veinte metros, "TOYOTA COROLLA" no), y es el **testigo independiente** que delata una foto
+pegada al carro equivocado (§12.1).
+
+**La salida que escogió el dueño**, textual: *"La cajera seguirá poniendo la nota de venta sólo en
+caso de que haya algún fallo en la lectura, pero la lectura de la foto sobreescribe lo que ponga la
+caja. La nota es meramente una red de apoyo."*
+
+### Cómo quedó
+
+- 🔑 **El color sigue la MISMA regla que marca y submarca** (la de la `109`), no una nueva: se
+  escribe cuando la lectura trajo algo, **un nulo NO borra** —así la nota sigue siendo la red de
+  apoyo cuando la foto no alcanza a ver el color—, y si la placa leída es distinta a la guardada se
+  reemplaza el juego completo. Copiar una regla nueva para el color habría sido el error que este
+  proyecto ya cometió varias veces.
+- **Lista cerrada de 14 colores**, en el prompt **y** en el `json_schema`. Si el modelo pudiera
+  inventar "gris oxford", el color dejaría de poderse comparar contra el de la nota — que es justo
+  lo que lo hace útil como testigo.
+- ⚠️ **Cambian tres firmas** (`guardar_datos_de_foto`, `pegar_foto_de_caja`,
+  `registrar_visita_con_carro`), así que hay `drop function` antes de cada una: un parámetro nuevo
+  crea una **sobrecarga**, no un reemplazo. Lección de la `052`, la `098` y la `104`. La prueba
+  comprueba que quedó **una sola** de cada una.
+- 🔑 **`registrar_visita_con_carro` NO se copió.** Se le pide a Postgres su propia definición, se le
+  insertan las dos piezas y se vuelve a crear, con las anclas comprobadas. Son ~100 líneas de reglas
+  con sus razones escritas (el ticket manda sobre el switch, el canje sin saldo, el candado del
+  ticket ya usado) y reescribirlas para pasar un parámetro es el movimiento que ya salió mal
+  (§11.45). Mismo patrón de la `116`.
+
+### Verificado en vivo, no por inspección
+
+- Se le borró el color al **carro 5333** (Toyota Camry) y se dejó como "foto sin leer"; el obrero de
+  fondo lo releyó con el prompt nuevo y escribió **`color = PLATEADO`**. La nota decía `GRIS` — es
+  un plata metálico, y ahora manda la foto, que es lo que se pidió.
+- **La cadena completa de la caja** (`registrar_visita_con_carro` → `pegar_foto_de_caja` →
+  `guardar_datos_de_foto`) lleva el color hasta `carros.color`. Ésa es la parte que un parámetro a
+  medio camino **no delataría**: la visita se registra igual y el color simplemente no aparece.
+
+Front y back **juntos y en el corte**, como manda §2. `sw.js` v16 (`caja.html` está en los básicos).
+
+> ⚠️ **Lo que esto cuesta, dicho de frente:** el color de la nota era el testigo que delataba una
+> foto mal pegada, y ahora la foto lo pisa. El testigo **no se pierde** —`carros.nota` se conserva
+> siempre e `interpretar_nota` sabe releerlo— pero deja de estar a la vista. Con eso se puede
+> construir un detector automático (*"color de la foto ≠ color de la nota"* = candidato a foto mal
+> pegada, igual que `placa_dudosa`), y queda apuntado como pendiente.
+>
+> 💡 Ojo con el ruido que tendría: en la propia prueba, `GRIS` (nota) contra `PLATEADO` (foto) sobre
+> el mismo Camry plata. Ese par va a discrepar seguido sin que nadie se equivoque, así que el
+> detector tendría que tratarlos como el mismo color.
 
 ## 11.01 Cierre del 25–28/ago/2026 — cuatro días, 252 lavados: el mejor dato del proyecto, y cambió media plantilla
 
