@@ -978,6 +978,135 @@ persona que sobrevive con sus 7 notas históricas.
 > verdad; **de aquí en adelante ya no hay quien las corrija**. El buscador es por subcadena, así
 > que "Galaviz" debió mostrarle la ficha existente. Es lo primero que hay que vigilar ahora que la
 > caja es la única fuente.
+> 
+> ✅ **Atacado el mismo día:** el buscador ahora encuentra por SONIDO (§11.003, migración `140`), que es la causa de raíz — la cajera no encontraba la ficha porque una letra estaba distinta. Y con esa misma clave se fusionaron 20 fichas ya partidas.
+
+## 11.003 El buscador de la caja oye el nombre (30/ago/2026, migración `140`)
+
+Pregunta del dueño el mismo día: *"¿Hay alguna manera de que siempre que se usen las siguientes
+letras las considere ambas para el buscador? S con Z, V con B, entre otras"* — y después
+*"También haz lo mismo con sh y ch"*.
+
+Sí, y es lo correcto: en el español de México esos pares **no son errores de dedo, son ortografía
+alternativa del mismo nombre**. El cliente dicta su apellido y la cajera lo escribe como lo oye.
+
+**El problema, medido contra la base real:**
+
+```
+"galaiz"       -> 0 resultados     "galaviz"       -> 3
+"osuna favela" -> 0 resultados     "ozuna favela"  -> 1
+"balderrama"   -> 2                "valderrama"    -> 4   (la MISMA persona, partida)
+```
+
+La cajera ve *"Nadie con ese nombre"*, el único botón que le queda es **"+ Registrar cliente
+nuevo"**, y nace un duplicado. Hace lo correcto con lo que ve.
+
+### Tres caminos, sumados con `or`
+
+| | Qué encuentra |
+|---|---|
+| 1. Como se **escribe** | El de siempre (`like '%texto%'`) |
+| 2. Como **suena** | El mismo `like`, pero sobre la clave fonética |
+| 3. Como se **parece** | Trigramas **sobre la clave**, para una letra de más o de menos |
+
+El 3 existe porque el 2 no alcanza cuando falta una letra: `GALAIZ` y `GALAVIZ` no son homófonas,
+es una `v` que se comió. Sobre la clave fonética los dos errores colapsan a la vez.
+
+**La clave colapsa:** seseo (`s`=`z`=`ce/ci`), `b`=`v`=`w`, `g` suave=`j`, `qu`=`c` dura=`k`,
+`ll`=`y`=`i`, **`sh`=`ch`**, la `h` muda, `rr`=`r`, `x`=`ks`, y las dobles.
+
+### Las decisiones que hay que respetar si esto se toca
+
+- 🔑 **NO se tocan las vocales.** `a/e/i/o/u` no son homófonas y colapsarlas juntaría gente
+  distinta. `MARIO HERNANDEZ` y `MARINA HERNANDEZ` siguen siendo claves **distintas**, y eso es tan
+  importante como que `GONZALEZ` y `GONSALES` sean iguales: **un buscador que funde a dos personas
+  es peor que uno que no encuentra a una** — le da los sellos de alguien a otro y eso no se nota
+  nunca.
+- ⚠️ **`sh` y `ch` van al MISMO token, y las dos ANTES de borrar la `h` muda.** Si no, `SANCHEZ` se
+  volvería `SANEZ`.
+- ⚠️ **`gue`/`gui` se resuelven DESPUÉS de `ge`/`gi`**, o `GUERRERO` acabaría en `JERERO`.
+- ⚠️ **El umbral del parecido se escribe, no se hereda.** El operador `%` usa
+  `pg_trgm.similarity_threshold`, que es de **sesión** (default 0.3) y que ni siquiera existe hasta
+  que la extensión se carga — `current_setting` sobre ella truena en una sesión nueva. Van las dos
+  cosas: `%` para que el índice trabaje y `similarity(...) >= 0.55` para decidir. La prueba lo
+  comprueba **moviendo el GUC** y exigiendo el mismo resultado.
+- **Dos funciones, por el índice.** `clave_fonetica_de_norm` es IMMUTABLE de verdad (puro texto
+  sobre algo ya normalizado) y es la que se indexa; `clave_fonetica` es el envoltorio STABLE del
+  lado de la consulta. Sin índice el buscador se va a **161 ms** por tecla; con él, **2.6 ms**. La
+  expresión del índice y la de la consulta tienen que ser idénticas palabra por palabra.
+- **Sin columna `nombre_fon`:** nadie mantiene `nombre_norm` con trigger (lo escribe cada quien que
+  inserta), así que una segunda columna sería otra cosa que alguien puede olvidar llenar. El índice
+  de expresión se mantiene solo.
+
+### El ruido se midió, y por eso no hay sección aparte
+
+La preocupación era que el camino 3 mostrara gente parecida y la cajera tocara al cliente
+equivocado. Medido: los trigramas exigen largos parecidos, así que **el 3 sólo dispara con nombres
+completos** — que es justo cuando nace un duplicado. En `a`, `lu`, `luis`, `jose`, `maria`, `gonz`,
+`gonzalez`, `martinez`, `jose luis`: **0 resultados extra en todas**.
+
+Por eso **no se hizo la sección aparte** que se había propuesto: estaría vacía casi siempre y sería
+estorbo. Queda como opción si algún día el ruido sube.
+
+Comprobado contra línea base consulta por consulta: **nada se perdió**, `%` sigue devolviendo 0, y
+los **cinco nombres que crearon duplicados el 29–30/ago ahora encuentran a su persona**.
+`mishelle lopes` y `michelle lopez` dan el mismo resultado.
+`pruebas/buscador-fonetico.sql` está en la suite.
+
+### Y con la clave se fusionaron 20 fichas partidas
+
+La misma clave fonética sirve para **encontrar** los duplicados que ya existen. Salieron **24 pares
+con el nombre idénticamente sonoro**. El dueño autorizó 20 y dejó 4 fuera.
+
+**La evidencia que se buscó y NO se encontró:** ninguno comparte placa confirmada. Lo que sí:
+**23 de 24 nunca tienen visita el mismo día**, consistente con ser la misma persona.
+
+Los 4 que **no** se tocaron, y por qué:
+
+| | Por qué se dejó |
+|---|---|
+| `LUIS VALDERRAMA JUAREZ` / `LUIS BALDERRAMA JUAREZ` | 🔴 **Placas distintas** (BVX279A vs C32NXN3). Único par con evidencia *en contra* |
+| `ANA KAREN HERNANDEZ` / `ANNA KAREN HERNANDEZ` | 134 Hernández en la base |
+| `CASANDRA TORRES` / `KASANDRA TORRES` | 51 Torres, 1 visita cada una |
+| `sara roman` / `SARAH ROMAN` | 1 visita cada una |
+
+Los tres últimos **no desbloquean nada** y son nombres comunes: el riesgo de juntar a dos personas
+distintas no se compensa con nada. Es el "1000% o nada" de siempre.
+
+**No se escribió mecanismo nuevo:** se reusó `aplicar-renombres.sql`, que ya mueve visitas y placas
+al que conserva la historia y borra el duplicado. Sólo se pobló `ren_cand` (hoy
+`bak_ren_cand_0830`, renombrada para que nadie la re-aplique por accidente).
+
+**Quién se queda:** más visitas, luego más gasto, luego la visita más reciente — la ortografía que
+la cajera está usando hoy. Determinista. En los 5 pares de 1 visita contra 1 la sobreviviente es
+arbitraria (`AXEL ZAAVEDRA` le ganó a `AXEL SAVEDRA`), y ya **no importa para encontrarlos**: el
+buscador fonético los halla con cualquiera de las dos.
+
+**Resultado, verificado contra línea base:**
+
+```
+visitas   15,838 -> 15,838   (ninguna se perdio, 0 huerfanas)
+personas   5,091 ->  5,071   (-20 exactas)
+gasto    $3,469,020.94 -> identico
+placas       354 ->    354
+gratis       242 ->    248   (+6)
+```
+
+**Seis clientes recuperaron un lavado gratis que ya se habían ganado** y que estaba partido entre
+dos fichas: Abelardo Inzunza, Andrea Covarrubias, Areli Cuevas, Carolina Zamudio, Hernesto Aro e
+Isaael Torres.
+
+> 🔴 **Y ese +6 corrigió un error mío que vale anotar.** Yo había predicho 2, calculando con
+> `pagados / 6`. La regla real es **`floor(lavados_pagados / 5)`**: se juntan **5 pagados y el 6to
+> es el gratis**. El número no cuadró, se fue a ver la vista `lealtad_por_persona` en vez de
+> encogerse de hombros, y ahí estaba. Cualquier cuenta de lealtad que se haga a mano tiene que usar
+> **/5**, no /6.
+
+**Lo que queda:** 117 pares "parecidos" por trigrama que **no** son fonéticamente idénticos, 20 de
+ellos con un gratis de por medio. Ésos incluyen gente genuinamente distinta (`Marina Hernandez` vs
+`MARIO HERNANDEZ`, `GUILLERMO GARCIA` vs `IVAN GUILLERMO GARCIA`) y **no se pueden fusionar sin
+mirarlos uno por uno**. Respaldo de la lealtad previa en `bak_lealtad_0830`.
+
 
 ## 11.01 Cierre del 25–28/ago/2026 — cuatro días, 252 lavados: el mejor dato del proyecto, y cambió media plantilla
 
