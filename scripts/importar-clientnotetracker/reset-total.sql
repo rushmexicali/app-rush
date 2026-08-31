@@ -33,43 +33,75 @@ declare
   n_caja int; n_huerf int;
   r jsonb;
 begin
-  -- 1) EL BORRADO. Sin `where`: la actividad de la CAJA tambien se va, y eso
-  --    es a proposito. La razon CAMBIO el 28/ago/2026 y hay que leerla, porque
-  --    la vieja ya no es cierta:
+  -- 1) EL BORRADO. Sin `where`: la actividad de la CAJA tambien se va.
   --
-  --      antes (24/ago): "todo lo que se ha hecho de caja es prueba".
-  --      HOY:            la caja esta en uso REAL, pero la cajera sigue
-  --                      llenando el ClientNoteTracker EN PARALELO, asi que
-  --                      cada visita de caja ya viene tambien en el export.
-  --                      Conservarlas seria contar el mismo lavado dos veces
-  --                      -> sello doble (el bug de §11.35).
+  --    🔴 LEE ESTO ANTES DE CORRER EL RESET. La razon por la que borrar la
+  --       caja era seguro DEJO DE SER CIERTA el 30/ago/2026.
   --
-  --    🔴 SI ALGUN DIA EL CNT DEJA DE LLENARSE, ESTE `delete` BORRA DATOS
-  --       REALES QUE NO VUELVEN. Antes de correr el reset, comprueba que el
-  --       export cubra lo que la caja registro:
+  --         24/ago:  "todo lo que se ha hecho de caja es prueba".
+  --         28/ago:  la caja esta en uso REAL, pero la cajera sigue llenando
+  --                  el ClientNoteTracker EN PARALELO, asi que cada visita de
+  --                  caja viene tambien en el export. Conservarlas seria
+  --                  contar el mismo lavado dos veces -> sello doble (§11.35).
+  --         30/ago:  el dueno, textual: "A partir de manana el CNT se deja de
+  --                  utilizar y nos enfocamos 100% en nuestra app".
   --
-  --         select count(*) from public.visitas v
-  --          where v.caja <> 'import' and v.ticket is not null
-  --            and not exists (select 1 from public.stg_cnt s where s.ticket = v.ticket);
+  --       O SEA QUE YA NO HAY UNA SEGUNDA FUENTE. El export del 30/ago fue el
+  --       ultimo. Desde el 31/ago, la unica copia de la lealtad vive en
+  --       `visitas` con `caja <> 'import'`, y este `delete` la borra sin
+  --       vuelta: no hay de donde reconstruirla.
   --
-  --       Debe dar 0. NO hace falta correrla a mano: el reset la calcula solo
-  --       y la reporta al final como "caja sin respaldo en el CNT". Es un
-  --       AVISO, no un candado — una visita registrada DESPUES del corte del
-  --       export cae ahi de forma legitima, y abortar el reset por eso seria
-  --       peor que reportarlo. NO hace
-  --       falta correrla a mano: el reset la calcula solo y la reporta abajo
-  --       como . Es aviso, NO candado — una
-  --       visita registrada DESPUES del corte del export cae ahi de forma
-  --       legitima, y abortar el reset por eso seria peor.
-  --    Se cuenta ANTES de borrar, que es la unica ventana en que se puede:
-  --    cuantas visitas de la caja se van, y de esas cuantas NO vienen en el
-  --    export (o sea las que de verdad se pierden). Ver el aviso del final.
+  --    🔑 POR ESO EL AVISO SE VOLVIO CANDADO. Hasta el 30/ago esto se contaba
+  --       y se REPORTABA al final ("caja sin respaldo en el CNT"), con el
+  --       argumento de que una visita registrada despues del corte del export
+  --       cae ahi de forma legitima y abortar seria peor que avisar. Ese
+  --       argumento valia cuando el CNT respaldaba TODO menos la ultima hora.
+  --       Hoy no respalda nada, asi que un aviso que nadie lee al final de una
+  --       operacion ya consumada no protege de nada.
+  --
+  --       Ahora: si hay UNA sola visita de caja que el export no cubra, el
+  --       reset se cae y no borra nada. Para hacerlo de todos modos hay que
+  --       decir en voz alta cuantas se estan tirando:
+  --
+  --         select set_config('rush.perdida_aceptada', '<N>', false);
+  --
+  --       y ESA LINEA VA EN LA MISMA PETICION, arriba del reset (la API de
+  --       administracion abre una sesion por peticion, asi que un set_config
+  --       suelto en otra llamada no llega). El N tiene que ser EXACTAMENTE el
+  --       que el reset calculo: un numero tecleado a ciegas no coincide; uno
+  --       tecleado despues de leer el error, si. Esa es toda la proteccion,
+  --       y es a proposito.
+  --
+  --    Se cuenta ANTES de borrar, que es la unica ventana en que se puede.
   select count(*), count(*) filter (
            where v.ticket is null
               or not exists (select 1 from public.stg_cnt s where s.ticket = v.ticket))
     into n_caja, n_huerf
     from public.visitas v
    where v.caja <> 'import' and v.estado = 'activa';
+
+  if n_huerf > 0
+     and coalesce(current_setting('rush.perdida_aceptada', true), '') <> n_huerf::text then
+    raise exception
+      E'RESET ABORTADO — no se borro nada.\n'
+      '  % visitas de la caja NO vienen en el export y se perderian para siempre.\n'
+      '  (de % que registro la caja en total)\n'
+      '\n'
+      '  Desde el 31/ago/2026 el ClientNoteTracker ya no se llena, asi que la\n'
+      '  caja es la UNICA fuente de la lealtad y esto no se puede reconstruir.\n'
+      '\n'
+      '  Miralas antes de decidir:\n'
+      '    select v.creado_en, v.ticket, p.nombre, v.monto, v.es_gratis\n'
+      '      from public.visitas v join public.personas p on p.id = v.persona_id\n'
+      '     where v.caja <> ''import'' and v.estado = ''activa''\n'
+      '       and (v.ticket is null or not exists\n'
+      '            (select 1 from public.stg_cnt s where s.ticket = v.ticket));\n'
+      '\n'
+      '  Si de verdad las vas a tirar:\n'
+      '    select set_config(''rush.perdida_aceptada'', ''%'', false);\n'
+      '  pegala ARRIBA del reset, en la MISMA peticion.',
+      n_huerf, n_caja, n_huerf;
+  end if;
 
   delete from public.visitas;        get diagnostics d_vis = row_count;
   delete from public.persona_placas; get diagnostics d_pp  = row_count;

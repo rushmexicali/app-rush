@@ -789,6 +789,196 @@ para adivinar.
 > Regla de oro de construcción: **una integración a la vez.** Dejar funcionando y probado
 > cada bloque antes de meter el siguiente, para saber exactamente qué pieza falla.
 
+## 11.001 Cierre del 29–30/ago/2026 — récord absoluto, la caja se adoptó, y el CNT se retira
+
+Fin de semana grande y de bisagra. **161 lavados el sábado 29**, el día más grande registrado
+(el récord previo era 127 del 1/ago). Y dos cambios permanentes: la caja pasó a operación real
+con cámara, y el dueño retiró el ClientNoteTracker.
+
+| Día | | Carros | Lavados | Espera | Secado compl. | Express | Encimados | Nunca asignados |
+|---|---|---|---|---|---|---|---|---|
+| 29/ago | Sábado | **180** | **161** | 52.6 | **53.9** | 18.7 | 103 (64%) | 19 (11%) |
+| 30/ago | Domingo *(hasta 19h)* | 129 | 26 entregados | 58.8 | 38.0 | 27.3 | 11 | **74 (57%)** |
+
+**El volumen se verificó antes de reportarlo**, porque +27% de golpe sobre el récord es
+sospechoso: los recibos de Zettle van **consecutivos del 27888 al 28071, sin huecos y sin
+repetirse**. 184 ventas el sábado, 180 carros, 180 uuids distintos. No hay webhooks dobles ni
+carros duplicados. Quitando los olvidos la distorsión es chica (espera 52.6 a 48.9, secado
+38.9 a 35.8): **los tiempos son taller, no captura**. El taller se saturó de verdad.
+
+### El supervisor dejó de usar la app, y el domingo fue grave
+
+74 de 129 carros del 30/ago (**57%**) entraron por Zettle, **nadie los asignó**, y el supervisor
+los borró en barridas (10:48, 14:16, 16:03–16:11, 17:06). Ninguno alcanzó a tener línea. Sólo 54
+de 129 pasaron por la app, así que **el dato de secado de ese día sale de una quinta parte**.
+
+No es un bug: es "Borrar unidad" haciendo su trabajo sobre una cola que nadie trabajó. Lo que
+dice es que el flujo de dos toques no aguantó 180 carros. Es el mismo patrón del 11/ago y del
+27/ago, pero de otra magnitud.
+
+### La nota de caja se cayó, y es un turno concreto
+
+```
+29/ago   8-11h:  10 de 67 con nota (15%)  |  14h en adelante: 83 de 83 (100%)
+30/ago   8-13h:  33 de 75 con nota (44%)  |  14h en adelante: 54 de 54 (100%)
+```
+
+Los dos días, **mismo corte a las 14:00**. Venía de 99–100% seis semanas seguidas. Es la cajera
+del turno matutino de fin de semana, no la app. Y se encadena con lo anterior: sin nota el carro
+entra sin tipo ni color, y el supervisor no lo puede identificar en el patio.
+
+### La caja entró en operación real — y la cámara está tomando la foto
+
+Contra las 16 visitas del 28/ago:
+
+| | 29/ago | 30/ago |
+|---|---|---|
+| Visitas registradas | **124** | **110** |
+| Cobertura de los carros vivos | 73% | **91%** |
+| Ligadas a su lavado | 124/124 | 110/110 |
+| Mediana cobro a registro | 46 s | 38 s |
+| Canjes / gratis vendidos | 10 de 14 | **13 de 13** |
+
+El cambio se ve mejor en el **retraso de la foto**, que es la medición que en cierres anteriores
+servía para demostrar que la caja *no* se usaba: la mediana de cobro a foto pasó de **10.9 min**
+(el supervisor al asignar) a **1.1 min** el sábado y **35 segundos** el domingo. 103 de 113 fotos
+del domingo llegan en menos de 2 minutos. La lectura de placa subió a **92%**.
+
+**0 rechazos, 0 devoluciones, 0 placas repetidas, 0 tiempos imposibles, 0 fotos sin intento de
+lectura, 0 no-express en la línea 1.** El candado de placa duplicada atajó 3.
+
+> ✅ **6to Express deja de ser hallazgo abierto.** Los 2 casos del sábado salieron
+> `es_express=true`, sin aspirado y **a la línea 1**. Lo arregló la migración `105` el 19/ago; el
+> §11.01 y el §11.03 lo seguían dando por abierto sin comprobarlo.
+
+### Analítica por persona — los dos días
+
+Completos (con aspirado), una persona: Jesús Gil 19 a 46.9 (12 encimados) · Mario Hernández 14 a
+52.9 (12) · **Luis Luna 14 a 44.0 (8)** · Pablo Cruz 14 a 48.1 (11) · Edgar Reyes 10 a 52.1 (5) ·
+**Carlos Ponce 9 a 70.4 (6)** · Walter Rodríguez 9 a 59.2 (5) · Luis Chávez 8 a 61.7 (2) · Jaime
+Gallegos 7 a 49.0 (4). Express: **Walter Rodríguez 19 a 19.4**, Jesús Gil 15 a 26.9, Saul Ramirez
+10 a 19.8, Pablo Cruz 7 a 15.5.
+
+Con 64% de encimados el sábado, **casi ningún número individual de este periodo se puede leer
+como rendimiento** — es saturación. Las dos excepciones que sí vale mirar: **Carlos Ponce sigue
+último** (70.4 min, segundo periodo seguido, ya con 23 carros de por vida) y **Luis Chávez a 61.7
+con sólo 2 encimados**, que es lento sin nada que lo explique. **Luis Luna quedó a 44.0**, o sea
+que su corrección del periodo pasado se sostuvo.
+
+---
+
+## 11.002 Tres decisiones del dueño del 30/ago, y una regla que se retira
+
+### 1. Las fotos huérfanas se borran solas al cierre (migración `138`)
+
+Textual: *"Bórralas. Todas las fotos huérfanas se borran al finalizar el día (8:30 PM)"*.
+
+Hasta ese día sólo se **contaban** y se dejaba un aviso pidiendo autorización. Eso dejó de
+escalar cuando la caja entró en uso real: captura la foto **antes** de ligarla, así que la que se
+abandona a media captura queda suelta. El aviso pasó de 16 a 96 en cinco días y llegó a **151** el
+mismo 30/ago. Pedir permiso todos los días para lo mismo es la otra forma de no avisar.
+
+- **El horario vive en la función, no en el cron** (`barrer_huerfanas_si_toca`). `pg_cron` corre
+  en UTC y Mexicali cambia de horario dos veces al año; escribir la hora local en el schedule la
+  deja mal medio año sin que nadie se entere. Se dispara a las dos horas UTC posibles (03:30/04:30)
+  y decide Postgres preguntándole a `America/Tijuana`. Mismo patrón de `congelar_reporte` (`035`) y
+  Jibble (`060`). **Verificado sobre un año: 365 días, exactamente una corrida por día**, ninguno
+  sin ninguna y ninguno con dos.
+- **El barrido por EDAD (60 días) no se tocó.** Son dos reglas distintas y no tienen por qué
+  compartir horario.
+- ⚠️ **La única red que queda es la gracia de una hora** de `fotos_huerfanas_lista` (`127`), y
+  ahora importa más porque esto ya no lo revisa nadie: `/foto` sube el archivo a Storage y
+  **después** escribe `carros.foto_path`; entre esas dos cosas una foto viva se ve idéntica a una
+  huérfana. A las 8:30 PM, con el taller cerrado desde las 8, la gracia cubre de sobra.
+- Se borraron **151 + 11** (las 11 quedaron sueltas al borrar `visitas` en el reset). Verificado
+  después: **3,411 archivos en el bucket = exactamente los 3,411 carros con foto**, 0 carros sin su
+  archivo.
+
+### 2. Un lavado de arrendatarios no suma sello (migración `139`)
+
+Textual: *"los lavados de arrendatarios, no generan sellos. Igual se pueden asignar al cliente,
+pero no generan visita"*. Escogió **queda en el historial, marcado, pero ni suma sello ni consume
+gratis** — que es exactamente lo que ya significa `es_cortesia` desde la `101`/`102`. No se
+inventó un cuarto estado.
+
+**Se cambió UNA sola función y ésa es la gracia.** `clase_de_gratis` es el único lugar donde se
+decide canje/cortesía, y los dos caminos que registran visitas le preguntan a ella
+(`registrar_visita_con_carro` en vivo, `clase_de_gratis_del_ticket` en el import). Tocar los dos
+por separado es como se desfasan las cosas aquí — el error que este proyecto ya cometió con
+`es_servicio_especial` (`055`), con la cortesía del import (`129`) y con el aviso plano de Zettle
+tres veces.
+
+- ⚠️ **El orden de los `when` no es cosmético.** El de arrendatarios va **primero**: después, el
+  `not ilike 'gratis%'` que devuelve null lo atajaría y la regla no haría nada, porque un
+  arrendatario no es un producto "Gratis".
+- ⚠️ **Se empareja 'arrenda', NO la categoría `Descuento`.** Ahí también viven `Instagram` y
+  `Passie Completo`, que son descuentos de **publicidad** a clientes de mostrador (§12.1): ésos sí
+  ganan sello, y meterlos aquí le quitaría lealtad a gente que la ganó. La migración lo comprueba.
+- Alcance medido antes de escribir: **20 ventas** de arrendatarios en toda la historia y **1 sola**
+  con nota en el CNT. Pesa hacia adelante, no hacia atrás.
+- **Sin cambios de front:** `tickets_recientes` ya devuelve la clase y `caja.html` pinta
+  "CORTESÍA · no suma" cuando vale cortesia. Un arrendatario la muestra solo.
+
+### 3. El ClientNoteTracker se retira — y el reset se vuelve un arma cargada
+
+Textual: *"A partir de mañana el CNT se deja de utilizar y nos enfocamos 100% en nuestra app"*.
+
+**El export del 30/ago fue el último.** Desde el 31/ago la lealtad la registra **sólo la caja**, y
+no hay segunda fuente de la cual reconstruirla.
+
+Eso invalida la regla que llevaba dos días escrita (§11.02, *"todo import es borrón y cuenta
+nueva"*). El `delete from public.visitas` de `reset-total.sql` no lleva `where`: correrlo hoy
+borraría toda la lealtad de la caja **sin vuelta**.
+
+🔑 **Por eso el aviso se volvió CANDADO.** Hasta ese día el reset sólo *reportaba* al final
+"CAJA se borraron N visitas; M sin respaldo en el CNT", con el argumento —correcto entonces— de
+que una visita registrada después del corte del export cae ahí de forma legítima y abortar sería
+peor que avisar. **Ese argumento valía cuando el CNT respaldaba todo menos la última hora. Hoy no
+respalda nada**, y un aviso que se lee al final de una operación ya consumada no protege de nada.
+
+Ahora, si hay **una sola** visita de caja que el export no cubra, el reset **aborta y no borra
+nada**. Para forzarlo hay que decir en voz alta cuántas se van a tirar, y el número tiene que ser
+**exactamente** el que el reset calculó:
+
+```sql
+select set_config('rush.perdida_aceptada', '<N>', false);
+```
+
+Va **arriba del reset y en la misma petición** — la API de administración abre una sesión por
+petición, así que un set_config suelto en otra llamada no llega. Un número tecleado a ciegas no
+coincide; uno tecleado después de leer el error, sí. Ésa es toda la protección, y es a propósito.
+
+> **Probado en las dos direcciones:** sin el override aborta y **no escribe nada** (la fila
+> sembrada se revirtió y quedaron los 15,838/5,091 intactos); con el override correcto deja pasar.
+
+### El último import, aplicado
+
+| | |
+|---|---|
+| Visitas | **15,838** (cuadra **día por día** contra `staging_full.tsv`) |
+| Clientes | **5,091** |
+| Ligadas a su lavado | **2,925** · **0 conflictos** |
+| Gasto | **$3,469,020.94** |
+| Gratis a honrar | **242 en 241 personas** |
+| Placas corroboradas | **354 en 334 clientes** |
+| Caja | 234 visitas borradas, 13 sin respaldo |
+| Operación | **intacta**: 3,646 carros, 10,527 etapas, 3,527 asignaciones, 3,700 ventas |
+
+Zona horaria **medida** contra Zettle (Tijuana, +0/−1 min) y **0 notas después de las 8 PM**.
+
+**Las 13 sin respaldo se abrieron una por una** en vez de encogerse de hombros con "13 de 234":
+10 sí estaban en el CNT ese día **bajo otro ticket** (la cajera anotó al cliente con el número
+mal); `ISABEL GALAIZ SALCEDO` era un **duplicado de dedo** de `Isabel Galaviz Salcedo`, que el
+reset corrige; `GLORIA DE REMAKE` es un **arrendatario**, y por la decisión #2 no debía generar
+sello de todos modos. **La pérdida real fue 1 sello**, el de Jorge Humberto Vargas Ramírez —
+persona que sobrevive con sus 7 notas históricas.
+
+> 🟠 **Y la caja está creando fichas duplicadas.** De 52 altas del fin de semana, 42 tienen nombre
+> idéntico en el CNT y **10 no**. El reset las corrigió esta vez porque el padrón del export era la
+> verdad; **de aquí en adelante ya no hay quien las corrija**. El buscador es por subcadena, así
+> que "Galaviz" debió mostrarle la ficha existente. Es lo primero que hay que vigilar ahora que la
+> caja es la única fuente.
+
 ## 11.01 Cierre del 25–28/ago/2026 — cuatro días, 252 lavados: el mejor dato del proyecto, y cambió media plantilla
 
 Continúa el cierre del 19–24/ago (§11.03). **252 lavados en cuatro días**, todos entregados. La
@@ -960,6 +1150,12 @@ lavado de ese día no aparecía. Mientras más se usara la caja, más se degrada
   a $5,380, y el CNT quedó **intacto** (15,499 visitas, $3,392,729.94, sus 825 sin ticket sin tocar).
 
 ### 🔑 La regla nueva: TODO import es borrón y cuenta nueva
+
+> 🛑 **SUPERADA DOS DÍAS DESPUÉS. Ver §11.002 punto 3.** El 30/ago/2026 el dueño retiró el
+> ClientNoteTracker (*"a partir de mañana el CNT se deja de utilizar"*), así que **ya no hay
+> imports** y el reset dejó de ser seguro: sin una segunda fuente, su `delete` sin `where` borra
+> la única copia de la lealtad. El aviso del final se convirtió en **candado**. Lo de abajo se
+> conserva porque explica por qué el incremental quedó retirado, que sigue siendo cierto.
 
 El dueño confirmó que **la cajera sigue llenando el ClientNoteTracker en paralelo**, y decidió:
 *"Cada import de ahora en adelante será borrón y cuenta nueva siempre. Nada de actualizar la base

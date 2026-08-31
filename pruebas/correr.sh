@@ -73,6 +73,12 @@ correr "la visita de caja guarda su ticket" sql pruebas/visita-de-caja-con-ticke
 # segundos; ver el encabezado de pruebas/dryrun-import.sh.
 correr "el reset del import corre en seco" bash pruebas/dryrun-import.sh
 
+# El candado que impide borrar lealtad que nadie respalda. Desde el 31/ago
+# el CNT ya no se llena, asi que `visitas` de caja es la UNICA copia y el
+# `delete` sin `where` del reset la borraria sin vuelta. Ejercita el archivo
+# REAL en las dos direcciones (detiene / deja pasar con el numero exacto).
+correr "el candado del reset"          bash pruebas/candado-del-reset.sh
+
 echo ""
 echo "=============================================================="
 if [ "$fallos" -eq 0 ]; then

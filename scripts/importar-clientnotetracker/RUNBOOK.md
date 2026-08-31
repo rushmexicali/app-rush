@@ -106,6 +106,43 @@ CRM no pasa ni un segundo vacío. Y antes del 3, siempre:
 bash scripts/bajar-respaldo.sh "C:/Users/luis_/Desktop/respaldo-rush-AAAA-MM-DD"
 ```
 
+> 🛑 **EL CNT SE RETIRÓ EL 31/ago/2026. ESTE PROCEDIMIENTO YA NO SE VUELVE A CORRER.**
+> Decisión del dueño el 30/ago/2026, textual: *"A partir de mañana el CNT se deja de utilizar y
+> nos enfocamos 100% en nuestra app."*
+>
+> El export del **30/ago/2026 fue el último** (15,838 visitas, 5,091 personas, $3,469,020.94). De
+> ahí en adelante la lealtad la registra **sólo la caja**, y no hay segunda fuente de la cual
+> reconstruirla.
+>
+> **Qué significa en concreto:** el `delete from public.visitas` de `reset-total.sql` no lleva
+> `where`, así que correr el reset hoy **borraría toda la lealtad de la caja sin vuelta**. Ya no
+> existe un export que la reponga.
+>
+> 🔑 **Por eso el aviso se volvió CANDADO** (30/ago/2026). Hasta ese día el reset sólo *reportaba*
+> al final `CAJA se borraron N visitas; M sin respaldo en el CNT`, con el argumento —correcto
+> entonces— de que una visita registrada después del corte del export cae ahí de forma legítima y
+> abortar sería peor que avisar. Ese argumento valía cuando el CNT respaldaba todo menos la última
+> hora. **Hoy no respalda nada**, y un aviso que se lee al final de una operación ya consumada no
+> protege de nada.
+>
+> Ahora, si hay **una sola** visita de caja que el export no cubra, el reset **aborta y no borra
+> nada**. Para forzarlo hay que decir en voz alta cuántas se van a tirar, y el número tiene que ser
+> exactamente el que el reset calculó:
+>
+> ```sql
+> select set_config('rush.perdida_aceptada', '<N>', false);
+> ```
+>
+> Va **arriba del reset y en la misma petición** — la API de administración abre una sesión por
+> petición, así que un `set_config` suelto en otra llamada no llega. Un número tecleado a ciegas no
+> coincide; uno tecleado después de leer el error, sí. Ésa es toda la protección, y es a propósito.
+>
+> Probado en las dos direcciones el 30/ago: sin el override aborta y **no escribe nada** (la fila
+> sembrada se revirtió y quedaron los 15,838/5,091 intactos); con el override correcto deja pasar.
+
+<details>
+<summary>La regla anterior (28–30/ago/2026), por si hace falta el contexto</summary>
+
 > 🔑 **SIEMPRE ES BORRÓN Y CUENTA NUEVA. Ya no hay import incremental.** Decisión del dueño el
 > 28/ago/2026, textual: *"Cada import de ahora en adelante será borrón y cuenta nueva siempre. Nada
 > de actualizar la base de datos actual. Así nos evitamos problema."*
@@ -118,11 +155,8 @@ bash scripts/bajar-respaldo.sh "C:/Users/luis_/Desktop/respaldo-rush-AAAA-MM-DD"
 >
 > `import.sql`, `import-incremental.sql` e `import-incremental-dryrun.sql` quedaron **con candado**:
 > si alguien los corre, abortan con la razón escrita. El cuerpo viejo está en el historial de Git.
->
-> ⚠️ Esto vuelve al CNT la **única** fuente de la lealtad. El reset ahora reporta
-> `CAJA se borraron N visitas; M sin respaldo en el CNT` — si esa M no es ~0 después de cargar un
-> export que ya cubra esos días, la cajera dejó de llenar el CNT y el reset está perdiendo datos
-> reales.
+
+</details>
 
 El resto de este archivo explica **por qué** cada paso hace lo que hace. Se lee cuando algo no
 cuadra, que es cuando de verdad importa.
