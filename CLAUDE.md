@@ -1329,6 +1329,28 @@ pruebas empezaron a fallar sin que nada estuviera roto. Ahora lo preguntan.
 > ✅ **Y eso fue el candado de la `§11.002` funcionando de verdad, en su primer día:** el reset se
 > negó a correr porque habría borrado las 17 visitas que la caja llevaba registradas ese día.
 
+### 🟠 Y el MRT vuelve a encenderse una semana (instrucción del dueño, el mismo día)
+
+Se había retirado el 31/ago por la mañana. Esa misma tarde **vuelve a encenderse, en paralelo con
+la caja, durante una semana** — hasta estar 100% seguros de que la base no trae errores.
+
+**La razón es este mismo hallazgo.** Los tres defectos de arriba llevaban desde el primer import y
+se encontraron **porque había un segundo sistema con el cual comparar**. Sin esa red no se habrían
+visto nunca: los números estaban mal y se veían perfectamente normales.
+
+- **Instrucción para la cajera:** seguir anotando **todas** las visitas en el MRT, además de
+  registrarlas en la caja. Es doble captura, a propósito, una semana.
+- **Antes de apagarlo otra vez:** sacar un export nuevo, correr `preparar-import.sh` y
+  `cargar-staging.sh` (no tocan el CRM), y cotejar visita por visita **en los dos sentidos** — lo
+  que está en la caja y no en el MRT, y al revés. Sólo si eso sale limpio se apaga.
+- ⚠️ **Mientras el MRT esté encendido el reset vuelve a ser seguro**, porque hay segunda fuente.
+  En cuanto se apague, vuelve a aplicar el candado del §11.002.
+
+**Y el procedimiento quedó reproducible**, que era el otro encargo: `pendientes.awk` saca las notas
+del PDF, `cargar-staging.sh` las mete a `cnt_notas_especiales`, y `reset-total.sql` las aplica. Un
+borrón y cuenta nueva futuro reproduce el estado corregido solo. Verificado: el extractor saca las
+**46 filas idénticas** a las que se aplicaron a mano (46 de 46, 0 de más y 0 de menos).
+
 Respaldos: `bak_lealtad_0831` (la lealtad de todos antes del cambio) y
 `bak_visitas_pendientes_0831` (las 46 filas exactas que se tocaron).
 Prueba: `pruebas/sellos-desde-el-ultimo-gratis.sql`.

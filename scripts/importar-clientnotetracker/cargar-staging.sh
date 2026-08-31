@@ -93,6 +93,36 @@ TARDE=$(num "$W/_8pm.json" tarde)
 echo "   notas despues de las 8 PM: $TARDE (debe ser 0)"
 [ "$TARDE" = "0" ] || { echo "FALLA: la zona quedo mal puesta"; exit 1; }
 
+
+# 🔑 LAS NOTAS DE "GRATIS PENDIENTE". Van a su propia tabla porque NO son
+# visitas normales y el reset las necesita despues de importar:
+#   sin numero de ticket -> MARCADOR : se le guarda el gratis, NO ES LAVADO.
+#   con numero de ticket -> CANJE    : uso el gratis que traia guardado.
+# Las dos entraban como lavado PAGADO hasta el 31/ago/2026, regalando sellos
+# a 28 clientes. Ver RUNBOOK §4f.
+#
+# ⚠️ Se recarga COMPLETA en cada import: la lista sale del PDF que se este
+# cargando, no de lo que hubiera antes. Si un export nuevo ya no trae una
+# nota, esa correccion tiene que desaparecer con ella.
+echo "== notas de GRATIS PENDIENTE =="
+if [ -s "$W/pendientes.tsv" ]; then
+  {
+    echo "delete from public.cnt_notas_especiales;"
+    echo "insert into public.cnt_notas_especiales (nombre_norm, dt_local, clase) values"
+    gawk -F'\t' 'BEGIN{q=sprintf("%c",39)}
+      { n=$1; gsub(q,q q,n)
+        printf "%s(public.normalizar_nombre(%s%s%s), %s%s%s::timestamp, %s%s%s)", (NR>1?",\n":""), q,n,q, q,$2,q, q,$3,q }
+      END{ print "" }' "$W/pendientes.tsv"
+    echo "on conflict do nothing;"
+    echo "select count(*) filas, count(*) filter (where clase='MARCADOR') marcadores from public.cnt_notas_especiales;"
+  } > "$W/_pend.sql"
+  $Q "$W/_pend.sql" | tr ',' '\n' | sed 's/[][{}"]//g; s/^/   /'
+else
+  echo "   el export no trae ninguna: se vacia la tabla"
+  echo "delete from public.cnt_notas_especiales; select 1 ok;" > "$W/_pend.sql"
+  $Q "$W/_pend.sql" > /dev/null
+fi
+
 echo "== limpiando tickets (RUNBOOK 4d) =="
 $Q "$D/limpiar-tickets.sql" > /dev/null
 cat > "$W/_fin.sql" <<'SQL'

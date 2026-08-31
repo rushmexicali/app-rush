@@ -81,6 +81,22 @@ gawk -F'\t' '{
   printf "   personas distintas: %d   suma: $%.2f\n", c, s/100
 }' "$W/staging_full.tsv"
 
+
+echo "== 3.3-bis  las notas de GRATIS PENDIENTE =="
+# 🔑 LA MISMA PALABRA SIGNIFICA DOS COSAS OPUESTAS, y lo separa el ticket:
+#      sin numero -> MARCADOR : se le guarda el gratis. NO ES UN LAVADO.
+#      con numero -> CANJE    : uso el gratis que traia guardado.
+# Las dos entraban como lavado PAGADO hasta el 31/ago/2026 y le regalaban
+# sellos a 28 clientes. Ver RUNBOOK §4f y CLAUDE.md §11.005.
+gawk -v nl="$NL" -f "$D/pendientes.awk" "$W/notas_utf8.txt" > "$W/pendientes.tsv"
+PN=$(wc -l < "$W/pendientes.tsv")
+PM=$(grep -c "MARCADOR" "$W/pendientes.tsv" || true)
+PC=$(grep -c "CANJE" "$W/pendientes.tsv" || true)
+echo "   notas de pendiente: $PN   marcadores (no son lavado): $PM   canjes: $PC"
+# Que no traiga basura: toda fila debe tener nombre, hora y clase.
+PMAL=$(gawk -F'\t' 'NF!=3 || $1=="" || $2=="" ' "$W/pendientes.tsv" | wc -l)
+[ "$PMAL" -eq 0 ] || { echo "FALLA: hay filas de pendientes mal formadas"; exit 1; }
+
 echo "== lotes para cargar =="
 gawk -v dest="$W" -f "$D/gen-inserts.awk" "$W/staging_full.tsv" | sed 's/^/   /'
 

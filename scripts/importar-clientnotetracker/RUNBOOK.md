@@ -44,6 +44,10 @@ monto. Rebanada chica.
     sobró 1 gratis). La UNIÓN **agrega** los que la cajera olvidó (Zettle) **sin quitar**
     los que la cajera anotó (CNT). Cotejo CNT vs Zettle: 99.7% de acuerdo; los ~40
     desacuerdos se resuelven a favor del que diga "gratis".
+- 🔴 **`GRATIS PENDIENTE` NO ES UN LAVADO — y con ticket sí es un CANJE.** Esta regla se
+  agregó el 31/ago/2026 y **corrige un defecto que estuvo en todos los imports anteriores**.
+  La línea de arriba (*"'pendiente' NO cuenta"*) sólo decía que no es un canje; faltaba decir
+  que tampoco es una visita. **Ver §4f, que es de lectura obligada antes de importar.**
 - **Número de ticket:** normalizar **O → 0** (la cajera teclea la letra O por el 0,
   ej. `2O969`→20969) y tomar la corrida de dígitos más larga (`grqatis#6134`→6134).
 - **Monto:** el `amount` de Zettle (centavos → pesos), **solo** con match del mismo
@@ -105,6 +109,32 @@ CRM no pasa ni un segundo vacío. Y antes del 3, siempre:
 ```bash
 bash scripts/bajar-respaldo.sh "C:/Users/luis_/Desktop/respaldo-rush-AAAA-MM-DD"
 ```
+
+> ## 🟠 EL MRT VUELVE A ENCENDERSE UNA SEMANA (instrucción del dueño, 31/ago/2026)
+>
+> El ClientNoteTracker se había retirado el 31/ago. **Ese mismo día se vuelve a encender, en
+> paralelo con la caja, durante una semana** — hasta estar 100% seguros de que nuestra base no
+> trae errores.
+>
+> **Por qué:** el primer día con la caja como única fuente destapó tres defectos que llevaban
+> desde el primer import (ver §4f). Se encontraron **porque había un segundo sistema con el cual
+> comparar**. Sin esa red no se habrían visto: los números estaban mal y se veían normales.
+>
+> **La instrucción para la cajera:** seguir anotando **todas** las visitas en el MRT igual que
+> antes, además de registrarlas en la caja. Es doble captura durante una semana y a propósito.
+>
+> **Qué hacer al terminar la semana**, antes de apagarlo de nuevo:
+>
+> 1. Sacar un export nuevo del MRT.
+> 2. Correr `preparar-import.sh` y `cargar-staging.sh` (**no tocan el CRM**).
+> 3. Cotejar visita por visita lo que la caja registró contra lo que el MRT anotó, en los dos
+>    sentidos: lo que está en uno y no en el otro.
+> 4. Sólo si eso sale limpio, apagar el MRT.
+>
+> ⚠️ **Mientras el MRT esté encendido, el reset vuelve a ser seguro** (hay una segunda fuente).
+> En cuanto se apague, vuelve a aplicar todo lo del candado de abajo.
+
+---
 
 > 🛑 **EL CNT SE RETIRÓ EL 31/ago/2026. ESTE PROCEDIMIENTO YA NO SE VUELVE A CORRER.**
 > Decisión del dueño el 30/ago/2026, textual: *"A partir de mañana el CNT se deja de utilizar y
@@ -521,6 +551,7 @@ autoritativa), `diff-renombres.sql`, `aplicar-renombres.sql`, `religar-placas-co
 5. (autorizado) aplicar-renombres.sql
 6. staging normal (3.2 Zettle, 3.3 staging.awk) → stg_cnt
 6b. COTEJO DE TICKETS MAL TECLEADOS (ver 4d) — ANTES de importar
+6c. las notas de GRATIS PENDIENTE -> pendientes.tsv -> cnt_notas_especiales (ver 4f)
 7. reset-total.sql          (era import-incremental.sql; retirado el 28/ago/2026)
 8. religar-placas-corroboradas.sql
 9. Cotejo final: visitas por día en la base == filas por día del staging_full.tsv
@@ -799,6 +830,90 @@ para ver `visitas +N / personas +N / ligadas` antes de escribir. Luego el real.
    La memoria `placa-de-foto-al-cliente-sugerida` sigue siendo válida **para el camino en
    vivo** (lo que lee el supervisor o teclea la cajera, que sí entra como "por
    confirmar"). Lo que quedó prohibido es hacerlo **en masa desde el import**.
+
+---
+
+## 4f. `GRATIS PENDIENTE`: la misma palabra significa DOS cosas opuestas (31/ago/2026)
+
+🔴 **Este defecto estuvo en TODOS los imports desde el primero** y se descubrió el primer día que
+la caja quedó sola, porque una cajera reportó que el MRT y la app no decían lo mismo.
+
+Textual del dueño:
+
+> *"Cuando dice Gratis pendiente es que se les guardaba el gratis y seguían acumulando sellos.
+> Cuando dice Gratis pendiente y aparte tiene un número de ticket, es que se había utilizado ese
+> lavado gratis acumulado con anterioridad."*
+
+| En el export | Qué es | Cuántas (30/ago) |
+|---|---|---|
+| `GRATIS PENDIENTE` **sin** número de ticket | Se le **guarda** el gratis. **NO ES UN LAVADO** | **31** |
+| `pendiente` **con** número de ticket | **Usó** el gratis que traía guardado → **CANJE** | **15** |
+
+**Las dos entraban como lavado PAGADO.** La primera regalaba un sello que nadie se ganó; la
+segunda es peor, porque además **no restaba el gratis**. 28 clientes traían sellos de más y 7 un
+lavado gratis que no habían ganado.
+
+> El §1 de este RUNBOOK ya decía *"'pendiente' NO cuenta, se le guarda al cliente"*, y por eso
+> nunca se contaron como canje. **Nadie dijo que tampoco son un lavado**, y por ahí se coló.
+
+**La evidencia de que son anotaciones y no visitas:** 28 de los 30 marcadores traen un lavado real
+del mismo cliente **ese mismo día**, casi siempre al mismo minuto. Son una nota al margen del
+lavado de al lado.
+
+### Cómo se aplica (ya está en el pipeline, no hay que hacer nada a mano)
+
+```
+preparar-import.sh  ->  pendientes.awk       ->  pendientes.tsv
+cargar-staging.sh   ->  cnt_notas_especiales (se RECARGA completa en cada import)
+reset-total.sql     ->  aplicar_notas_especiales_del_cnt()
+```
+
+- 🔑 **Una sola fuente.** La lista vive en `cnt_notas_especiales` y **sólo**
+  `aplicar_notas_especiales_del_cnt()` la aplica. El reset la llama; **no la copia**.
+- ⚠️ **`stg_cnt` sigue trayendo las 46 filas**, 1 a 1 con el PDF — esa invariante no se rompe. La
+  corrección se aplica **después** de importar: el marcador se descarta (`estado='descartada'`, la
+  fila se conserva) y el canje se reclasifica.
+- ⚠️ **Un número de ticket de 1 a 5 NO es un ticket** (son los rellenos que teclea la cajera; ver
+  §4d). Si se contaran, un marcador con `Ticket:1` se leería como canje.
+- **Es idempotente**, y hubo que pelearlo (ver abajo).
+
+### 🔴 Dos trampas que costaron encontrar, las dos CORRIENDO y no leyendo
+
+1. **Un reset revivía el bug, en silencio.** `stg_cnt` conserva las notas crudas, así que el reset
+   las volvía a meter como pagadas: la cuenta de gratis caía de 226 a 224 sin que nada fallara.
+   **Se vio en el dry-run de la suite.** Por eso el paso 5-bis existe dentro de `reset-total.sql`.
+
+2. **La corrección se comía un lavado bueno en cada corrida.** `CINTIA MENDOZA ORDUÑO` tiene
+   **dos** visitas sin ticket en el mismo minuto: el marcador, y un lavado real (el 12358) al que
+   `limpiar-tickets.sql` le quitó el número. El `distinct on` elegía una; ya descartada ésa, la
+   corrida siguiente elegía la otra. **Se detectó corriéndola dos veces y comparando** — la misma
+   lección del desempate del import (§4d / CLAUDE.md §11.05): *hacerlo bien una vez no prueba que
+   sea reproducible.* El tope ahora depende del trabajo ya hecho, no del orden.
+
+### Y la regla de lealtad cambió con esto (migración `142`)
+
+El gerente puso que **los lavados acumulados ya no existen**. Textual del dueño: *"el contador
+empieza desde 0 desde que utilizó el último gratis"*.
+
+```
+antes:  disponibles = floor(total_pagados / 5) - canjes
+ahora:  disponibles = floor(pagados_desde_el_ultimo_canje / 5)
+```
+
+⚠️ **No es "ya no se acumulan".** Quien nunca ha canjeado acumula igual que siempre (10 pagados =
+2 gratis). Lo que cambia es el momento del canje: antes conservaba el excedente, ahora se borra.
+
+**Las tres cosas juntas cuadraron 7 de 7** contra los clientes que el dueño verificó a mano en el
+MRT; quitando cualquiera de las tres, deja de cuadrar. Impacto: **245 → 226** gratis por honrar
+(20 clientes pierden uno, 2 lo ganan porque habían canjeado de más y se les perdona la deuda).
+
+> 💡 **Y el dato que explica por qué costó tanto: el contador del MRT NUNCA se exportó.** El padrón
+> del PDF sólo trae `First name` / `Last name`. No hay forma de derivarlo de las notas; la regla
+> tuvo que venir de la operación. **Cuando un número no se puede reconstruir del dato, hay que
+> preguntar en el taller en vez de seguir midiendo.**
+
+Prueba: `pruebas/sellos-desde-el-ultimo-gratis.sql`. Detalle en `CLAUDE.md §11.005`.
+
 
 ## 5. Números de la 1a corrida (27/jul/2026) — para comparar
 
