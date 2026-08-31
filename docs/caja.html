@@ -1089,8 +1089,10 @@ function procesarImagen(dataURL) {
     // lectura caído). En el segundo caso el carro NO debe quedar marcado
     // como intentado, para que el obrero de fondo lo relea solo. La caja no
     // avisa nada distinto: para la cajera los dos casos se ven igual.
+    // `color` viene de la MISMA lectura desde el 30/ago (141): la foto lo lee
+    // y la foto manda sobre lo que ponga la nota de caja.
     var datos = { placa: null, marca: d.marca, submarca: d.submarca, tipo: d.tipo,
-                  color: null, foto_path: d.foto_path, leida: d.leida !== false };
+                  color: d.color || null, foto_path: d.foto_path, leida: d.leida !== false };
     if (d.placa && fijarPlaca(d.placa, datos)) {
       est.textContent = "Placa leída: " + captura.placa + resumenLectura(d);
     } else {
@@ -1824,6 +1826,7 @@ document.getElementById("btn-registrar").addEventListener("click", function () {
       marca:     c.marca     || null,
       submarca:  c.submarca  || null,
       tipo:      c.tipo      || null,
+      color:     c.color     || null,
       // Si la lectura no corrió, el carro se queda pendiente y el obrero de
       // fondo lo relee. Sin foto no aplica, así que va `true` por omisión.
       leida:     c.foto_path ? (c.leida !== false) : true

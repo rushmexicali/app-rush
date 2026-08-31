@@ -182,8 +182,18 @@ function json(cuerpo: unknown, status = 200): Response {
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 
 const TIPOS_VALIDOS = ["automovil", "camioneta", "pickup", "pasajeros"];
+// Los colores que la foto puede devolver (141). Lista CERRADA, y esa es la
+// gracia: si el modelo pudiera inventar "gris oxford" o "blanco perla", el
+// color dejaria de poderse comparar contra el que puso la nota de caja — que
+// es el testigo independiente que delata una foto pegada al carro equivocado
+// (CLAUDE.md §12.1). Va tambien en el json_schema, asi que el modelo no puede
+// salirse aunque quiera.
+const COLORES_VALIDOS = [
+  "BLANCO", "NEGRO", "GRIS", "PLATEADO", "ROJO", "AZUL", "VERDE", "CAFE",
+  "BEIGE", "AMARILLO", "NARANJA", "MORADO", "VINO", "DORADO",
+];
 
-const INSTRUCCION_FOTO = `Miras la foto de un auto en un lavado de Mexicali, Baja California, y devuelves dos cosas: la PLACA y la IDENTIFICACION del vehiculo (marca, modelo y tipo de carroceria).
+const INSTRUCCION_FOTO = `Miras la foto de un auto en un lavado de Mexicali, Baja California, y devuelves tres cosas: la PLACA, la IDENTIFICACION del vehiculo (marca, modelo y tipo de carroceria) y el COLOR.
 
 == PLACA ==
 En Mexicali circulan TRES tipos de placa, y las tres son normales aqui:
@@ -225,7 +235,20 @@ emblema en la cajuela o compuerta trasera.
   asientos). Usa el modelo cuando lo conozcas: un Corolla es "automovil", una RAV4 es
   "camioneta", una L200 es "pickup".
 
-Para marca, submarca y tipo: da tu MEJOR identificacion aunque no estes 100% seguro;
+
+== COLOR ==
+- "color": el color de la carroceria, en UNA sola palabra de esta lista y nada mas:
+  BLANCO, NEGRO, GRIS, PLATEADO, ROJO, AZUL, VERDE, CAFE, BEIGE, AMARILLO,
+  NARANJA, MORADO, VINO, DORADO.
+  Escoge el mas cercano: un auto arena o champagne es BEIGE; uno guinda o
+  borgona es VINO; un plata metalico es PLATEADO y un gris mate es GRIS.
+  Ignora el color de las molduras, rines, vidrios polarizados, calcomanias o
+  publicidad: manda la lamina.
+  Si el auto esta mojado o con espuma el color se ve mas oscuro — juzga el
+  color real, no el del reflejo.
+  Si de plano no lo distingues (foto muy oscura, el auto casi no se ve), null.
+
+Para marca, submarca, tipo y color: da tu MEJOR identificacion aunque no estes 100% seguro;
 deja null SOLO si de plano no puedes distinguir. Pero NUNCA inventes un modelo que no
 corresponde a lo que ves — un dato inventado es peor que uno vacio. (Esto es distinto de
 la placa, donde la regla es estricta: solo si la leiste con certeza.)`;
@@ -248,6 +271,7 @@ type Lectura = {
   organizacion: string | null;
   marca: string | null;
   submarca: string | null;
+  color: string | null;
   tipo: string | null;
 };
 // Devuelve un objeto SOLO cuando de verdad hubo una lectura del modelo (los
@@ -301,6 +325,16 @@ async function leerFoto(imagenBase64: string): Promise<Lectura | null> {
                 // sigue siendo estricta con placa_legible.
                 marca: { anyOf: [{ type: "string" }, { type: "null" }] },
                 submarca: { anyOf: [{ type: "string" }, { type: "null" }] },
+                // El COLOR (141). Lista cerrada a proposito: si el modelo
+                // inventa "gris oxford" deja de poderse comparar contra el
+                // color que puso la nota de caja, que es el testigo que
+                // delata una foto pegada al carro equivocado.
+                color: {
+                  anyOf: [
+                    { type: "string", enum: COLORES_VALIDOS },
+                    { type: "null" },
+                  ],
+                },
                 tipo: {
                   anyOf: [
                     { type: "string", enum: ["automovil", "camioneta", "pickup", "pasajeros"] },
@@ -308,7 +342,7 @@ async function leerFoto(imagenBase64: string): Promise<Lectura | null> {
                   ],
                 },
               },
-              required: ["placa", "organizacion", "placa_legible", "marca", "submarca", "tipo"],
+              required: ["placa", "organizacion", "placa_legible", "marca", "submarca", "tipo", "color"],
               additionalProperties: false,
             },
           },
@@ -366,8 +400,13 @@ async function leerFoto(imagenBase64: string): Promise<Lectura | null> {
     const submarca = limpiar(leido?.submarca);
     const tipoRaw = limpiar(leido?.tipo)?.toLowerCase() ?? null;
     const tipo = tipoRaw && TIPOS_VALIDOS.includes(tipoRaw) ? tipoRaw : null;
+    // El color se acepta SOLO si es uno de la lista. El json_schema ya lo
+    // obliga, pero esto es la segunda linea: un modelo que devuelva algo
+    // fuera de la lista deja el color en null en vez de ensuciar el dato.
+    const colorRaw = limpiar(leido?.color)?.toUpperCase() ?? null;
+    const color = colorRaw && COLORES_VALIDOS.includes(colorRaw) ? colorRaw : null;
 
-    return { placa, organizacion, marca, submarca, tipo };
+    return { placa, organizacion, marca, submarca, tipo, color };
   } catch (e) {
     console.error("Fallo al leer la foto:", e);
     return null;
@@ -468,6 +507,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         p_marca: lectura.marca,
         p_submarca: lectura.submarca,
         p_tipo: lectura.tipo,
+        p_color: lectura.color,
       });
       if (errDatos) { console.error("releer: guardar_datos_de_foto", p.id, errDatos); continue; }
 
@@ -763,6 +803,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         p_marca: lectura.marca,
         p_submarca: lectura.submarca,
         p_tipo: lectura.tipo,
+        p_color: lectura.color,
       });
       if (errDatos) {
         // No se le devuelve error al telefono: la foto SI se guardo.
@@ -779,6 +820,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       marca: lectura?.marca ?? null,
       submarca: lectura?.submarca ?? null,
       tipo: lectura?.tipo ?? null,
+      color: lectura?.color ?? null,
     });
   }
 
@@ -1632,6 +1674,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       marca: lectura?.marca ?? null,
       submarca: lectura?.submarca ?? null,
       tipo: lectura?.tipo ?? null,
+      color: lectura?.color ?? null,
     });
   }
 
@@ -1696,6 +1739,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       p_marca:      cuerpo?.marca ?? null,
       p_submarca:   cuerpo?.submarca ?? null,
       p_tipo:       cuerpo?.tipo ?? null,
+      p_color:      cuerpo?.color ?? null,
       // Si la camara no alcanzo a leer (servicio caido), el carro se queda
       // con `placa_en` nulo y el obrero de fondo lo levanta despues.
       p_hubo_lectura: cuerpo?.leida !== false,

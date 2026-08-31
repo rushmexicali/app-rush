@@ -46,7 +46,10 @@
 //                     ahora, con r.ok en true.
 //  v15 (19/ago/2026) — del rechazo de entrega ya hay regreso: el que le pica
 //                     por error vuelve a la decision sin cerrar la pantalla.
-var CACHE = "rush-v15";
+//  v16 (30/ago/2026) — la foto tambien lee el COLOR y la foto manda sobre la
+//                     nota de caja (migracion 141). La caja pasa el color
+//                     que leyo la camara junto con placa/marca/submarca/tipo.
+var CACHE = "rush-v16";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest",

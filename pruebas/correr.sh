@@ -58,6 +58,7 @@ correr "limpieza 119: nulo no borra, Jibble" sql pruebas/limpieza-119.sql
 correr "numeros honestos del reporte"     sql pruebas/numeros-del-reporte.sql
 correr "el aviso plano y las placas dudosas" sql pruebas/aviso-plano.sql
 correr "el buscador oye el nombre"     sql pruebas/buscador-fonetico.sql
+correr "la foto lee el color"          sql pruebas/foto-lee-el-color.sql
 
 correr "la llave publica no alcanza nada" sql pruebas/llave-publica.sql
 correr "la cortesia del import"       sql pruebas/cortesia-del-import.sql
