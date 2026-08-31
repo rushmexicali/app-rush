@@ -138,21 +138,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
   });
   if (errOlv) console.error("olvidar_fotos_viejas:", errOlv);
 
-  // 3) Los HUERFANOS: archivos en Storage que ya no apunta ningun carro.
+  // 3) Los HUERFANOS: archivos en Storage que ya no apunta ningun carro
+  // (ni ninguna visita de la caja).
   //
-  // Los deja el boton "Tomar foto otra vez" (migracion 103): la foto nueva
-  // reemplaza el `foto_path` del carro y la vieja se queda en el bucket sin
-  // que nadie la reclame. La auditoria del 20/ago los midio en 175 archivos
-  // (15 MB) — hay 1.08 fotos por carro, no 1.
+  // Los deja el boton "Tomar foto otra vez" (migracion 103) y, sobre todo,
+  // la CAJA: captura la foto ANTES de ligarla a un cliente, asi que la que
+  // se abandona a media captura se queda suelta. Desde que la caja entro en
+  // uso real (29/ago) crecen ~50 al dia.
   //
-  // ⚠️ Por omision SOLO SE CUENTAN Y SE ANOTAN. Borrar datos es una de las
-  // cuatro cosas que este proyecto pregunta antes de hacer, y esta lista sale
-  // de cruzar dos fuentes: si el cruce se equivoca, se borra la foto de un
-  // carro real y no hay vuelta. El barrido diario del cron NUNCA las toca.
+  // 🔑 SE BORRAN SOLAS AL CIERRE DEL DIA (8:30 PM). Regla del dueno,
+  // 30/ago/2026, textual: "Todas las fotos huerfanas se borran al finalizar
+  // el dia (8:30 PM)". Lo dispara `barrer_huerfanas_si_toca()` (migracion
+  // 138), que llama a ESTA funcion con `?huerfanas=1`. Antes solo se
+  // contaban y se dejaba un aviso pidiendo autorizacion; con ~50 al dia eso
+  // era pedir permiso todos los dias para lo mismo, y el aviso se acumulo de
+  // 16 a 151 en una semana.
   //
-  // Con `?huerfanas=1` si se borran. El dueño lo autorizo el 21/ago/2026 con
-  // el numero medido enfrente (176 archivos, 16 MB) y se corrio una vez; se
-  // vuelve a correr a mano cuando lo pida.
+  // ⚠️ LA UNICA RED QUE QUEDA ES LA GRACIA DE UNA HORA de
+  // `fotos_huerfanas_lista` (127), y ahora importa mas que antes porque esto
+  // ya no lo revisa nadie: `/foto` sube el archivo a Storage y DESPUES
+  // escribe `carros.foto_path`. Entre esas dos cosas una foto viva se ve
+  // identica a una huerfana, y esa no se recupera. A las 8:30 PM, con el
+  // taller cerrado desde las 8, la gracia cubre de sobra la ultima captura.
+  //
+  // ⛔ El barrido por EDAD (60 dias) es OTRA regla y sigue en su propio cron
+  // a su propia hora. No se mezclan.
   //
   // ⚠️ Se cuenta en la BASE (`fotos_huerfanas`, migracion 126), no listando el
   // bucket. El primer intento uso `storage.from('fotos').list('')` y devolvio
@@ -166,11 +176,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (errH) throw errH;
     huerfanos = Number(h?.cuantas ?? 0);
 
-    // ?huerfanas=1 las BORRA. No pasa nunca desde el cron: el barrido diario
-    // sigue siendo solo por EDAD (60 dias), que es una regla con fecha y facil
-    // de razonar. Esto se dispara a mano cuando el dueño lo autoriza, porque
-    // la lista sale de cruzar dos fuentes y si el cruce se equivoca no hay
-    // vuelta. La gracia de 1 hora vive en `fotos_huerfanas_lista` (127).
+    // ?huerfanas=1 las BORRA. Lo manda el cron del cierre (138) todos los
+    // dias a las 8:30 PM, y tambien se puede disparar a mano. El barrido por
+    // EDAD (60 dias) es independiente y no pasa por aqui.
+    // La gracia de 1 hora vive en `fotos_huerfanas_lista` (127) y es lo unico
+    // que separa una foto abandonada de una foto viva a medio guardar.
     if (huerfanos > 0 && url.searchParams.get("huerfanas") === "1") {
       const { data: lista, error: errLista } = await db.rpc("fotos_huerfanas_lista", { p_tope: 500 });
       if (errLista) throw errLista;
