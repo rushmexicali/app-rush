@@ -23,7 +23,25 @@ Estas reglas aplican en **todas** las sesiones:
   *(Actualizado el 19/jul/2026: al inicio la regla era pedir permiso para todo, cuando el
   dueño no sabía qué esperar de Claude Code. Ya trabajando, esa regla costaba más de lo que
   protegía.)*
-- **Sí para antes de estas cuatro cosas**, siempre, aunque el resto vaya en automático:
+- **Sí para antes de estas cinco cosas**, siempre, aunque el resto vaya en automático:
+  0. 🔒 **Salir de la carpeta del proyecto.** Dentro de `C:\Users\luis_\Desktop\App RUSH` hay
+     libertad total: leer, escribir, borrar archivos del proyecto, commitear y pushear al repo
+     `app-rush` no se preguntan. **Tocar cualquier otra cosa del disco sí se pregunta, aunque
+     sea sólo para leer** — otra carpeta del escritorio, Documentos, Descargas, `AppData`,
+     archivos del sistema. Se pide antes, diciendo **qué ruta** y **para qué**; no se lee
+     primero y se avisa después.
+
+     *(Regla del dueño, 31/ago/2026. Nació de un caso real: él preguntó por la carpeta
+     `WebPage RUSH` y yo entré a leerla sin avisarle, dando por hecho que la pregunta era
+     permiso. Su entendimiento era que la carpeta principal es un muro; **no lo es** —*
+     *`dontAsk` apaga la pregunta para TODO el disco, no sólo para el proyecto. El muro no se*
+     *rompió: nunca existió. Por eso la regla se escribe aquí, donde sí se lee cada sesión.)*
+
+     ⚠️ **Esta regla es la protección principal, no un respaldo.** Las reglas `ask` de
+     `.claude/settings.local.json` cubren las herramientas Read/Edit/Write, pero **un `cat` o
+     un `ls` por Bash no las consulta** — Bash se compara contra patrones de comando, y no hay
+     forma de enumerar todas las maneras de leer un archivo. El único candado duro sería el
+     sandbox, que no está prendido. Mientras no lo esté, lo que separa las carpetas es esto.
   1. **Borrar datos** (filas, archivos, tablas) — di exactamente qué se va a borrar.
   2. **Cambiar configuración de un servicio externo** — suscripciones de Zettle, webhooks,
      llaves, cualquier cosa que altere la cuenta real.
@@ -42,7 +60,7 @@ Estas reglas aplican en **todas** las sesiones:
 - **Una fase a la vez, pero los pasos dentro de una fase van seguidos.** No mezcles
   integraciones distintas (Zettle y Jibble juntas, no). Pero dentro de una fase ya aprobada,
   encadena los pasos y verifica sobre la marcha en vez de detenerte en cada uno. Párate solo
-  si algo falla, si aparece una decisión de verdad, o si toca una de las cuatro cosas de
+  si algo falla, si aparece una decisión de verdad, o si toca una de las cinco cosas de
   arriba.
 - **Usa Plan Mode al empezar una fase**, no para cada tarea suelta dentro de ella.
 - **Verifica desde afuera, no confíes en la pantalla.** Después de cada cosa que construyas,
