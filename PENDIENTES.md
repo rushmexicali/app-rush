@@ -6,6 +6,491 @@
 
 ---
 
+## 🔍 AUDITORÍA GENERAL del 2–5/sep/2026 — 82 hallazgos, 106 agentes, todos con veredicto
+
+Tercera corrida con `Workflow`: **14 frentes** en paralelo (Fable 5.1), **refutadores independientes
+por hallazgo** (Opus: dos lentes en los graves, una en los demás), y un **crítico de completitud que
+esta vez también se refutó**. Cuatro frentes nuevos respecto al 21–22/ago: lealtad/CRM, scripts y
+pruebas, código nuevo desde la última auditoría, y **uno que EJECUTÓ las pantallas en el navegador**
+con el arnés de `pruebas/front-supervisor/` (el límite declarado de la corrida pasada). Todo de solo
+lectura; ningún archivo del repo ni fila de la base se tocó.
+
+| | |
+|---|---|
+| Hallazgos con veredicto | **82** (79 de los frentes + 3 del crítico) |
+| Confirmados / parciales / refutados | 46 / 35 / 1 |
+| Marcados `alta` por quien los encontró | 9 → **sobreviven 4 causas** (Storage, repo público, cola congelada, suite roja) |
+| Tokens de subagentes | 18.2 M · 1,448 llamadas a herramientas · ~42 min de corrida efectiva |
+| Cortes por límite de uso | 3 (se reanudó con el mismo `runId`; los terminados volvieron de caché) |
+
+> 🔑 **El pase adversarial volvió a valer más que los frentes.** `caja#1` entró como `alta` ("la caja
+> sigue creando fichas repetidas: 10 de 50") y salió `baja`: el 20% de "parecidas" es el **piso de
+> ruido** del heurístico (31% en el padrón viejo ya depurado); el duplicado real es **uno**.
+> `codigo-nuevo#6` ("la 144 disparó los borrados a 45") se **refutó por cronología**: 31 de los 45 se
+> hicieron ANTES de desplegar la 144 y el pico (75) fue el 30/ago, un día antes. Y `base-estructura#3`
+> ("buscar_tickets tarda 858 ms") eran 50 ms en caliente. Sin refutar, tres números falsos habrían
+> entrado como urgentes.
+
+> ### 👉 POR DÓNDE RETOMAR (al 5/sep/2026)
+>
+> **Nada de esto está arreglado.** La auditoría no arregla; el dueño escoge qué entra. Pero el punto 1
+> de abajo **no espera al corte ni a una decisión de código**: el Storage se llena este fin de semana.
+> El resto va por el orden sugerido al final de esta sección. La suite está en **rojo** (punto 4):
+> mientras no se arregle, ningún despliegue pasa el portón.
+
+### 🔴 URGENTE — lo que rompe algo ESTA SEMANA
+
+**1. ✔ El Storage se llena el sábado 6 o el domingo 7 de septiembre.** *(base-estructura#1, fondo#1,
+costos#1 — la MISMA causa vista desde tres frentes; confirmado `alta` por seis refutadores.)*
+
+Medido el 5/sep a las 14:02: **846.6 MB de 1,024** (plan `free` confirmado por la API de
+administración), con 44.5 MB subidos ya ese día. Por día desde que la caja entró en uso real: 93.2 ·
+84.6 · 68.9 · 60.6 · 54.3 · 59.5 · 71.4 MB. Antes de la caja eran 3–10 MB/día.
+
+- **Causa:** `docs/caja.html:705-706` (`MAX_LADO = 2576`, `CALIDAD = 0.85`): cada captura de caja
+  pesa **802 KB** (mediana 829, máx 1,272) contra 97 KB la del supervisor, y ya es la foto de 4 de
+  cada 5 carros. Se subió a 2576 px el 17/ago para leer la placa desde la ventanilla.
+- **El barrido por edad no ayuda:** arranca el 17/sep y libera 7–10 MB/día contra 60–90 que entran;
+  en régimen a 60 días el bucket pesaría ~4 GB.
+- **Qué pasa al llenarse:** `/leer-placa` responde 500 y la caja dice "No se pudo tomar la foto" a
+  cada cliente; `/foto` del supervisor falla, el outbox se rinde a los ~35 min; **ningún carro tiene
+  ya placa, marca, submarca ni color, y la placa deja de ligar al cliente.** Qué hace Supabase
+  exactamente al exceder la cuota no está documentado públicamente.
+- **Lo que también cuesta (costos#4, parcial):** cada captura de 800 KB viaja al teléfono del
+  supervisor por cada tarjeta de la cola (URL firmada de 24 h) → 1.6–2.7 GB/mes por teléfono contra
+  5 GB de egreso del plan. No se pudo medir el egreso real (sólo lo muestra el panel).
+- **Decisión del dueño, con recomendación:** (a) **hoy mismo, sin tocar código:** pasar la
+  organización a **Pro ($25/mes, 100 GB)** — es lo único que se puede hacer en fin de semana con el
+  taller abierto; (b) **en el próximo corte:** separar la foto que se LEE de la que se GUARDA — mandar
+  el cuadro de 2576 px a Sonnet y persistir una copia de ≤1280 px / 0.6 (~100 KB), que es lo único
+  que la tarjeta y la galería necesitan; (c) si no se quiere Pro, una retención corta para
+  `capturas/` (14 días ≈ 1 GB) con su regla en un solo lugar. Corregir además el comentario de
+  `limpiar-fotos/index.ts:35` ("230 MB/mes") y el "~100 KB" del `CLAUDE.md §9`, y **poner el tamaño del
+  bucket en el reporte del dueño** para que esto no vuelva a sorprender.
+
+**2. ✔ El repo público lleva 46 días publicando nombres de clientes, placas y evaluaciones de
+empleados con nombre.** *(crítico#1; confirmado `alta` por dos refutadores que reprodujeron el conteo
+exacto.)*
+
+`github.com/rushmexicali/app-rush` es público (`"visibility": "public"`, verificado por la API de
+GitHub) y sirve en vivo, byte a byte: `CLAUDE.md`, `PENDIENTES.md`, `.claude/settings.json`, el
+RUNBOOK, las migraciones y las pruebas. Ahí van:
+
+- **92 nombres completos de clientes reales** (cotejados contra `personas`): 52 en la migración `142`
+  (la lista de 46 notas `GRATIS PENDIENTE` va escrita con nombre y hora al minuto — "a propósito",
+  dice el archivo), 39 en `CLAUDE.md`, 15 en `PENDIENTES.md`, 13 en el RUNBOOK, 7 en
+  `pruebas/sellos-desde-el-ultimo-gratis.sql` con su contador de lealtad.
+- **9 placas reales** (varias con 2–4 lavados y cliente) y **~20 de los 22 empleados**, 11 con juicios
+  de rendimiento textuales ("sigue último", "quinto periodo seguido como el más lento", "nunca se le
+  ha asignado un carro"). Luis Luna: 17 menciones, 6 juicios.
+- **84 versiones de `CLAUDE.md` en el historial**, así que hacer privado el repo hoy no borra lo ya
+  clonable. Ningún archivo del repo menciona "datos personales", "privacidad" ni "anonimizar": nunca
+  fue una decisión.
+- **Choca con una regla ya escrita:** `CLAUDE.md §2` punto 3 pide preguntar antes de "subir archivos
+  que no sean código del proyecto". La decisión documentada de hacer público el repo fue por el código
+  de acceso de la app, no por la memoria del proyecto.
+- **Dos cosas que hay que decir de frente:** GitHub Pages desde un repo privado exige plan de pago,
+  así que "hazlo privado" no es gratis: el camino realista es **partir en dos repos** (uno público sólo
+  con `docs/`, el resto privado). Y `git filter-repo` corta la exposición hacia adelante; **no
+  deshace** lo ya clonado o cacheado.
+- **Decisión del dueño:** partir el repo, anonimizar (empleados por id o iniciales; clientes por
+  `persona_id`; sacar las listas con nombre de las migraciones `142`/`113`/`140` y de la prueba de
+  sellos), reescribir el historial, y dejar en `§2` la regla: *nombres de personas nunca en archivos
+  rastreados*. La calificación legal (LFPDPPP) es cosa de un abogado; los hechos están medidos.
+
+**3. ✔ Con latencia sostenida mayor a 3 s, la cola del supervisor se congela para siempre y sin
+ningún aviso.** *(supervisor-cola#1; confirmado `alta` por dos refutadores que lo reprodujeron en el
+navegador con su propio arnés.)*
+
+`docs/index.html:1395` descarta toda respuesta que no sea la de la ÚLTIMA consulta **lanzada**
+(`miToken !== consultaToken`), y el sondeo lanza una cada 3 s sin esperar la anterior. En cuanto cada
+respuesta tarda más de 3 s, **ninguna se pinta**: no hay error, así que no sale el banner; los
+cronómetros siguen sobre datos viejos; los entregados no desaparecen; un carro nuevo **no aparece ni
+suena**; y el outbox de fotos deja de empujarse (`flushOutbox` sólo corre al pintar). El corte de 20 s
+no ayuda: con 3–19 s nada se aborta. Medido en el arnés: latencia 3.5 s → 13 respuestas llegadas en
+39 s, **0 pintadas**; control a 2.5 s → 8 de 8. Es exactamente la clase "la app se trabó y nadie lo
+reporta", y el `.catch` de al lado (línea 1442) ya hace la pregunta correcta desde el 24/ago.
+
+- **Arreglo de una línea:** `if (miToken <= consultaOk) return null;` — descartar sólo lo más viejo que
+  lo último **pintado**. Conserva "no brincar hacia atrás" y quita el bloqueo. De paso, no lanzar otra
+  consulta si hay más de N en vuelo. Es front: **va en el corte**. Lo que no se midió: con qué
+  frecuencia el teléfono del taller ve más de 3 s sostenidos.
+
+**4. ✔ La suite está en ROJO desde el 2/sep, sin que ningún dato esté mal.** *(scripts-pruebas#1;
+confirmado por dos refutadores que corrieron `pruebas/correr.sh` completa: 24 de 25 grupos pasan.)*
+
+`pruebas/sellos-desde-el-ultimo-gratis.sql` (grupo 1) compara contra **7 clientes reales por nombre
+exacto y contador escrito a mano**. La cajera completó el nombre de uno (`Ignacio Lozoya` →
+`Ignacio Lozoya Morales`, 2/sep 12:07) y además ese cliente ya lavó otra vez: **dos roturas
+independientes**. `KARLA MORA MECHOR` va en 3/5 con última visita del 31/ago: en su siguiente lavado
+también rompe. Y el grupo 7 exige `31/15` fijos en `cnt_notas_especiales`, que `cargar-staging.sh`
+recarga con cada export. **Mientras esto siga, el portón dice "no despliegues" por una razón falsa**, y
+la gente aprende a ignorar el rojo.
+
+- **Arreglo:** escenarios sintéticos (como los grupos 2–5, que sí prueban la regla) o comparar contra
+  `bak_lealtad_0831` restringiendo a `creado_en <= '2026-08-31'`; en el grupo 7 leer los conteos de la
+  propia tabla. **Regla nueva para `pruebas/README.md`: ninguna prueba compara contra una persona real
+  por nombre** — que además es parte del punto 2.
+
+### 🟠 Números que no cuadran, dinero y lealtad
+
+5. ✔ **Un lavado gratis cobrado en Zettle y no registrado en la caja deja al cliente con el gratis
+   intacto.** *(datos#2 confirmado `media`; caja#6.)* Carro **6004** (2/sep 09:47, `Gratis / 6to
+   Lavado`, JUAN MICHELL VALDEZ, persona 127494): entregado, sin ninguna visita en ningún estado, y
+   `saldo_de_gratis` sigue en 1 → puede canjearlo otra vez y su contador no se reinició. Es 1 de 18
+   sextos en tres días; y como la lista de la caja sólo muestra los 5 tickets más recientes, **ya no se
+   puede registrar desde la pantalla**. El candado "canje sin saldo se rechaza" (105) sólo actúa cuando
+   la cajera registra. **Arreglo:** registrarlo a mano (`registrar_visita_con_carro` con el ticket de
+   `recibo_del_carro(6004)`), y un aviso al cierre — *"N lavados Gratis/6to cobrados hoy sin canje
+   registrado"* — con el mismo `anotar_aviso` de las placas repetidas. Sirve toda la semana del MRT y
+   después es la única red.
+
+6. ✔ **La lectura de la foto cuesta 2–3 veces lo documentado: ~$55/mes, no $27.** *(costos#2;
+   confirmado con una llamada REAL facturada: `input_tokens: 7273`.)* Foto de caja (2560×1920) =
+   **7,273 tokens** (imagen 4,743 — Sonnet 5 sí cobra la alta resolución — + prompt 1,816 + esquema
+   JSON **714** que nadie contaba); foto del supervisor 4,143. El 2/sep: 108 `/leer-placa` + 19 `/foto`
+   = 127 lecturas para 84 carros (**1.5 por carro**), y **43 de ellas (34%) fueron capturas que nadie ligó
+   y el barrido borró esa noche** (~$18/mes de fotos tiradas). Sonnet 5 sigue en $2/$10: el aumento
+   del 1/sep **no ocurrió**. Corregir `CLAUDE.md §9` (3,101 / $17.80 / $26.70) y la memoria. Palancas,
+   en orden: el tamaño de la captura (misma palanca que el punto 1), no leer hasta que la cajera
+   confirme, recortar el esquema.
+
+7. ✔ **El buscador de la caja tarda 1.1–1.5 s por tecla, no los 2.6 ms del `§11.003`.** *(Cinco
+   frentes lo encontraron por separado: base-estructura#2, lealtad#1, caja#2, costos#3, codigo-nuevo#1;
+   confirmado `media`.)* Dos causas medidas: (a) `personas_que_casan` (140) une sus cuatro ramas con
+   `or` y la cuarta es un `exists` sobre `persona_placas` → el planificador no arma un `BitmapOr` y hace
+   **Seq Scan** de las 5,121 personas evaluando la clave fonética (26 `replace`) por fila: ~190 ms, y
+   corre **dos veces** por consulta (`buscar_personas` + `cuantas_personas_casan`); (b) la vista
+   `lealtad_por_persona` (142) referencia el CTE `act` dos veces → Postgres lo materializa y **cada
+   `lealtad_de` barre las 16,049 visitas** (~20 ms × 25 resultados). Son las dos consultas más caras de
+   la base (24% del tiempo total desde el 19/jul). **Arreglo medido:** `personas_que_casan` como `union`
+   de sus ramas → **23 ms** con los tres índices y las MISMAS 174 personas; la vista con `with act as not
+   materialized` → **1 ms**. Comprobar contra línea base (hash de los 5,121 renglones) y corregir el
+   `§11.003`.
+
+8. ✔ **`placaSospechosa` en el reporte marca "foto mal pegada" a 64 de 137 placas que son el mismo
+   carro.** *(reporte#2 confirmado `media`.)* Compara el color crudo: la nota escribe femenino
+   (`BLANCA`) y la foto la lista cerrada masculina (`BLANCO`); más `GRIS` vs `PLATEADO`. Desde la 141
+   son 18 alertas falsas nuevas en 3 días, y la alerta pierde credibilidad justo donde sí es cierta (73
+   casos reales). **Arreglo:** normalizar género y `GRIS≈PLATEADO` **en el backend**
+   (`historial_de_placa` con un `color_norm`), para no tener la regla del color en dos lugares.
+
+9. ✔ **La foto pisa el color de la nota en 54 carros con colores incompatibles en tres días** (GRIS→NEGRO
+   11, GRIS→CAFÉ 5, GRIS→AZUL 3…), 34 de la cámara de caja. *(codigo-nuevo#3, parcial `baja`: el
+   comportamiento es la decisión del 30/ago y el detector ya estaba apuntado en `§11.004`; lo nuevo es la
+   **magnitud**.)* Nadie sabe cuál de los dos tiene razón. **Decisión del dueño:** revisar a ojo una
+   muestra de los pares duros antes de construir el detector con la tabla de equivalencias medida.
+
+10. ✔ **"Le entraron encimados" cuenta como ocupado a un secador cuyo carro anterior fue un olvido.**
+    *(reporte#3, parcial `baja`.)* 48 de 420 encimados del 20/ago–2/sep sólo existen porque el otro
+    carro se cerró solo o quedó abierto 75+ min; el refutador acota: **sólo 10 son por cerrado solo**
+    (esos sí contradicen al propio reporte), los otros 38 son discutibles. Arreglo mínimo: exigir
+    `c2.cerrado_automaticamente is null` en la CTE.
+
+11. ✔ **El abandono del teléfono del supervisor se repitió el 31/ago con la misma forma que el 30/ago, y
+    no está documentado.** *(datos#1: confirmado `media` / parcial `media`.)* 106 carros, **58 nunca
+    asignados (55%)**: 45 borrados y 28 cerrados solos (19 sin pasar por la app). El secado de ese día
+    se midió sobre **30 de 106 carros**; el congelado dice 61 lavados y 29.7 min sobre esos 30. Muerto de
+    11:00 a 15:59 y desde las 18:00; 6 personas con carros asignados contra 8–13 los demás días. La caja
+    trabajó las doce horas: el que se calló fue el teléfono. El 1/sep siguió a la mitad. **No es
+    código:** preguntar quién tenía el teléfono, y anotar en `CLAUDE.md` que el 30 y el 31/ago se leen
+    sobre 25 y 30 carros. El refutador señala que la señal (`cerrados_automaticamente`) SÍ existe y sí
+    se disparó esa noche: lo que falta es leerla.
+    - ⛔ **Refutado (codigo-nuevo#6):** que la migración `144` causara los borrados. 31 de los 45 del
+      31/ago se hicieron ANTES de desplegarla (14:52), el pico fue 75 el 30/ago con el umbral viejo
+      vigente, y sólo 9 de 66 borrados desde entonces los habilitó la 144.
+    - **Y lo que sí es decisión y no bug (supervisor-cola#3, parcial):** 60 de los 66 borrados de esos
+      días tienen visita de caja (el cliente pagó, tiene sello) y 15 iban secando; el reporte los saca
+      de "vehículos lavados" **porque así se decidió** en la `083`. Vale que el reporte parta "borrados
+      con cobro en caja" y "sin cobro", y que el texto del `confirm` diga que no contará como lavado.
+
+12. ✔ **La caja creó una ficha con nombre IDÉNTICO a una existente, y `upsert_persona` no lo impide.**
+    *(caja#1 alta→`baja`, lealtad#2, datos#4 — una causa.)* ROBERTO CORRAL GUTIERREZ: 129147 (import,
+    21/jun) y 226669 (caja, 2/sep 11:16:13, visita 4 s después). El buscador **sí** la devolvía: la
+    cajera tocó "+ Registrar cliente nuevo" con la lista enfrente. `upsert_persona` sólo deduplica con
+    teléfono, y **0 de 5,121 personas tienen teléfono**: la guardia es inerte. Es 1 de 50 altas (2%)
+    contra 10 de 52 antes del buscador fonético: el fonético sí funcionó. **Arreglo:** en
+    `upsert_persona`, si ya existe `nombre_norm` idéntico devolver la ficha (o `ya_existe` con
+    candidatos) y que la caja pregunte "¿Es esta misma persona?"; fusionar 226669 → 129147 con
+    `aplicar-renombres.sql`.
+
+13. ✔ **Las cortesías son invisibles en el historial del cliente.** *(lealtad#5 confirmado `baja`.)*
+    `historial_de_persona` no devuelve `es_cortesia`, y las dos pantallas pintan GRATIS sólo por
+    `es_gratis` — que en una cortesía es `false`. Las 18 cortesías activas se ven **idénticas a un lavado
+    pagado**. Dos líneas: devolver el campo y pintar "CORTESÍA".
+
+14. ✔ **`clase_de_gratis_del_ticket` decide con `max()`:** un ticket con 6to y cortesía juntos sería
+    `cortesia` en el import y `canje` en vivo. *(lealtad#6 confirmado `baja`; 0 casos reales.)*
+
+15. ✔ **Dos formas de deshacer una asignación, con efectos distintos.** *(base-funciones#3/#4,
+    supervisor-cola#6, supervisor-resto#3/#7 — una causa, todos `baja`.)* `editar_carro` BORRA la
+    asignación abierta; `regresar_etapa` la CIERRA con `fin = now()`, y ni `detalle_del_carro` ni
+    `equipo_por_carro` ni `trabajadores` miran `fin`. Medido: **4 carros con equipo falso** (189, 240,
+    2309, 2625), 2 en reportes congelados (14 y 17/ago), 0 desde el 22/ago. Restaurar reabre sólo
+    `inicio = max(inicio)`, premisa que la `132` rompió (1 carro expuesto, nunca restaurado). Restaurar
+    tampoco tiene candado de día ni `confirm()`, no limpia `cerrado_automaticamente`, y acepta un
+    cerrado-solo nunca asignado (0 ocurrencias en 3,928 carros). **Una regla:** que Regresar borre como
+    Corregir, o que los tres lectores excluyan `fin < entregado_en`; y en Restaurar reabrir las
+    asignaciones cuyo `fin` coincide con esa entrega, exigir hoy, pedir confirmación y limpiar la marca.
+
+16. ✔ **`desenlazar_visita` borra marca/submarca cuando ni visita ni carro tienen placa** (`null is not
+    distinct from null`) y devuelve el carro a la cola de relectura. *(base-funciones#5 `baja`;
+    herramienta manual, sin ruta HTTP.)* Exigir `v_placa is not null`.
+
+### 🔒 Seguridad
+
+17. ✔ **La migración `142` le quitó `security_invoker` a `lealtad_por_persona`: la llave publicable vuelve a
+    leer la lealtad de 5,121 personas.** *(base-funciones#1 confirmado `media`.)* `create or replace
+    view` sin `with (security_invoker = on)` **reemplaza** las reloptions; reabre el hallazgo #10 del
+    19/ago. Atenuante: `personas` sigue cerrada, así que no se ligan ids a nombres por esta vía.
+    **Arreglo:** `alter view … set (security_invoker = on)` (una línea), un grupo en
+    `pruebas/llave-publica.sql` que exija la opción en TODAS las vistas, y la regla en el README.
+
+18. ✔ **La sombra de la firma de Zettle ya cumplió su condición y nadie la cierra; mientras no rechace,
+    cualquier POST anónimo escribe hasta 8 KB en `webhook_bitacora` que nunca caducan.** *(fondo#3
+    confirmado `media`; y lo "sano" de fondo/datos/scripts es la misma acción.)* 1,121 ventas en sombra
+    desde el 24/ago, **0 desacuerdos**, 283/283 firmas reproducidas hoy. **Decisión del dueño:** pasar a
+    rechazar (401 sin guardar), quitar las dos cosas `⏳ TEMPORAL`, exceptuar el `TestMessage` y anotar
+    los rechazos con `anotar_aviso`.
+
+19. ✔ **`ventas_indexar` (trigger BEFORE, sin manejador) tumba la VENTA si `products` no es arreglo.**
+    *(base-funciones#2 confirmado `media`; reproducido con payload sintético, 0 casos reales en 1,284
+    avisos.)* Misma clase que la `111` arregló en el trigger de al lado. Receta: `exception when others`
+    que deje los campos secundarios en nulo, anote en la bitácora y devuelva `NEW`.
+
+20. ✔ **La API acepta el código en la query string (`?c=`) aunque ninguna pantalla lo manda.**
+    *(api-app#3 parcial `baja`.)* Quitar `?? url.searchParams.get("c")`.
+
+### 💣 Bombas con fecha y trabajo a medias
+
+21. **`pruebas/dryrun-import.sh` abre el candado del reset con el número exacto y confía en un `sed` para
+    volverlo ensayo.** *(codigo-nuevo#2 parcial `media`.)* Si el texto del `raise notice` final cambia,
+    el `sed` no casa, no se agrega ningún `raise exception`, y la suite **corre el reset REAL** con el
+    candado ya abierto: hoy se irían las visitas de caja sin respaldo. `candado-del-reset.sh` (caso 3)
+    ya lo hace bien: **appendea** un `do $$ raise exception $$`. Hacer lo mismo aquí, y abortar si el
+    ancla no aparece exactamente una vez. *(Un frente de una corrida anterior, no refutada, apuntó que
+    los casos 1 y 4 de `candado-del-reset.sh` tampoco llevan `raise` final — verificar.)*
+
+22. ✔ **Un reset borra las 543 ligas placa↔cliente, 159 no se repondrían, y el candado no las cuenta.**
+    *(lealtad#3 confirmado `media`, scripts-pruebas#2 parcial `media`.)* `reset-total.sql` hace `delete
+    from persona_placas` sin contarlo; no llama a `religar-placas-corroboradas.sql` y el §2-bis del
+    RUNBOOK tampoco; la regla de 2+ carros sólo repone 386. **145 de las 159 irrecuperables están
+    confirmadas porque la cajera tecleó la placa**. El día que se corra el reset al apagar el MRT, la
+    caja deja de reconocer por placa a esos clientes y cae al buscador por nombre — la puerta de los
+    duplicados. **Arreglo:** conservar las ligas de las personas que sobreviven por `nombre_norm` dentro
+    de la misma transacción, o religar al final; y que el candado las cuente.
+
+23. ✔ **`olvidar_fotos_viejas` limpia `carros.foto_path` pero no `visitas.foto_path`.**
+    *(base-estructura#6, fondo#4, parcial `baja`.)* El primer apuntador muerto aparece ~30/oct (la
+    captura más vieja con visita es del 31/ago). Hoy 224 rutas expuestas; daño concreto acotado.
+
+24. ✔ **`?huerfanas=1` (20:30) también ejecuta el barrido por EDAD**, contra lo que dicen el comentario,
+    la `138` y `CLAUDE.md §11.002`; y la corrida de las 02:15 conserva el aviso "No se borran solas: hay
+    que autorizarlo", falso desde la 138. *(base-estructura#5, fondo#2 — parcial `baja`: hoy inocuo, tope
+    de 1,000 se respeta por corrida.)* Que el parámetro decida una sola cosa.
+
+25. **`/releer-pendientes` con Anthropic caído: 10 fotos × 25 s = 250 s contra 120 s de pg_net y 150 s
+    del plan free.** *(api-app#4 parcial `baja`.)* Lote de 4, o recongelar dentro del bucle.
+
+26. ✔ **`cnt_notas_especiales` no va en el respaldo** *(base-estructura#4, parcial `baja`: la consecuencia
+    era falsa — el reset necesita `stg_cnt`, que tampoco va, y `cargar-staging.sh` la repuebla).* Sólo
+    anotarla en `no_incluye`.
+
+27. ✔ **`scripts/releer-fotos/releer.sh` quedó desfasado de la `141`:** `parte1.json` copia el esquema
+    sin `color` (el prompt extraído sí lo pide: contradicción), llama con 6 argumentos, e imprime
+    `GUARDADO` aunque la base conteste error. *(costos#5, scripts-pruebas#4 — `baja`.)* Extraer el
+    esquema del `.ts` como ya se extrae el prompt, o disparar `/releer-pendientes`.
+
+28. ✔ **`scripts/1-probar-webhook.ps1` ensucia producción:** crea una venta de $150 y un carro `Completo
+    Cera` real, sin marca de prueba. *(scripts-pruebas#5 `baja`; 0 usos históricos.)* Candado o retiro.
+
+29. ✔ **`pruebas/sintaxis-front.sh` dice "ok" cuando no parseó nada** (archivo vacío, inexistente, o
+    `<script type=…>`). *(scripts-pruebas#3 `baja`.)* Exigir la señal esperada y N bytes.
+
+30. ✔ **Trabajo del 1/sep hecho directo en la base y sin rastro:** export del CNT recargado en `stg_cnt`
+    (16,006 filas), 5 renombres/fusiones (`bak_ren_cand_0901*`), y **8 visitas insertadas a mano**
+    (577512–577519, `caja='import'`) con `creado_en` = hora de inserción (22:41–23:11) en vez de la del
+    lavado, 3 sobre carros borrados por el supervisor. *(lealtad#4, datos#3, codigo-nuevo#5, crítico#2 —
+    parcial `baja`: el refutador midió que **no mueve ningún contador** y que fue un evento único, no
+    diario.)* Lo que sí queda: el cotejo MRT↔caja que `§11.005` manda **ya se hizo** para el 31/ago–1/sep
+    (10 de 169 notas del MRT no estaban en la caja: 3 por carros borrados, 5 que la cajera no registró;
+    y 7 de la caja no estaban en el MRT) y **no está escrito ni es un script**. Guardarlo como
+    `cotejar-mrt-vs-caja.sql`, documentarlo, y que las reposiciones lleven `caja='mrt'` con la hora del
+    lavado.
+
+31. ✔ **Cuatro funciones vivas sin ningún llamador** (`enlazar_visita_a_carro`, `candidatos_para_enlazar`,
+    `descartar_visita`, `webhook_descartados_del_rango`) **y un comentario falso** en `app/index.ts:1765`
+    ("la llama la caja por dentro"). *(base-funciones#6 parcial `baja`.)* El aviso `json_invalido` del
+    webhook no se ve en ninguna pantalla porque la función que lo lista nunca se conectó.
+
+32. ✔ **44 tablas de andamio** (`bak_*`, `stg_*`, `tmp_diff`, `imp_*`) = 20.8 MB, 19% de la base.
+    *(base-estructura#7, parcial: decisión conocida — "las `bak_*` se conservan" — y `imp_ligado_conflictos`
+    es load-bearing.)* Sin acción salvo que el dueño quiera una regla.
+
+### 📱 Las pantallas, EJECUTADAS en el navegador
+
+Por primera vez un frente corrió el supervisor y la caja con el arnés (fetch falso, cero tráfico a
+producción), y los refutadores lo repitieron con su propio montaje. Además del punto 3:
+
+33. ✔ **"Borrar unidad", "Regresar" y "Restaurar" quedan muertos tras un fallo de red**, aunque el aviso
+    diga "Intenta otra vez". *(navegador#1 confirmado `media`.)* Se deshabilitan y nadie los rehabilita;
+    reviven sólo cuando `pintar()` reconstruye la lista — mediana 17–34 s, p90 2–11 min, hasta 16–114
+    min al día. Pasar los tres por `enEnvio()` como Entregar/Rechazar.
+
+34. ✔ **Una respuesta que llega tarde cierra la pantalla que esté encima, sea cual sea.** *(navegador#2
+    confirmado `media`, supervisor-resto#4.)* Tocar "Empezar a secar", cancelar, abrir Corregir → cuando
+    el POST contesta, `cerrarPantalla()` cierra Corregir (se pierde lo capturado) o Finalizados, y la
+    acción "cancelada" sí se ejecutó. Cerrar sólo si la pantalla que pidió sigue activa (el patrón de
+    `detalleToken`).
+
+35. ✔ **Finalizados pinta la lista de OTRO día bajo "Hoy"** si se cambia el selector dos veces con wifi
+    lento; Restaurar y Corregir actúan sobre ese carro. *(supervisor-resto#2 confirmado `media`.)* Falta
+    un `entregadosToken`, el mismo arreglo que ya tienen la cola y el desglose.
+
+36. ✔ **La foto tomada en Asignar se pierde si `/asignar` se corta a los 20 s pero el servidor sí asignó**
+    (el reintento recibe "Ese carro ya está secando" y la foto nunca entra al outbox); y **si IndexedDB
+    falla, toda foto se pierde con 0 avisos**. *(supervisor-cola#2, supervisor-resto#1/#5 — parcial
+    `baja`.)* 8 carros asignados sin foto desde el 10/ago (4 el 29/ago), causa no atribuible desde la
+    base. Encolar antes de mandar `/asignar`; `asignar_carro` idempotente; nunca perder una foto en
+    silencio.
+
+37. ✔ **En la primera apertura de Asignar (o si `/secadores` falla en sesión fresca) la grilla dice
+    "Nadie aparece checado. Usa No aparece"** — un error pintado como dato. *(supervisor-cola#4,
+    navegador#5 — `baja`; 0 manuales creados en 45 días.)* Tres estados: cargando / no se pudo / nadie.
+
+38. ✔ **Mientras un POST viaja, toda la cola queda sorda y "Empezar a secar" se apaga sin texto.**
+    *(navegador#3 parcial `baja`: los botones sí se atenúan por CSS.)* `enEnvio()` para los cinco.
+
+39. ✔ **"Ese código no es correcto" desaparece en menos de 3 s** (el sondeo llama `pedirCodigo(false)`).
+    *(supervisor-cola#5 `baja`.)* Y **Finalizados muestra la placa sin guiones** porque `/entregados` no
+    manda `placa_display` (1,235 de 2,111 en 30 días). *(supervisor-resto#6 `baja`, una línea.)*
+
+40. ✔ **GitHub Pages sirve `index.html` con `max-age=600`:** hasta 10 min de HTML viejo tras publicar. El
+    `sw.js` NO se ve afectado (`updateViaCache` default). *(supervisor-resto#8 parcial `baja`;
+    `fetch(ev.request, {cache:'no-cache'})` resolvería, Pages contesta 304.)*
+
+41. ✔ **Caja: el corte de 20 s del front es más corto que los 25 s de la lectura en el servidor.**
+    *(caja#5 confirmado `media`.)* En una caída como la del 17/ago la caja diría "Sin conexión", tiraría
+    el `foto_path` ya subido y el camino `leida=false` de la `104` nunca llegaría a la pantalla. El
+    supervisor ya tiene `CORTE_POR_RUTA = {"/foto": 45000}` con el razonamiento escrito: copiarlo.
+
+42. ✔ **Caja: la lista de tickets no ordena las respuestas** — una consulta vieja que llega tarde borra el
+    ticket ya elegido y apaga "Registrar visita". *(crítico#3 confirmado `baja`, reproducido en el
+    navegador.)* Es el gemelo del punto 3 sin token: un solo patrón de sondeo para las dos pantallas.
+
+43. ✔ **Caja, "No asignar a cliente":** no manda el color de la `141` (api-app#1, caja#3, codigo-nuevo#4 —
+    `baja`, 1 uso: carro 6013 sin color); el refresco de 3 s repinta el botón en pleno envío
+    (navegador#4); y sólo se alcanza si la placa SÍ se leyó (caja#4, parcial: el título era falso, el
+    botón nació para el cliente que no quiere registrarse, no para la pickup). Dos líneas para el color;
+    la guarda `if (!ocupado)` de `pintarTickets` para el botón.
+
+44. ✔ **Caja: tras un timeout con éxito en el servidor, el reintento dice "Ese ticket ya se registró con
+    otro cliente" aunque sea el mismo.** *(caja#7 confirmado `baja`, reproducido.)* Idempotente por
+    persona.
+
+45. ✔ **Reporte:** el buscador de Clientes recorta a 25 sin decirlo (el arreglo de la `134` sólo llegó a
+    la caja; `garcia` = 184); "No checó hoy" sobre toda la plantilla después de las 8 PM (`fuera` =
+    "no está ahora"); la alerta "no tuvieron secador… nadie los trabajó" cuenta los carros que apenas
+    esperan en prelavado en el día en curso (1.5–2.3 a cualquier hora); `/placas` responde 200 con "Secó"
+    vacío si falla la RPC secundaria. *(reporte#1/#4/#5, api-app#5 — todos `baja`.)*
+
+### ✅ Lo que se comprobó que está bien (no volver a auditar)
+
+- **0 sobrecargas** de funciones en `public` (las cuatro firmas que cambiaron existen una sola vez).
+  **`anon` alcanza 0 funciones nuestras**; el event trigger `cerrar_funciones_nuevas` cierra de verdad
+  (probado creando una función en un `do $$` revertido). RLS en las 63 tablas con 0 políticas;
+  Storage cerrado (bucket privado, `list` con la llave publicable = `[]`); Realtime sin publicaciones.
+- **Ningún secreto en el historial de git** (los 18 valores del `.env` buscados con `git log -S`, sin
+  imprimirlos): 0 salvo el `PROJECT_REF`, la URL del webhook y el correo. `.env` nunca fue rastreado.
+- **Columnas generadas al día** sobre 3,928 carros; 0 carros sin clasificar; el catálogo desde el
+  22/ago (18 combinaciones) clasifica bien; `Gratis/6to Express` va a la línea 1.
+- **Una sola regla, verificada en la definición viva:** `placa_repetida_hoy`, `segundos_minimos_de_secado`,
+  `es_servicio_especial`, `clase_de_gratis` (caja e import contestan lo mismo en 234/234),
+  `detalle_venta` (10 lectores), `recibo_del_carro`. La regla de sellos de la `142` alcanza al rechazo de
+  la caja; probada con 8 casos borde revertidos.
+- **Zettle:** 1,121 tickets consecutivos (27364→28484) sin hueco ni duplicado; 0 ventas perdidas; el
+  `creado_en` del carro es la hora de la venta en Zettle (desfase 0.0 s en p99 sobre 2,492 ventas);
+  latencia real del webhook p50 1.4 s, p99 5 s. Las 17 ventas sin carro son todas de mostrador o
+  `CUSTOM_AMOUNT` legítimos. Las 4 Edge Functions desplegadas son byte a byte el repo.
+- **Crones:** 7 activos, **0 corridas fallidas** en 7 días (14,216); ninguno con la hora local clavada
+  en UTC; `congelar_reporte` a las 20:30 los 12 días; barrido de huérfanas corriendo (43 de 43 el
+  2/sep, 0 huérfanas de más de 1 h); obrero de relectura al día (0 pendientes, 0 rendidos, `foto sin
+  intento` = 0 los 12 días).
+- **Reportes congelados = recálculo** campo por campo en 45 de 46 días (el 19/jul es la deriva
+  conocida). El mismo día como fecha y como rango da idéntico. 46 días de rango tardan 1.1 s por la API.
+- **`/cola` no es cuello de botella:** 0.4 ms por consulta en 162,020 llamadas; `carros_cola_idx`
+  185,711 usos. Pico real: 23 carros. **Invocaciones:** ~224,000/mes = 45% del límite del plan.
+- **La caja como única fuente (31/ago–2/sep):** 234 visitas, 100% con ticket, monto y carro
+  (la `137` funciona), 0 duplicadas por (persona, ticket), 0 carros con dos visitas activas; "el ticket
+  manda" en 234/234; los 18 canjes tenían exactamente 5 pagados desde el anterior; 234/234 registradas
+  contra el ticket más reciente (la lista de 5 no está cortando registros; mediana cobro→registro 35 s).
+  0 evidencia de foto pegada al cliente anterior. La fusión fonética del 30/ago no dejó huérfanas.
+- **El color de la `141` sí se escribe:** 215 de 216 carros vivos desde el 31/ago (antes 59–72%).
+  La cámara toma la foto: mediana cobro→foto entre −0.3 y +0.7 min (llega ANTES del webhook).
+- **Respaldo completo:** `pruebas/respaldo-completo.sh` PASADA, 45,981 renglones, 11 tablas cuadran.
+  `4-recuperar-venta.ps1` produce un carro idéntico al real (probado con la forma REST de la venta
+  28484 en un `do…raise`). Los 10 `.ps1` parsean en PowerShell 5.1. 0 fugas de la suite en producción.
+- **Lo publicado en Pages es byte a byte el repo** (md5 de los 6 archivos); los 8 básicos del `sw.js`
+  responden 200. El relay de la cámara no es alcanzable desde fuera del tailnet.
+- **`comprobar-firma` (283/283) y `candado-del-reset` (4 direcciones) pasan.** `borrar_unidad` = `144`,
+  sin umbral, sin tocar `entregado_en`; 66 borrados desde el 31/ago, el más rápido a 11.6 min de
+  entrar: no hay evidencia de toques accidentales.
+
+### 🗳 Lo que necesita tu palabra (separado de lo que es trabajo mío)
+
+1. **Storage (punto 1):** ¿Pro hoy, o retención corta, o sólo achicar la foto en el corte? Sin
+   decisión, el sábado o el domingo la caja deja de guardar fotos.
+2. **Repo público (punto 2):** partir en dos repos + anonimizar + reescribir historial. ¿Sí?
+3. **Firma de Zettle (punto 18):** pasar de sombra a rechazo.
+4. **Borrar unidad y el reporte (punto 11):** ¿los borrados con visita de caja cuentan como lavados sin
+   tiempos? ¿Y quién tenía el teléfono el 31/ago de 11 a 16?
+5. **Color foto vs nota (punto 9):** revisar a ojo una muestra de GRIS→NEGRO/CAFÉ/AZUL antes del detector.
+6. **Fusionar** ROBERTO CORRAL GUTIERREZ (226669 → 129147) y **registrar el canje del carro 6004**.
+7. **Cotejo del MRT (punto 30):** ¿lo dejo como script y lo corro cada noche hasta apagarlo?
+
+### 🛠 Orden sugerido de arreglo
+
+1. **Storage** — antes del sábado; desbloquea que la caja siga leyendo placas.
+2. **Suite en verde** (punto 4) — desbloquea todo despliegue.
+3. **Front del supervisor, un solo corte:** cola congelada (3), botones muertos (33), pantalla
+   equivocada (34), Finalizados (35), foto perdida al asignar (36), `placa_display` (39). Todos con
+   caso en el arnés.
+4. **Base, sin esperar corte:** `security_invoker` (17), `ventas_indexar` (19), buscador `union` +
+   `not materialized` (7), `historial_de_persona` con cortesía (13), `upsert_persona` (12), una regla
+   para deshacer (15), `desenlazar_visita` (16).
+5. **Caja, corte:** corte por ruta (41), sondeo con token (42), color en `/foto-al-ticket` (43),
+   idempotencia (44).
+6. **Dinero y lealtad:** aviso de canje sin registrar (5), corregir el costo documentado (6), `placaSospechosa` (8).
+7. **Firma a rechazo** (18), tras tu palabra.
+8. **Repo público** (2): es el más grande y el único irreversible; conviene planearlo aparte.
+9. Lo demás (21–32, 37–40, 45), por lotes.
+
+### 📐 Método — lo que esta corrida dejó dicho para la siguiente
+
+- ✅ **El frente que abre el navegador se queda**, y los refutadores también lo usaron: 6 de los 8
+  hallazgos de carrera del front se **reprodujeron** con clic real; no son lectura. Cerró el límite que
+  las dos corridas anteriores declararon.
+- ✅ **Refutar al crítico funcionó al revés que la vez pasada:** su hallazgo principal (repo público)
+  **sobrevivió** con dos confirmaciones, y su #2 se **desinfló** (el cotejo no es diario, no mueve
+  contadores). Las dos cosas son el pase haciendo su trabajo.
+- ✅ **Los duplicados entre frentes ahora los agrupa el crítico por causa** (18 grupos), y esta lista se
+  escribió sobre esa agrupación. El buscador lento lo hallaron cinco frentes; el Storage, tres.
+- 🔴 **El límite de uso cortó la corrida TRES veces** (14 frentes Fable a la vez con `xhigh` se comen
+  la ventana). Se recuperó con `resumeFromRunId`, pero cada corte pierde lo que iba a la mitad. Para
+  la próxima: lanzar los frentes en dos tandas de 7, o bajar a `high`.
+- ⚠️ **Tres frentes corrieron dos veces** (lealtad, fondo, supervisor-resto) por la reanudación, y las
+  dos versiones no encontraron lo mismo; sólo la segunda pasó por refutadores. Un hallazgo de la
+  primera (los casos 1 y 4 de `candado-del-reset.sh` sin `raise`) quedó sin refutar y se anota en el
+  punto 21 como "verificar".
+- ⚠️ **El arnés tiene un artefacto:** `stub.js` usa ids de secadores numéricos y producción usa texto;
+  con números el toggle de Corregir duplica al secador. Corregir `stub.js`. Y `reporte.html` sigue sin
+  stub: sus hallazgos son lectura + datos.
+- ⚠️ **La propia auditoría corrió consultas de 30–115 s como `postgres`** contra producción (taller
+  cerrado). No se midió si alguna tomó candados mientras la caja estaba activa. Para la próxima:
+  correr los frentes pesados después de las 8 PM.
+
+---
+
 ## 👉 POR DÓNDE RETOMAR — cierre del 24/ago/2026
 
 **Nada quedó a medias.** Repo limpio, 0 commits sin subir, suite en verde (19 grupos), y todo lo
