@@ -1,0 +1,2101 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RUSH — Reporte</title>
+
+<!--
+  Pagina APARTE de la app del supervisor, a proposito.
+
+  El reporte es para el DUENO; la app es el telefono del SUPERVISOR.
+  Meterlo en la misma pantalla le agregaria al supervisor un boton que no
+  le sirve, y va contra la regla del CLAUDE.md de que cada boton hace algo
+  que el necesita. Aqui la audiencia es otra: alguien sentado, leyendo
+  numeros, no alguien parado mojandose con un carro esperando.
+
+  Mismo codigo de acceso, otra URL. El telefono del supervisor nunca la ve.
+-->
+
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin:0; padding:16px 14px 40px;
+    background:#0d1117; color:#e6edf3;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+  #logo { height:26px; width:auto; display:block; margin-bottom:14px; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  .sub { color:#8b949e; font-size:14px; margin-bottom:18px; }
+
+  select, button, input {
+    font-family: inherit; font-size:16px;
+    background:#161b22; color:#e6edf3;
+    border:1px solid #30363d; border-radius:8px;
+    padding:9px 12px;
+  }
+  button { cursor:pointer; }
+  button:active { background:#30363d; }
+
+  .barra { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:20px; }
+
+  /* La fila del rango. Se separa un poco de la de arriba para que se
+     lea como otra forma de consultar, no como parte del selector. */
+  .barra.rango { margin-top:-10px; font-size:15px; color:#8b949e; }
+  .barra.rango input[type="date"] {
+    background:#161b22; color:#e6edf3; border:1px solid #30363d;
+    border-radius:8px; padding:8px 10px; font-size:15px;
+  }
+  .barra.rango button {
+    background:#21262d; color:#e6edf3; border:1px solid #30363d;
+    border-radius:8px; padding:8px 16px; font-size:15px; font-weight:700;
+    cursor:pointer;
+  }
+  .barra.rango button:active { background:#30363d; }
+
+  /* Los seis numeros. Tarjetas grandes: es lo primero que se busca. */
+  .numeros { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:10px; margin-bottom:22px; }
+  .n {
+    background:#161b22; border:1px solid #30363d; border-radius:12px;
+    padding:14px 16px;
+  }
+  .n .valor { font-size:32px; font-weight:800; line-height:1.1; }
+  .n .rotulo { color:#8b949e; font-size:13px; margin-top:4px; line-height:1.3; }
+  .n .nota { color:#6e7681; font-size:12px; margin-top:6px; font-style:italic; }
+
+  h2 { font-size:17px; margin:26px 0 10px; color:#adbac7; font-weight:700; }
+
+  table { width:100%; border-collapse:collapse; font-size:15px; }
+  th, td { text-align:left; padding:9px 8px; border-bottom:1px solid #21262d; }
+  th { color:#8b949e; font-size:13px; font-weight:600; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  tr:last-child td { border-bottom:none; }
+
+  .vacio { color:#6e7681; font-style:italic; padding:14px 0; }
+
+  /* Los avisos honestos sobre que tan confiable es cada numero. No son
+     decorativos: sin ellos el dueno lee un piso como si fuera un total. */
+  .aviso {
+    background:#1c2128; border-left:4px solid #d29922; border-radius:6px;
+    padding:11px 13px; margin:14px 0; font-size:14px; color:#c9d1d9; line-height:1.45;
+  }
+  .aviso b { color:#e6edf3; }
+  /* Alerta (algo que hay que ir a revisar), más fuerte que el aviso amarillo. */
+  .aviso.alerta { border-left-color:#f85149; }
+  .aviso.alerta .rep { margin-top:8px; padding-top:8px; border-top:1px solid #21262d; }
+  .aviso.alerta .rep-placa { font-weight:800; color:#e6edf3; font-size:15px; }
+  .aviso.alerta .rep-carro { color:#8b949e; font-size:13px; margin-top:2px; }
+  .aviso.alerta .enlace { font-size:13px; }
+
+  /* Cada tipo de servicio es su propia seccion. Mas chico que h2 para
+     que se lea como subdivision de "Por equipo" y no como tema nuevo. */
+  h3 {
+    font-size:15px; margin:22px 0 6px; color:#e6edf3; font-weight:700;
+    display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;
+  }
+  h3 .cuantos { font-size:13px; font-weight:600; color:#8b949e; }
+
+  /* La nota de cada seccion: explica por que se mide aparte. Sin la
+     barra amarilla, que aqui no hay nada de que advertir. */
+  .aviso.chico {
+    background:transparent; border-left:none; padding:0 0 8px;
+    margin:0; font-size:13px; color:#8b949e;
+  }
+
+  #acceso {
+    position:fixed; inset:0; background:#0d1117;
+    display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    padding:24px;
+  }
+  #acceso input { font-size:26px; text-align:center; letter-spacing:4px; width:100%; max-width:320px; }
+  #malcodigo { color:#ff7875; display:none; }
+
+  /* --- Switch Operación | Clientes --- */
+  .switch { display:flex; gap:8px; margin-bottom:18px; }
+  .switch button {
+    flex:1; font-size:15px; font-weight:700; padding:11px 6px;
+    background:#161b22; color:#8b949e; border:1px solid #30363d; border-radius:10px;
+    white-space:nowrap;
+  }
+  .switch button.on { background:#1f6feb; color:#fff; border-color:#1f6feb; }
+
+  /* --- Buscador de clientes: lista de resultados --- */
+  .lista { display:flex; flex-direction:column; gap:8px; margin:4px 0 10px; }
+  .item {
+    display:block; width:100%; text-align:left; position:relative;
+    background:#161b22; border:1px solid #30363d; border-radius:12px; padding:12px 14px;
+  }
+  .item:active { background:#21262d; }
+  .item-nom { font-size:18px; font-weight:800; color:#e6edf3; }
+  .item-sub { font-size:13px; color:#8b949e; margin-top:3px; }
+  .item-badge {
+    position:absolute; top:12px; right:12px;
+    background:#132e1b; color:#3fb950; border:1px solid #3fb950;
+    border-radius:8px; padding:3px 9px; font-size:13px; font-weight:800;
+  }
+
+  /* --- Perfil (persona o placa) --- */
+  .volver { background:transparent; border:none; color:#58a6ff; font-size:15px; padding:6px 0; margin-bottom:2px; cursor:pointer; }
+  .perfil-nom { font-size:26px; margin:2px 0; }
+
+  .tarjeta-lealtad {
+    background:#161b22; border:1px solid #30363d; border-radius:16px;
+    padding:16px; margin:12px 0 6px;
+  }
+  .tarjeta-lealtad.gratis { background:#132e1b; border-color:#3fb950; }
+  .tl-fila { display:flex; gap:10px; flex-wrap:wrap; }
+  .tl-cel { flex:1; text-align:center; min-width:70px; }
+  .tl-num { font-size:30px; font-weight:900; color:#e6edf3; line-height:1; }
+  .tl-num.tl-money { font-size:22px; color:#3fb950; }
+  td.gastado-gratis { color:#3fb950; font-weight:700; }
+  /* Cortesia (148): regalo del negocio, ni suma sello ni consume gratis. Antes se veia como pagado. */
+  td.gastado-cortesia { color:#a371f7; font-weight:700; }
+  .tl-num .tl-de { font-size:15px; font-weight:700; color:#8b949e; }
+  .tl-rot { font-size:12px; color:#8b949e; margin-top:5px; }
+  .tl-msg { text-align:center; margin-top:12px; font-size:15px; font-weight:700; color:#3fb950; }
+  .tl-msg.tenue { color:#8b949e; font-weight:600; }
+  .tl-placas { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; margin-top:12px; }
+  .chip {
+    background:#0d1117; border:1px solid #30363d; border-radius:8px;
+    padding:5px 10px; font-size:14px; font-weight:700; letter-spacing:1px; color:#e6edf3;
+    cursor:pointer; font-family:inherit;
+  }
+  .chip:active { background:#21262d; }
+  .enlace { background:transparent; border:none; color:#58a6ff; font-size:14px; padding:0; cursor:pointer; text-align:left; font-family:inherit; }
+  td .tenue, .tenue { color:#6e7681; }
+
+  /* Placas por confirmar (salieron de las fotos). Se ven distintas de las
+     confirmadas —borde punteado ámbar— para que quede claro que aún no son
+     seguras, y traen los botones de confirmar / quitar. */
+  .sugeridas { margin:12px 0 4px; }
+  .sug-rot { font-size:13px; color:#8b949e; margin-bottom:8px; }
+  .sug-nota { color:#6e7681; }
+  .sug-fila { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+  .sug-placa {
+    border:1px dashed #d29922; color:#e6edf3; background:#1a1408;
+    border-radius:8px; padding:5px 10px; font-size:14px; font-weight:700; letter-spacing:1px;
+  }
+  .sug-ok, .sug-no { border:none; border-radius:8px; padding:6px 12px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .sug-ok { background:#238636; color:#fff; }
+  .sug-no { background:transparent; color:#8b949e; border:1px solid #30363d; }
+  .sug-ok:active { filter:brightness(.85); }
+  .sug-no:active { background:#21262d; }
+
+  /* Dueño(s) de lealtad de una placa. Sale en el perfil de la placa, sobre
+     todo cuando la placa no tiene ninguna visita lavada pero sí tiene dueño. */
+  .duenos { margin:10px 0 4px; font-size:15px; color:#c9d1d9; }
+  .duenos .duenos-rot { color:#8b949e; font-size:13px; margin-right:6px; }
+  .duenos .enlace { font-size:16px; font-weight:700; }
+
+  /* Galería de fotos de la placa. Rejilla de miniaturas, de la más nueva a
+     la más vieja, con la fecha y hora en que se tomó cada una. */
+  .galeria-btn {
+    background:#21262d; color:#e6edf3; border:1px solid #30363d; border-radius:10px;
+    padding:10px 16px; font-size:15px; font-weight:700; margin:10px 0 2px; cursor:pointer;
+    font-family:inherit;
+  }
+  .galeria-btn:active { background:#30363d; }
+  .galeria-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px,1fr)); gap:12px; margin:12px 0; }
+  .foto { margin:0; background:#161b22; border:1px solid #30363d; border-radius:12px; overflow:hidden; }
+  .foto img { width:100%; height:150px; object-fit:cover; display:block; background:#0d1117; }
+  .foto figcaption { padding:7px 9px; font-size:13px; color:#8b949e; text-align:center; }
+  .foto-sinurl { height:150px; display:flex; align-items:center; justify-content:center; color:#6e7681; font-size:13px; }
+
+  /* Modal del ticket (la venta completa de Zettle). */
+  #ticket-modal { position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:60; display:none; align-items:center; justify-content:center; padding:20px; }
+  #ticket-card { background:#161b22; border:1px solid #30363d; border-radius:16px; padding:20px 22px; max-width:480px; width:100%; max-height:85vh; overflow:auto; }
+  #ticket-card h3 { margin:0 0 2px; font-size:22px; color:#e6edf3; }
+  #ticket-card h2 { margin:16px 0 6px; }
+  #ticket-card .ticket-total { margin-top:14px; font-size:20px; text-align:right; }
+  #ticket-card .ticket-total b { color:#3fb950; }
+  #ticket-cerrar { width:100%; min-height:48px; font-size:17px; font-weight:800; margin-top:16px; background:#21262d; color:#e6edf3; border:1px solid #30363d; border-radius:10px; }
+</style>
+
+<img id="logo" src="RUSH-Logo.png" alt="RUSH" onerror="this.style.display='none'">
+<h1>Reporte</h1>
+
+<!-- Dos secciones para la MISMA audiencia (el dueno, sentado): Operacion
+     (secadores/tiempos por rango de fechas) y Clientes (buscador + perfiles
+     de lealtad). Un switch, no una tercera URL: el dueno tiene un solo lugar.
+     Cada modo es una tarea distinta, asi que no se apilan en un scroll. -->
+<div class="switch">
+  <button id="tab-op" class="on">Operación</button>
+  <button id="tab-cli">Clientes</button>
+  <button id="tab-trab">Trabajadores</button>
+  <button id="tab-tik">Tickets</button>
+</div>
+
+<div id="vista-op">
+  <div class="sub" id="encabezado">—</div>
+
+  <div class="barra">
+    <select id="dia"></select>
+    <button id="respaldo">Descargar respaldo</button>
+  </div>
+
+  <!-- Rango de dias, como en Zettle: casilla inicial y casilla final.
+       Va DEBAJO del selector de un dia y no lo reemplaza: ver "ayer" es
+       lo que se hace todos los dias, y el rango es lo ocasional. -->
+  <div class="barra rango">
+    <label for="desde">Del</label>
+    <input type="date" id="desde">
+    <label for="hasta">al</label>
+    <input type="date" id="hasta">
+    <button id="ver-rango">Ver</button>
+  </div>
+
+  <div id="contenido"></div>
+</div>
+
+<div id="vista-cli" style="display:none">
+  <div class="barra">
+    <input id="cli-q" placeholder="Buscar cliente, placa, marca o modelo…"
+           autocomplete="off" autocapitalize="none" style="flex:1; min-width:200px">
+  </div>
+  <div id="cli-res"><div class="vacio">Escribe un nombre, una placa, o una marca/modelo.</div></div>
+</div>
+
+<!-- Trabajadores: la lista de todos los empleados (incluye a quien hoy
+     descansa y no sale en la grilla de asignar), con nombres clicables que
+     abren su historial de secado. Misma audiencia (el dueno, sentado). -->
+<div id="vista-trab" style="display:none">
+  <div id="trab-res"><div class="vacio">Cargando…</div></div>
+</div>
+
+<!-- Tickets: teclear un numero de ticket y ver la venta completa de Zettle
+     (el MISMO modal que abre un ticket clicable en cualquier tabla). -->
+<div id="vista-tik" style="display:none">
+  <div class="barra">
+    <input id="tik-q" autocomplete="off" autocapitalize="off"
+           placeholder="Buscar ticket: número, cajera o producto…" style="flex:1; min-width:200px">
+  </div>
+  <div id="tik-res"><div class="vacio">Busca por número de ticket, cajera o producto (ej. “manual”, “danithza”, “pinito”).</div></div>
+</div>
+
+<div id="acceso">
+  <h2 style="color:#e6edf3">Código de acceso</h2>
+  <input id="campo" inputmode="text" autocapitalize="characters" autocomplete="off">
+  <div id="malcodigo">Código incorrecto</div>
+  <button id="entrar" style="font-size:20px; padding:12px 30px">Entrar</button>
+</div>
+
+<!-- Modal del ticket: la venta completa de Zettle (productos, descuento, cajera). -->
+<div id="ticket-modal"><div id="ticket-card"></div></div>
+
+<script>
+var API = "https://rwoyfvddhlabmmuvkpjx.supabase.co/functions/v1/app";
+
+// Mismo codigo y mismo almacen que la app del supervisor: si el dueno ya
+// entro en este navegador, no lo vuelve a teclear.
+var CODIGO = "";
+
+function cargarCodigo() {
+  var enLiga = new URLSearchParams(location.search).get("c");
+  if (enLiga) {
+    CODIGO = enLiga.trim().toUpperCase();
+    try { localStorage.setItem("rush_codigo", CODIGO); } catch (e) {}
+    history.replaceState({}, "", location.pathname);
+    return;
+  }
+  try { CODIGO = localStorage.getItem("rush_codigo") || ""; } catch (e) { CODIGO = ""; }
+}
+
+// Toda petición corta a los 20 s. Era la ÚNICA de las tres pantallas sin corte
+// (el supervisor y la caja ya lo tienen): una petición colgada con el wifi del
+// taller dejaba el reporte en blanco para siempre, sin decir nada, y la única
+// salida era recargar sin saber por qué.
+//
+// El respaldo NO usa este corte: son 11 tablas y ~37,000 renglones, y a 20 s
+// se abortaría una descarga que iba bien. Ver `pedirJSONRespaldo`.
+var PEDIR_CORTE_MS = 20000;
+
+function pedir(ruta, opts) {
+  opts = opts || {};
+  opts.headers = Object.assign({ "x-codigo": CODIGO }, opts.headers || {});
+  opts.cache = "no-store";
+  var reloj = null;
+  if (typeof AbortController === "function" && !opts.signal) {
+    var corta = new AbortController();
+    opts.signal = corta.signal;
+    reloj = setTimeout(function () { corta.abort(); }, opts.corteMs || PEDIR_CORTE_MS);
+  }
+  return fetch(API + ruta, opts).then(function (r) {
+    if (reloj) clearTimeout(reloj);
+    return r;
+  }, function (e) {
+    if (reloj) clearTimeout(reloj);
+    throw e;
+  });
+}
+
+function pedirCodigo(fallo) {
+  document.getElementById("acceso").style.display = "flex";
+  document.getElementById("malcodigo").style.display = fallo ? "block" : "none";
+  document.getElementById("campo").focus();
+}
+
+function escapar(t) {
+  return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) {
+    return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
+  });
+}
+
+// Los nombres se registran de mil formas: MAYUSCULAS, minusculas, mixto.
+// Aqui se muestran siempre con la primera letra de cada palabra en mayuscula
+// y el resto en minuscula ("Juan Perez"), sin importar como se guardaron.
+// Es SOLO de presentacion: el dato guardado no se toca (por eso va en el
+// front y no en persona_json, que la app de caja reusa para editar). Corta
+// tambien despues de espacio, apostrofo, guion o punto ("o'brien"->"O'Brien").
+function titulo(s) {
+  if (s == null) return s;
+  return String(s).toLowerCase().replace(/(^|[\s'.\-])([a-záéíóúüñ])/g, function (_, sep, ch) {
+    return sep + ch.toUpperCase();
+  });
+}
+
+// Los segundos crudos no le dicen nada a nadie. "34 min" si.
+function duracion(seg) {
+  if (seg == null) return "—";
+  var m = Math.round(seg / 60);
+  if (m < 60) return m + " min";
+  var h = Math.floor(m / 60);
+  return h + " h " + (m % 60) + " min";
+}
+
+function pintarReporte(r) {
+  var placas = r.placas || {};
+  var asp = r.aspirado || {};
+  // Aviso de placas repetidas el mismo día: se llena aparte (pedirRepetidas),
+  // va hasta arriba porque es algo que hay que ir a revisar.
+  var html = '<div id="avisos"></div><div id="repetidas"></div><div id="dudosas"></div><div id="fotos-pendientes"></div>';
+
+  html += '<div class="numeros">';
+  html +=   tarjeta(r.vehiculos_lavados, "Vehículos lavados",
+              r.vehiculos_sin_terminar ? r.vehiculos_sin_terminar + " entraron y no se han entregado" : "");
+  // Solo aparece si hubo alguno. Un cero permanente en pantalla se vuelve
+  // invisible; el numero importa justo el dia que NO es cero.
+  if (r.cerrados_automaticamente) {
+    html += tarjeta(r.cerrados_automaticamente, "Se cerraron solos",
+              "Nadie los entregó; se cerraron al cierre. Sus tiempos no cuentan en los promedios");
+  }
+  // Igual que el anterior: solo aparece cuando no es cero. Un cero
+  // permanente en pantalla se vuelve invisible, y este numero importa
+  // justo el dia que NO es cero.
+  if (r.descartados_por_tiempo) {
+    html += tarjeta(r.descartados_por_tiempo, "No se contaron",
+              "Entregados más rápido de lo posible (20 min, o 10 en express). Casi seguro error o prueba");
+  }
+  // Igual: solo si no es cero. Carros con secado de menos de 3 min — un
+  // olvido asignado y entregado tarde de un jalon. Cuentan como lavado,
+  // pero su secado no entra al promedio. Si sale alto, se estan olvidando
+  // carros.
+  if (r.secados_descartados) {
+    html += tarjeta(r.secados_descartados, "Secados muy cortos",
+              "Menos de 3 min de secado (imposible): olvidos entregados tarde. No cuentan en el promedio de secado");
+  }
+  // Igual: solo si no es cero. Unidades que el supervisor BORRO de la cola
+  // porque ya no se iban a lavar (se fue el cliente, se olvido). No cuentan
+  // como lavado ni en los promedios. Si un dia salen muchas, vale la pena
+  // preguntar por que se estan quedando carros sin trabajar.
+  if (r.borrados) {
+    html += tarjeta(r.borrados, "Unidades borradas",
+              "El supervisor las sacó de la cola sin lavar. No cuentan en ningún promedio");
+  }
+  html +=   tarjeta(duracion(r.espera_promedio_seg), "Espera promedio por carro",
+              "De que paga a que se lo entregan");
+  // El promedio general mezcla express con completos, y un express tarda
+  // ~4× menos: ese número se mueve con la MEZCLA del día, no con la
+  // velocidad de nadie. Se parte en dos, que es lo que el resto del reporte
+  // exige. El general se queda, pero diciendo lo que es.
+  var spt = r.secado_por_tipo || {};
+  if (spt.con_aspirado != null || spt.sin_aspirado != null) {
+    if (spt.con_aspirado != null) {
+      html += tarjeta(duracion(spt.con_aspirado), "Secado · completos", "Los que llevan aspirado");
+    }
+    if (spt.sin_aspirado != null) {
+      html += tarjeta(duracion(spt.sin_aspirado), "Secado · express", "Sin aspirado");
+    }
+    html += tarjeta(duracion(r.secado_promedio_seg), "Secado promedio",
+              "Mezcla de los dos: sube o baja con la mezcla del día");
+  } else {
+    // Días congelados antes del 19/ago no traen el desglose.
+    html += tarjeta(duracion(r.secado_promedio_seg), "Secado promedio",
+              "Mezcla de completos y express");
+  }
+
+  // ⚠️ "Vehículos lavados" cuenta sólo los ENTREGADOS; con/sin aspirado
+  // cuentan todos los del día. En un día ya cerrado da igual, pero en el día
+  // en curso el desglose suma más que el total y no había una línea que lo
+  // explicara.
+  var enCurso = r.entregados != null && r.vehiculos_lavados != null &&
+                (asp.con + asp.sin + (asp.sin_clasificar || 0)) > r.vehiculos_lavados;
+  var notaCurso = enCurso ? "Incluye los que todavía no se entregan" : "";
+  html +=   tarjeta(asp.con, "Con aspirado", notaCurso);
+  html +=   tarjeta(asp.sin, "Sin aspirado", notaCurso);
+  if (asp.sin_clasificar) {
+    html += tarjeta(asp.sin_clasificar, "Sin clasificar",
+              "Paquetes que no reconozco — avísame para agregarlos");
+  }
+  html += '</div>';
+
+  // --- Equipos, separados por tipo de servicio ---
+  //
+  // No se comparan peras con manzanas: un equipo que seco express no se
+  // mide contra uno que seco completos, y los encerados tardan mas por
+  // naturaleza. Cada seccion se ordena y se lee por separado.
+  //
+  // El ORDEN importa: los completos van primero porque son la gran
+  // mayoria del trabajo y es lo que de verdad hay que medir.
+  var SECCIONES = [
+    { clave: "con_aspirado",   titulo: "Paquetes completos (con aspirado)",
+      nota: "La mayoría del trabajo. Es la sección que más importa medir." },
+    { clave: "sin_aspirado",   titulo: "Express (sin aspirado)",
+      nota: "Menos trabajo por carro; sus tiempos no se comparan con los completos." },
+    { clave: "encerado",       titulo: "Encerado manual y superbrillo",
+      nota: "Tardan más por naturaleza. Se miden solo contra sí mismos." },
+    { clave: "sin_clasificar", titulo: "Sin clasificar",
+      nota: "Productos que no reconozco. Avísame el nombre exacto y los acomodo." }
+  ];
+
+  html += "<h2>Por equipo</h2>";
+  var eq = r.equipos || [];
+  var porTipo = r.por_tipo || {};
+
+  if (!eq.length) {
+    html += '<div class="vacio">Ningún carro tuvo secador asignado ' +
+            (r.es_rango ? "en este periodo" : "este día") + ".</div>";
+  } else {
+    for (var s = 0; s < SECCIONES.length; s++) {
+      var sec = SECCIONES[s];
+      var filas = eq.filter(function (x) { return (x.tipo || "sin_clasificar") === sec.clave; });
+      // Una seccion vacia no se pinta. "Sin clasificar" en cero es lo
+      // normal, y un titulo en blanco todos los dias se vuelve ruido.
+      if (!filas.length) continue;
+
+      var carrosDelTipo = porTipo[sec.clave] || 0;
+      html += "<h3>" + escapar(sec.titulo) +
+              (carrosDelTipo ? ' <span class="cuantos">' + carrosDelTipo + " carros</span>" : "") +
+              "</h3>";
+      html += '<div class="aviso chico">' + escapar(sec.nota) + "</div>";
+      html += '<table><tr><th>Equipo</th><th class="num">Carros</th><th class="num">Secado promedio</th><th class="num">Le entraron encimados</th></tr>';
+      for (var i = 0; i < filas.length; i++) {
+        var enc = filas[i].encimados || 0;
+        var pct = filas[i].carros ? Math.round(enc * 100 / filas[i].carros) : 0;
+        html += "<tr><td>" + escapar(filas[i].equipo) + "</td>" +
+                '<td class="num">' + filas[i].carros + "</td>" +
+                '<td class="num">' + duracion(filas[i].secado_promedio_seg) + "</td>" +
+                '<td class="num">' + (enc ? enc + " (" + pct + "%)" : "—") + "</td></tr>";
+      }
+      html += "</table>";
+
+      // ⚠️ El encabezado cuenta TODOS los carros del tipo; la tabla sólo lista
+      // los que tuvieron secador. La diferencia son los carros que nadie
+      // trabajó, y se evaporaban entre las dos cifras sin una palabra. El
+      // 11/ago el título decía 22 y la tabla sumaba 15: los 7 que faltaban
+      // eran el peor día de abandono del mes.
+      var huerfanos = (r.sin_equipo_por_tipo || {})[sec.clave] || 0;
+      if (huerfanos) {
+        // 🔴 En el DÍA EN CURSO esto no es abandono: son los carros que acaban
+        // de entrar y todavía esperan en prelavado, que por definición aún no
+        // tienen secador. La alerta salía roja a cualquier hora con 1.5-2.3
+        // carros — o sea todos los días, diciendo que "nadie los trabajó"
+        // sobre carros que llevaban cinco minutos en la cola. Una alerta que
+        // siempre está encendida no avisa de nada. Sólo cuando el día ya cerró
+        // significa lo que dice.
+        var diaEnCurso = !r.es_rango && !r.congelado_en;
+        html += '<div class="aviso' + (diaEnCurso ? "" : " alerta") + '">⚠ <b>' + huerfanos +
+                (huerfanos === 1 ? " carro de esta sección no tiene secador asignado"
+                                 : " carros de esta sección no tienen secador asignado") +
+                ".</b> " +
+                (diaEnCurso
+                  ? "Por eso el total de arriba no cuadra con la tabla. En el día en curso es normal: " +
+                    "son los que acaban de entrar y todavía esperan asignación."
+                  : "Por eso el total de arriba no cuadra con la tabla: nadie los trabajó.") +
+                "</div>";
+      }
+    }
+    html += '<div class="aviso"><b>"Le entraron encimados"</b> = carros que llegaron cuando esa persona ' +
+            'ya estaba secando otro, así que tuvieron que esperar su turno. Ese rato de espera se cuenta ' +
+            'como secado, así que <b>a quien más carga le sube el promedio sin ser más lento</b>. ' +
+            'Un secado alto con muchos encimados es saturación, no lentitud.</div>';
+    html += '<div class="aviso">El promedio de secado sale de los carros que <b>ya terminaron</b>. ' +
+            'Un equipo con carros todavía secando aparece con menos tiempo del que va a tener. ' +
+            'Un mismo equipo puede salir en varias secciones: se le mide aparte lo que hizo de cada tipo.</div>';
+  }
+
+  // --- Calidad de la entrega ---
+  //
+  // El backend calculaba estos cuatro campos y la pantalla NO pintaba ninguno.
+  // Importa por dos razones: la conclusión de que "nadie usa la pantalla de
+  // rechazo" no se puede confirmar si no hay dónde verlos; y la migración 083
+  // dice textualmente de los cancelados que "no desaparezcan en silencio: si un
+  // día se cancelan cinco, el dueño tiene que poder verlo" — y desaparecían,
+  // porque la tarjeta que sí existía era la de `borrados`, que es sólo una
+  // parte.
+  //
+  // Como el resto de las tarjetas condicionales: sólo salen cuando no son cero.
+  //
+  // 🔴 "DEVOLUCIONES" SE INVENTABA, y era el único número falso que el dueño
+  // estaba leyendo. Esta línea decía:
+  //
+  //     var devoluciones = Math.max(0, (r.cancelados || 0) - (r.borrados || 0));
+  //
+  // o sea "los cancelados que no borró el supervisor", que NO es una
+  // devolución. La migración `120` (21/ago) ya calcula las de verdad en el
+  // backend —una venta que apunta a otra con `refundsPurchaseUuid`— y esta
+  // pantalla nunca se actualizó. Medido en toda la historia: pintaba **31**
+  // donde hubo **6**, y el 29/jul decía 18 cuando fueron 0.
+  //
+  // Importa porque el `CLAUDE.md §13` define una devolución como *"una falla de
+  // servicio que se pagó con dinero para no perder al cliente"*: leer 31 fallas
+  // donde hubo 6 cambia la conclusión, no el decimal.
+  //
+  // Decisión del dueño (23/ago): la tarjeta cuenta SÓLO los reembolsos de
+  // Zettle, y las cancelaciones a mano salen aparte con su nombre — no
+  // desaparecen (la migración `083` pide que se puedan ver), pero dejan de
+  // disfrazarse de devolución.
+  var rech = r.rechazos || {};
+  var devoluciones = r.devoluciones || 0;
+  var trasEntregar = r.devoluciones_tras_entregar || 0;
+  // Las canceladas a mano que NO son un reembolso: cancelados, menos los que
+  // borró el supervisor, menos las devoluciones de verdad.
+  var canceladas = Math.max(0, (r.cancelados || 0) - (r.borrados || 0) - devoluciones);
+  if (rech.eventos || devoluciones || canceladas) {
+    html += "<h2>Calidad de la entrega</h2>";
+    html += '<div class="numeros">';
+    if (rech.eventos) {
+      html += tarjeta(rech.eventos, "Entregas rechazadas",
+                "En " + rech.carros + (rech.carros === 1 ? " carro" : " carros") +
+                ". El supervisor las revisó y las regresó a secar");
+    }
+    if (devoluciones) {
+      html += tarjeta(devoluciones, "Devoluciones",
+                "Se le regresó el dinero al cliente (reembolso en Zettle)");
+    }
+    if (canceladas) {
+      html += tarjeta(canceladas, "Cancelaciones a mano",
+                "Se canceló el cobro sin reembolso. No son devoluciones");
+    }
+    html += '</div>';
+
+    // La devolución DESPUÉS de entregar es la falla de servicio más cara que
+    // describe el §13: el rechazo se ataja antes de que el cliente se vaya y
+    // ésta se ataja cuando ya se fue molesto. Va aparte y en rojo porque no se
+    // lee igual que una devolución de un carro que nunca salió.
+    if (trasEntregar) {
+      html += '<div class="aviso alerta">⚠ <b>' + trasEntregar +
+              (trasEntregar === 1
+                 ? " devolución fue de un carro YA ENTREGADO"
+                 : " devoluciones fueron de carros YA ENTREGADOS") +
+              '.</b> El cliente se fue con el carro y aun así se le regresó el dinero. ' +
+              'Es la falla de servicio más cara: el trabajo se hizo, la gente se ocupó, ' +
+              'y el cliente igual quedó mal.</div>';
+    }
+
+    var porSec = r.rechazos_por_secador || [];
+    if (porSec.length) {
+      html += '<table><tr><th>Secador</th><th class="num">Rechazos</th><th>Qué faltó</th></tr>';
+      porSec.forEach(function (s) {
+        var motivos = [];
+        var m = s.motivos || {};
+        for (var k in m) { if (Object.prototype.hasOwnProperty.call(m, k)) motivos.push(k + " ×" + m[k]); }
+        html += "<tr><td>" + escapar(s.secador) + "</td>" +
+                '<td class="num">' + s.rechazos + "</td>" +
+                "<td>" + escapar(motivos.join(", ") || "—") + "</td></tr>";
+      });
+      html += "</table>";
+      // El titular cuenta EVENTOS y la tabla cuenta PERSONAS, así que cuando un
+      // carro lo secaban dos, la tabla suma más que el titular (medido: decía 2
+      // arriba y 3 abajo). No es un error de ninguno de los dos — es que
+      // `rechazos` lleva una fila por secador a propósito, para saber a quién
+      // entrenar. Lo que faltaba era decirlo, igual que se dice con los carros
+      // sin secador de la sección de arriba.
+      var sumaTabla = 0;
+      porSec.forEach(function (s) { sumaTabla += (s.rechazos || 0); });
+      html += '<div class="aviso">El objetivo no es castigar: es saber <b>a quién entrenar y en qué</b>. ' +
+              'Un rechazo se cuenta como UN evento aunque haya faltado más de una cosa.' +
+              (sumaTabla > (rech.eventos || 0)
+                 ? ' <b>Por eso esta tabla suma ' + sumaTabla + ' y arriba dice ' + (rech.eventos || 0) +
+                   ':</b> un carro que secaban dos personas es un solo rechazo, pero se le anota a las dos.'
+                 : '') +
+              '</div>';
+    }
+  }
+
+  // --- Placas ---
+  html += "<h2>Placas leídas</h2>";
+  var conPlaca = placas.con_placa || 0;
+  var totalCarros = placas.carros || 0;
+  html += '<div class="numeros">';
+  html +=   tarjeta(conPlaca + " de " + totalCarros, "Carros con placa leída",
+              (placas.con_foto || 0) + " tuvieron foto");
+  html += '</div>';
+
+  if (conPlaca < totalCarros) {
+    html += '<div class="aviso">La placa sale de la foto, y la foto es <b>opcional</b>. ' +
+            'De ' + totalCarros + ' carros se leyó la placa de ' + conPlaca + '. ' +
+            'Por eso el historial de visitas es un <b>piso, no un total</b>: si dice que una placa vino 3 veces, ' +
+            'vino 3 veces <b>o más</b>.</div>';
+  }
+
+  return html;
+}
+
+// El recordatorio de que un conteo de visitas por placa es un PISO. Vive en
+// un solo lugar porque sale en tres pantallas: si se reescribiera en cada
+// una, en un mes dirían tres cosas distintas.
+function notaPiso() {
+  return '<div class="aviso">Las visitas de una placa son un <b>piso, no un total</b>: ' +
+         'la placa sale de la foto y la foto es opcional, así que si dice 3 visitas, ' +
+         'vino <b>3 veces o más</b>.</div>';
+}
+
+function tarjeta(valor, rotulo, nota) {
+  return '<div class="n"><div class="valor">' + escapar(valor == null ? "—" : valor) + "</div>" +
+         '<div class="rotulo">' + escapar(rotulo) + "</div>" +
+         (nota ? '<div class="nota">' + escapar(nota) + "</div>" : "") + "</div>";
+}
+
+// OJO: esta tabla NO es del día seleccionado. Va debajo del reporte y con
+// el mismo <h2> que sus secciones, así que se lee como si lo fuera; el
+// subtítulo es lo único que lo aclara. Son las 50 placas más vistas de
+// SIEMPRE, y no cambian al mover el selector de arriba.
+function pintarPlacas() {
+  var html = "<h2>Historial por placa</h2>";
+  html += '<div class="sub">De toda la historia, no del día de arriba: las placas que más han venido ' +
+          'desde que la app existe. No cambia al escoger otro día.</div>';
+  html += '<div class="barra"><input id="buscar" placeholder="Buscar placa…" style="flex:1; min-width:160px"></div>';
+  html += '<div id="tablaplacas"></div>';
+  return html;
+}
+
+function tablaPlacas(placas) {
+  if (!placas.length) return '<div class="vacio">Todavía no hay placas leídas.</div>';
+  // La placa es clicable: abre su perfil (el mismo de la vista Clientes).
+  // Cliente y Hora de llegada salen de datos que /placas ya devuelve:
+  // 'cliente' y 'ultima_visita' (que trae fecha Y hora de la ultima venta).
+  var html = '<table><tr><th>Placa</th><th class="num">Visitas</th><th>Carro</th>' +
+             '<th>Cliente</th><th>Última vez</th><th>Hora de llegada</th><th>Secó</th></tr>';
+  for (var i = 0; i < placas.length; i++) {
+    var p = placas[i];
+    var carro = [p.tipo_unidad, p.color, p.marca].filter(Boolean).join(" ");
+    var placaTxt = p.placa_como_se_lee || p.placa;
+    html += '<tr><td><button class="enlace" data-placa="' + escapar(placaTxt) + '"><b>' + escapar(placaTxt) + "</b></button></td>" +
+            '<td class="num">' + p.visitas + "</td>" +
+            "<td>" + escapar(carro || "—") + "</td>" +
+            "<td>" + clienteCel(p) + "</td>" +
+            "<td>" + (p.ultima_visita ? escapar(fechaCorta(p.ultima_visita)) : "—") + "</td>" +
+            "<td>" + (p.ultima_visita ? escapar(hora(p.ultima_visita)) : "—") + "</td>" +
+            "<td>" + secadoresCel(p.secadores, p.secadores_ok) + "</td></tr>";
+  }
+  return html + "</table>";
+}
+
+// La columna "Cliente": el dueño de lealtad (clicable, lleva a su perfil).
+// Si la placa no tiene dueño de lealtad, se cae al texto de la nota de caja
+// (sin liga, porque ese texto no es una persona del CRM). Y si no hay nada,
+// una raya.
+function clienteCel(p) {
+  if (p.cliente_lealtad && p.cliente_lealtad.id) {
+    return '<button class="enlace" data-cliente="' + escapar(p.cliente_lealtad.id) + '">' +
+           escapar(titulo(p.cliente_lealtad.nombre)) + "</button>";
+  }
+  if (p.cliente) return escapar(titulo(p.cliente));
+  return '<span class="tenue">—</span>';
+}
+
+// La columna "Secó": el/los secador(es) de la última visita. Cada uno es
+// clicable si tiene id (lleva a su perfil); sin id (filas viejas sin
+// empleado_id) sale como texto. Los nombres van con data-trab.
+function secadoresCel(secs, seSupo) {
+  // 🔴 Una raya significa "a este carro no lo seco nadie", y eso es un DATO.
+  // Cuando la consulta de secadores falla, /placas contesta 200 con la lista
+  // vacia y la columna entera salia en rayas: una falla pintada como si
+  // fuera informacion. `secadores_ok` (false) dice que no se pudo consultar.
+  if (seSupo === false) return '<span class="tenue">no se pudo consultar</span>';
+  if (!secs || !secs.length) return '<span class="tenue">—</span>';
+  return secs.map(function (s) {
+    var nom = titulo(s.nombre || "");
+    return s.id
+      ? '<button class="enlace" data-trab="' + escapar(s.id) + '">' + escapar(nom) + "</button>"
+      : escapar(nom);
+  }).join(", ");
+}
+
+// Lo último que se tecleó en el buscador de placas. Es la guardia contra la
+// respuesta vieja: teclear "BVJ113A" son varias consultas en vuelo a la vez,
+// y la de "BV" puede llegar DESPUÉS de la de "BVJ113A" y pintarse encima. El
+// dueño vería resultados que no corresponden a lo que tiene escrito.
+var placasQ = "";
+var placasTimer = null;
+
+function cargarPlacas(q) {
+  placasQ = q || "";
+  // El 401 ya se atajaba aquí (un código vencido pintaba "Todavía no hay placas
+  // leídas", que es mentira). Faltaba el resto de la clase: con `d.placas || []`
+  // un 500 decía exactamente lo mismo. Ahora `pedirJSON` cubre los dos.
+  pedirJSON("/placas" + (q ? "?q=" + encodeURIComponent(q) : ""))
+    .then(function (d) {
+      if ((q || "") !== placasQ) return;   // llegó tarde: ya se tecleó otra cosa
+      var cont = document.getElementById("tablaplacas");
+      if (!cont) return;
+      cont.innerHTML = tablaPlacas(listaDe(d, "placas"));
+      // Cada placa lleva al perfil de la placa (en la vista Clientes).
+      cont.querySelectorAll("button[data-placa]").forEach(function (b) {
+        b.addEventListener("click", function () { irAPlaca(b.getAttribute("data-placa")); });
+      });
+      // Cada secador lleva a su perfil (en la vista Trabajadores).
+      cont.querySelectorAll("button[data-trab]").forEach(function (b) {
+        b.addEventListener("click", function () { irATrabajador(b.getAttribute("data-trab")); });
+      });
+      // Cada cliente lleva a su perfil (en la vista Clientes).
+      cont.querySelectorAll("button[data-cliente]").forEach(function (b) {
+        b.addEventListener("click", function () { irACliente(b.getAttribute("data-cliente")); });
+      });
+    })
+    .catch(function (e) {
+      if (e && e.message === "codigo") return;
+      var cont = document.getElementById("tablaplacas");
+      if (cont) cont.innerHTML = '<div class="vacio">No se pudo cargar.</div>';
+    });
+}
+
+// Desde la vista Operación, abrir el perfil de una placa: cambia a la
+// vista Clientes (donde vive el perfil) y lo abre. Se llama a mostrarVista
+// ANTES para no dejar a cliRecientes pisando el perfil con las recientes.
+function irAPlaca(placa) {
+  mostrarVista("cli");
+  abrirPlaca(placa);
+}
+
+// Igual, pero al perfil de un secador (vista Trabajadores). mostrarVista
+// no carga la lista, así que abrirTrabajador no queda pisado.
+function irATrabajador(id) {
+  mostrarVista("trab");
+  abrirTrabajador(id);
+}
+
+// Igual, pero al perfil de un cliente (vista Clientes). mostrarVista no
+// carga las recientes, así que abrirPersona no queda pisado.
+function irACliente(id) {
+  mostrarVista("cli");
+  abrirPersona(id);
+}
+
+// El aviso de placas repetidas el mismo día (foto pegada al carro
+// equivocado). Se pide aparte del reporte y se pinta en #repetidas. Si no
+// hay ninguna, no deja nada: un cero permanente en pantalla se vuelve
+// invisible, y este aviso importa justo el día que NO es cero.
+// Fotos que todavía no se han leído. NO es una alarma: el obrero de fondo
+// (migración 104) las reintenta solo, así que este número normalmente baja
+// solo y desaparece. Está aquí para que un problema PERMANENTE se vea —
+// si se queda pegado, algo se rompió de verdad. Igual que el aviso de
+// placas repetidas, no deja nada cuando es cero.
+function pedirFotosPendientes(desde, hasta) {
+  if (!desde) return;
+  pedirJSON("/fotos-pendientes?desde=" + desde + "&hasta=" + hasta)
+    .then(function (d) {
+      var cont = document.getElementById("fotos-pendientes");
+      if (!cont) return;
+      var esp = d.esperando || 0;
+      var rin = d.se_rindieron || 0;
+      if (!esp && !rin) { cont.innerHTML = ""; return; }
+      var html = "";
+      if (esp) {
+        html += '<div class="aviso"><b>' + esp +
+                (esp === 1 ? " foto sin leer todavía" : " fotos sin leer todavía") +
+                ".</b> Se reintentan solas cada pocos minutos; este número debe bajar por su " +
+                "cuenta. Si se queda igual toda la tarde, el servicio de lectura está caído.</div>";
+      }
+      if (rin) {
+        html += '<div class="aviso alerta"><b>⚠ ' + rin +
+                (rin === 1 ? " foto se quedó sin leer" : " fotos se quedaron sin leer") +
+                ".</b> Se reintentaron muchas veces y no se pudo. Ésas ya necesitan una revisión a mano.</div>";
+      }
+      cont.innerHTML = html;
+    })
+    .catch(function (e) {
+      if (e && e.message === "codigo") return;
+      var cont = document.getElementById("fotos-pendientes");
+      if (cont) cont.innerHTML = noSePudoComprobar("si quedaron fotos sin leer");
+    });
+}
+
+function pedirRepetidas(desde, hasta) {
+  if (!desde) return;
+  pedirJSON("/placas-repetidas?desde=" + desde + "&hasta=" + hasta)
+    .then(function (d) {
+      var cont = document.getElementById("repetidas");
+      if (!cont) return;
+      var reps = listaDe(d, "repetidas");
+      if (!reps.length) { cont.innerHTML = ""; return; }
+      cont.innerHTML = avisoRepetidasHTML(reps);
+      // Como en la tabla de Operación: la placa cambia a la vista Clientes
+      // (donde vive el perfil con la galería); el ticket abre el modal.
+      cont.querySelectorAll("button[data-placa]").forEach(function (b) {
+        b.addEventListener("click", function () { irAPlaca(b.getAttribute("data-placa")); });
+      });
+      cont.querySelectorAll("button[data-ticket]").forEach(function (b) {
+        b.addEventListener("click", function () { abrirTicket(b.getAttribute("data-ticket")); });
+      });
+    })
+    .catch(function (e) {
+      if (e && e.message === "codigo") return;
+      var cont = document.getElementById("repetidas");
+      if (cont) cont.innerHTML = noSePudoComprobar("si hubo placas repetidas");
+    });
+}
+
+// --- Avisos de las tareas de fondo ------------------------------------
+//
+// Lo que antes se moría en un `console.error`: los logs de las Edge Functions
+// duran un día y hay que ir a buscarlos al panel, así que en la práctica
+// nadie se enteraba nunca. Hoy el único que escribe aquí es la sincronización
+// de Jibble cuando un grupo viene vacío (y con eso desaparecen personas de la
+// grilla del supervisor sin ningún error a la vista).
+//
+// Va ARRIBA de las otras alertas y no depende del día elegido: si algo se
+// rompió en el fondo, eso importa antes que cualquier número del reporte.
+// Cada aviso trae su botón "Ya lo atendí" (migración 131). Sin él sólo
+// caducaban a los 7 días, y el PRIMER aviso que existió ya era falso: pedía
+// autorizar un borrado de fotos huérfanas que ya se había hecho, y se iba a
+// quedar en pantalla una semana. Un canal de alertas que muestra cosas
+// resueltas se deja de leer, y entonces no avisa de nada.
+//
+// No borra nada y se puede deshacer. Y si el mismo problema vuelve a ocurrir,
+// el aviso se reabre solo — marcarlo no lo silencia hacia adelante.
+function pedirAvisos() {
+  pedirJSON("/avisos?dias=7")
+    .then(function (d) {
+      var cont = document.getElementById("avisos");
+      if (!cont) return;
+      var arr = listaDe(d, "avisos");
+      if (!arr.length) { cont.innerHTML = ""; return; }
+      var html = '<div class="aviso alerta"><b>⚠ ' + arr.length +
+                 (arr.length === 1 ? " aviso del sistema" : " avisos del sistema") +
+                 "</b> — de los últimos 7 días. Esto no lo ve nadie más.";
+      arr.forEach(function (a) {
+        html += '<div class="rep-carro">' +
+                escapar(fechaCorta(a.hasta)) + " " + escapar(hora(a.hasta)) +
+                " — <b>" + escapar(a.origen) + "</b>: " + escapar(a.detalle || a.motivo) +
+                (a.veces > 1 ? " (" + a.veces + " veces)" : "") +
+                (a.id ? ' · <button class="enlace" data-atendido="' + escapar(String(a.id)) +
+                        '">Ya lo atendí</button>' : "") +
+                "</div>";
+      });
+      cont.innerHTML = html + "</div>";
+      cont.querySelectorAll("button[data-atendido]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          b.disabled = true;
+          b.textContent = "Guardando…";
+          postJSON("/aviso-atendido", { id: Number(b.getAttribute("data-atendido")) })
+            .then(function () { pedirAvisos(); })
+            .catch(function () {
+              b.disabled = false;
+              b.textContent = "No se pudo — reintentar";
+            });
+        });
+      });
+    })
+    .catch(function (e) {
+      if (e && e.message === "codigo") return;
+      var cont = document.getElementById("avisos");
+      if (cont) cont.innerHTML = noSePudoComprobar("si hay avisos del sistema");
+    });
+}
+
+// --- Placas que el candado ATAJÓ -------------------------------------
+//
+// Cuando la app va a escribirle a un carro una placa que otro carro del
+// mismo día ya tiene, no la escribe: la guarda aparte en
+// `carros.placa_dudosa` (migración 100). Eso lleva funcionando desde el
+// 15/ago y **nadie lo podía ver**: tres funciones escribían esa columna y
+// cero código la leía. Al 21/ago había 20 carros marcados.
+//
+// Es distinto de la alerta de arriba, y por eso va aparte: aquélla son
+// placas que SÍ se escribieron dos veces (el pegado ya ocurrió); ésta son
+// las que se detuvieron a tiempo. Aquí no hay nada roto que arreglar — hay
+// una foto que se le iba a pegar al carro equivocado y hay que decidir de
+// quién era.
+function pedirDudosas(desde, hasta) {
+  if (!desde) return;
+  pedirJSON("/placas-dudosas?desde=" + desde + "&hasta=" + hasta)
+    .then(function (d) {
+      var cont = document.getElementById("dudosas");
+      if (!cont) return;
+      var arr = listaDe(d, "dudosas");
+      if (!arr.length) { cont.innerHTML = ""; return; }
+      cont.innerHTML = avisoDudosasHTML(arr);
+      cont.querySelectorAll("button[data-placa]").forEach(function (b) {
+        b.addEventListener("click", function () { irAPlaca(b.getAttribute("data-placa")); });
+      });
+      cont.querySelectorAll("button[data-ticket]").forEach(function (b) {
+        b.addEventListener("click", function () { abrirTicket(b.getAttribute("data-ticket")); });
+      });
+    })
+    .catch(function (e) {
+      if (e && e.message === "codigo") return;
+      var cont = document.getElementById("dudosas");
+      if (cont) cont.innerHTML = noSePudoComprobar("si el candado atajó alguna placa");
+    });
+}
+
+function avisoDudosasHTML(arr) {
+  var n = arr.length;
+  var html = '<div class="aviso alerta"><b>⚠ ' + n +
+             (n === 1 ? " placa que se atajó" : " placas que se atajaron") + "</b> — " +
+             "la app iba a escribirlas en estos carros, pero ese mismo día ya eran de otro carro, " +
+             "así que no se escribieron. Casi siempre es una foto tomada al carro equivocado: " +
+             "abre la placa para comparar las fotos y ver de quién era.";
+  arr.forEach(function (c) {
+    var desc = c.submarca
+      ? [c.marca, c.submarca, c.color].filter(Boolean).join(" ")
+      : [c.tipo_unidad, c.color, c.marca].filter(Boolean).join(" ");
+    var linea = escapar(fechaCorta(c.dia + "T12:00:00")) + " " + escapar(hora(c.hora)) +
+                " — " + (desc ? escapar(titulo(desc)) : "sin datos") +
+                (c.cliente ? " · " + escapar(titulo(c.cliente)) : "");
+    linea += ' · se atajó <button class="enlace" data-placa="' + escapar(c.placa_dudosa) + '"><b>' +
+             escapar(c.placa_dudosa) + "</b></button>";
+    // La que sí se le quedó al carro. Compararlas es lo que resuelve el caso.
+    if (c.placa) {
+      linea += ' · el carro quedó con <button class="enlace" data-placa="' + escapar(c.placa) + '">' +
+               escapar(c.placa) + "</button>";
+    } else {
+      linea += " · el carro quedó SIN placa";
+    }
+    if (c.choca_con) linea += " · chocaba con el carro " + escapar(c.choca_con);
+    if (c.ticket) linea += ' · <button class="enlace" data-ticket="' + escapar(c.ticket) + '">ticket ' + escapar(c.ticket) + "</button>";
+    html += '<div class="rep-carro">' + linea + "</div>";
+  });
+  return html + "</div>";
+}
+
+// Cada grupo: una placa que salió en 2+ carros el mismo día. Los colores o
+// tipos casi siempre difieren en un pegado, así que se muestra la descripción
+// de cada carro para cachar cuál es el intruso.
+function avisoRepetidasHTML(reps) {
+  var n = reps.length;
+  var html = '<div class="aviso alerta"><b>⚠ ' + n + (n === 1 ? " placa repetida" : " placas repetidas") +
+             ' el mismo día</b> — probable foto pegada al carro equivocado. ' +
+             'Abre la placa para ver sus fotos y comparar; el carro con distinto color o tipo suele ser el mal etiquetado.';
+  reps.forEach(function (g) {
+    var carros = g.carros || [];
+    // g.dia viene como "YYYY-MM-DD" (solo fecha). new Date de un date-only se
+    // parsea como UTC y en Mexicali (UTC-7) retrocede un día; con "T12:00:00"
+    // (sin zona) se parsea como hora LOCAL y la fecha sale bien.
+    html += '<div class="rep"><div class="rep-placa">' +
+            '<button class="enlace" data-placa="' + escapar(g.placa) + '"><b>' + escapar(g.placa) + "</b></button>" +
+            " · " + escapar(fechaCorta(g.dia + "T12:00:00")) + " · " + carros.length + " carros</div>";
+    carros.forEach(function (c) {
+      var desc = c.submarca
+        ? [c.marca, c.submarca, c.color].filter(Boolean).join(" ")
+        : [c.tipo_unidad, c.color, c.marca].filter(Boolean).join(" ");
+      var linea = escapar(hora(c.hora)) + " — " + (desc ? escapar(titulo(desc)) : "sin datos") +
+                  (c.cliente ? " · " + escapar(titulo(c.cliente)) : "");
+      if (c.ticket) linea += ' · <button class="enlace" data-ticket="' + escapar(c.ticket) + '">ticket ' + escapar(c.ticket) + "</button>";
+      html += '<div class="rep-carro">' + linea + "</div>";
+    });
+    html += "</div>";
+  });
+  html += "</div>";
+  return html;
+}
+
+function cargarDia(fecha) { cargarReporte("/reporte?fecha=" + fecha, false); }
+
+// Un rango NUNCA sale de las filas congeladas: esas son por dia, y los
+// promedios hay que ponderarlos por carro, no promediar promedios. Se
+// calcula al vuelo, que es lo correcto aunque recorra mas datos.
+function cargarRango(desde, hasta) {
+  cargarReporte("/reporte?desde=" + desde + "&hasta=" + hasta, true);
+}
+
+// `esRango` lo dice QUIEN llama, no se deduce de la respuesta. Antes se
+// miraba `r.dias > 1`, y un rango de un solo dia (las dos casillas con la
+// misma fecha) devuelve dias = 1 y nunca trae `congelado_en`: el reporte de
+// un dia cerrado hace semanas salia rotulado "Día en curso — todavía puede
+// cambiar". El modo no es una propiedad del resultado; es de la pregunta.
+function cargarReporte(ruta, esRango) {
+  document.getElementById("contenido").innerHTML = '<div class="vacio">Cargando…</div>';
+  pedir(ruta)
+    .then(function (r) {
+      if (r.status === 401) { pedirCodigo(true); throw new Error("codigo"); }
+      return r.json();
+    })
+    .then(function (r) {
+      if (r && r.error) {
+        // El mensaje viene del backend y entra a innerHTML: se escapa como
+        // todo lo demas. Era el unico punto del archivo donde faltaba.
+        document.getElementById("contenido").innerHTML =
+          '<div class="vacio">' + escapar(r.error) + "</div>";
+        return;
+      }
+      r.es_rango = !!esRango;
+      document.getElementById("encabezado").textContent =
+        esRango
+          ? (r.dias === 1
+              ? "1 día: " + fechaCorta(r.desde + "T12:00:00")
+              : (r.dias || "?") + " días, del " + fechaCorta(r.desde + "T12:00:00") +
+                " al " + fechaCorta(r.hasta + "T12:00:00"))
+          : (r.congelado_en
+              ? "Corte cerrado el " + new Date(r.congelado_en).toLocaleString("es-MX")
+              : "Día en curso — todavía puede cambiar");
+      document.getElementById("contenido").innerHTML = pintarReporte(r) + pintarPlacas();
+      cargarPlacas("");
+      pedirAvisos();
+      pedirRepetidas(r.desde, r.hasta || r.desde);
+      pedirDudosas(r.desde, r.hasta || r.desde);
+      pedirFotosPendientes(r.desde, r.hasta || r.desde);
+      // Con rebote, como los otros dos buscadores del archivo (cli-q y
+      // tik-q). Sin él, teclear una placa de 7 caracteres son 7 consultas
+      // seguidas, y `historial_placas` agrupa la tabla completa.
+      var b = document.getElementById("buscar");
+      if (b) b.addEventListener("input", function () {
+        clearTimeout(placasTimer);
+        var v = b.value.trim();
+        placasTimer = setTimeout(function () { cargarPlacas(v); }, 250);
+      });
+    })
+    .catch(function (e) {
+      if (e && e.message === "codigo") return;
+      document.getElementById("contenido").innerHTML =
+        '<div class="vacio">No se pudo cargar el reporte.</div>';
+    });
+}
+
+function arrancar() {
+  // Con `d.dias || []` un 500 dejaba el selector de días VACÍO y sin decir nada,
+  // que se lee como "no hay ningún día con datos". Ya cae al `catch`, que sí
+  // dice qué pasó.
+  pedirJSON("/reportes")
+    .then(function (d) {
+      var sel = document.getElementById("dia");
+      sel.innerHTML = "";
+      listaDe(d, "dias").forEach(function (x) {
+        var o = document.createElement("option");
+        o.value = x.fecha;
+        o.textContent = x.fecha + (x.congelado_en ? "" : "  (en curso)");
+        sel.appendChild(o);
+      });
+      sel.addEventListener("change", function () { cargarDia(sel.value); });
+      if (sel.value) cargarDia(sel.value);
+
+      // Las casillas del rango arrancan con el dia mas viejo y el mas
+      // nuevo que hay: asi el dueno puede darle "Ver" de inmediato en
+      // vez de tener que adivinar desde cuando hay datos.
+      var fechas = (d.dias || []).map(function (x) { return x.fecha; }).sort();
+      if (fechas.length) {
+        document.getElementById("desde").value = fechas[0];
+        document.getElementById("hasta").value = fechas[fechas.length - 1];
+      }
+    })
+    .catch(function (e) {
+      if (e && e.message === "codigo") return;
+      document.getElementById("contenido").innerHTML =
+        '<div class="vacio">No se pudo conectar.</div>';
+    });
+}
+
+document.getElementById("ver-rango").addEventListener("click", function () {
+  var desde = document.getElementById("desde").value;
+  var hasta = document.getElementById("hasta").value;
+  if (!desde || !hasta) { alert("Escoge los dos días."); return; }
+  if (desde > hasta)   { alert("El día inicial es posterior al final."); return; }
+  cargarRango(desde, hasta);
+});
+
+// --- Descargar respaldo -----------------------------------------------
+//
+// Baja TODAS las tablas del negocio, no solo los reportes diarios (que era
+// lo unico que traia hasta el 21/ago/2026: 94 kB, el 0.5% de los datos).
+// El backend lo entrega paginado, asi que aqui se recorre tabla por tabla y
+// pagina por pagina.
+//
+// El archivo se arma como PEDAZOS DE TEXTO, no como un objeto gigante que
+// despues se serializa: son ~35 MB y armar el objeto completo en memoria
+// para volverlo a recorrer duplica el consumo sin necesidad. `Blob` recibe
+// el arreglo de pedazos tal cual.
+//
+// Si CUALQUIER pagina falla, NO se baja nada. Un respaldo incompleto que se
+// ve completo es peor que no tener respaldo: nadie lo revisa hasta el dia
+// que hace falta.
+document.getElementById("respaldo").addEventListener("click", function () {
+  var boton = this;
+  if (boton.disabled) return;
+  var textoOriginal = boton.textContent;
+  boton.disabled = true;
+
+  function avisar(t) { boton.textContent = t; }
+
+  // Corte propio y largo: una página del respaldo son hasta 1,000 renglones de
+  // payloads crudos, y con los 20 s del resto de la pantalla se abortaría una
+  // descarga que iba bien. Un respaldo a medias es peor que ninguno, porque
+  // nadie se entera hasta que lo necesita.
+  function pedirJSONRespaldo(ruta) {
+    return pedir(ruta, { corteMs: 120000 }).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    }).then(function (d) {
+      if (!d || d.ok === false) throw new Error((d && d.error) || "respuesta con error");
+      return d;
+    });
+  }
+
+  avisar("Preparando…");
+  pedirJSONRespaldo("/respaldo").then(function (man) {
+    if (!man.tablas || !man.tablas.length) throw new Error("el manifiesto vino vacio");
+
+    var total = 0;
+    for (var i = 0; i < man.tablas.length; i++) total += man.tablas[i].filas;
+
+    var partes = ['{\n"generado_en":' + JSON.stringify(man.generado_en) +
+                  ',\n"manifiesto":' + JSON.stringify(man) + ',\n"datos":{'];
+    var bajadas = 0;
+
+    // Una tabla a la vez, en cadena de promesas: en serie a proposito, para
+    // no dispararle diez peticiones simultaneas a la misma Edge Function
+    // mientras el supervisor la esta usando.
+    function tabla(idx) {
+      if (idx >= man.tablas.length) return Promise.resolve();
+      var t = man.tablas[idx];
+      partes.push((idx ? "," : "") + "\n" + JSON.stringify(t.tabla) + ":[");
+      var primera = true;
+
+      function pagina(desde) {
+        var ruta = "/respaldo?tabla=" + encodeURIComponent(t.tabla) +
+                   (desde === null || desde === undefined ? "" : "&desde=" + encodeURIComponent(desde));
+        return pedirJSONRespaldo(ruta).then(function (d) {
+          var filas = d.filas || [];
+          for (var i = 0; i < filas.length; i++) {
+            partes.push((primera ? "" : ",") + JSON.stringify(filas[i]));
+            primera = false;
+          }
+          bajadas += filas.length;
+          avisar("Bajando… " + Math.round(100 * bajadas / (total || 1)) + "%");
+          if (d.siguiente === null || d.siguiente === undefined) return;
+          return pagina(d.siguiente);
+        });
+      }
+
+      return pagina(null).then(function () {
+        partes.push("]");
+        return tabla(idx + 1);
+      });
+    }
+
+    return tabla(0).then(function () {
+      partes.push("\n}}\n");
+      var blob = new Blob(partes, { type: "application/json" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "rush-respaldo-" + new Date().toISOString().slice(0, 10) + ".json";
+      a.click();
+      URL.revokeObjectURL(a.href);
+      avisar("Listo: " + bajadas.toLocaleString("es-MX") + " renglones");
+      setTimeout(function () { boton.textContent = textoOriginal; boton.disabled = false; }, 6000);
+    });
+  }).catch(function (e) {
+    boton.textContent = textoOriginal;
+    boton.disabled = false;
+    alert("No se pudo bajar el respaldo y NO se guardo nada a medias.\n\n" +
+          "Vuelve a intentarlo. Detalle: " + (e && e.message ? e.message : e));
+  });
+});
+
+document.getElementById("entrar").addEventListener("click", function () {
+  var v = document.getElementById("campo").value.trim().toUpperCase();
+  if (!v) return;
+  CODIGO = v;
+  try { localStorage.setItem("rush_codigo", CODIGO); } catch (e) {}
+  document.getElementById("acceso").style.display = "none";
+  arrancar();
+});
+document.getElementById("campo").addEventListener("keydown", function (ev) {
+  if (ev.key === "Enter") document.getElementById("entrar").click();
+});
+
+// =====================================================================
+// Sección CLIENTES — buscador + perfiles de lealtad. Reusa el CRM de caja
+// (mismos endpoints /personas, /historial, /placas). El dueño, sentado,
+// buscando a una persona o una placa; no es la pantalla del supervisor.
+// =====================================================================
+
+// --- Un error del backend se tiene que VER como error -----------------
+//
+// La migración `105` hizo que el servidor marque `ok:false` en TODA respuesta
+// de error, y arregló el ayudante de las otras dos pantallas. Ésta se quedó
+// fuera: `pedirJSON` devolvía el JSON tal cual, así que un 500 llegaba a los
+// consumidores como un objeto sin los campos que esperan y se pintaba
+// **idéntico a "no hay nada que reportar"** — que es justo lo contrario de lo
+// que pasó.
+//
+// Se arregla AQUÍ y no en cada consumidor, por la misma razón que en la caja:
+// como clase son seis líneas, y el séptimo consumidor nace igual la semana
+// entrante.
+function pedirJSON(ruta, opts) {
+  return pedir(ruta, opts).then(function (r) {
+    if (r.status === 401) { pedirCodigo(true); throw new Error("codigo"); }
+    if (!r.ok) throw new Error("El servidor respondió " + r.status);
+    return r.json();
+  }).then(function (d) {
+    if (!d || d.ok === false) {
+      throw new Error((d && d.error) || "El servidor respondió con error");
+    }
+    return d;
+  });
+}
+
+// Una LISTA que no llegó no es una lista vacía: es un error. Devolver `[]`
+// aquí es justamente lo que convierte una falla en "no hay nada".
+function listaDe(d, campo) {
+  var v = d && d[campo];
+  if (!Array.isArray(v)) throw new Error("La respuesta no trae la lista `" + campo + "`");
+  return v;
+}
+
+function postJSON(ruta, cuerpo) {
+  return pedirJSON(ruta, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(cuerpo || {})
+  });
+}
+
+// Lo que se pinta cuando una de las cuatro alertas NO se pudo comprobar.
+// Callar aquí es exactamente el bug: el dueño leería "no hay placas repetidas"
+// cuando lo cierto es "no se sabe".
+function noSePudoComprobar(que) {
+  return '<div class="aviso alerta">⚠ <b>No se pudo comprobar ' + que + '.</b> ' +
+         'Esto <b>no</b> quiere decir que no haya: quiere decir que la consulta falló. ' +
+         'Vuelve a cargar la página.</div>';
+}
+
+// --- Switch entre las tres vistas ---
+// Solo prende/apaga vistas y tabs. La carga de cada vista (recientes,
+// trabajadores) va en el handler del tab, NO aqui: asi irAPlaca puede
+// cambiar a Clientes y abrir un perfil sin que las recientes lo pisen.
+var VISTAS = { op: "vista-op", cli: "vista-cli", trab: "vista-trab", tik: "vista-tik" };
+var TABS   = { op: "tab-op",   cli: "tab-cli",   trab: "tab-trab",  tik: "tab-tik" };
+function mostrarVista(cual) {
+  Object.keys(VISTAS).forEach(function (k) {
+    document.getElementById(VISTAS[k]).style.display = (k === cual) ? "" : "none";
+    document.getElementById(TABS[k]).className = (k === cual) ? "on" : "";
+  });
+  if (cual === "cli") document.getElementById("cli-q").focus();
+  if (cual === "tik") document.getElementById("tik-q").focus();
+}
+document.getElementById("tab-op").addEventListener("click", function () { mostrarVista("op"); });
+document.getElementById("tab-cli").addEventListener("click", function () {
+  mostrarVista("cli");
+  // Al entrar a Clientes sin nada escrito, mostrar las ultimas visitas.
+  if (document.getElementById("cli-q").value.trim().length < 2) cliRecientes();
+});
+document.getElementById("tab-trab").addEventListener("click", function () {
+  mostrarVista("trab");
+  cargarTrabajadores();
+});
+document.getElementById("tab-tik").addEventListener("click", function () {
+  mostrarVista("tik");
+  // Al entrar sin búsqueda escrita, mostrar TODOS los tickets (más nuevos
+  // primero, con infinite scroll). Con una búsqueda de 2+ ya escrita, se
+  // conserva; con 1 carácter, el aviso.
+  if (document.getElementById("tik-q").value.trim().length < 2)
+    tikNueva(document.getElementById("tik-q").value.trim());
+});
+
+// Tickets: buscador EN VIVO por CONTENIDO (número, cajera, producto) con
+// infinite scroll. Los más nuevos arriba; al bajar se cargan más viejos, por
+// páginas de 30. Cada renglón abre el modal (delegación -> abrirTicket).
+var tik = { q: "", offset: 0, cargando: false, hay: false, timer: null, PAG: 30 };
+
+document.getElementById("tik-q").addEventListener("input", function () {
+  var q = this.value.trim();
+  clearTimeout(tik.timer);
+  tik.timer = setTimeout(function () { tikNueva(q); }, 250);
+});
+
+// Un solo handler por delegación: sirve para todos los renglones, incluidos los
+// que se agreguen despues al bajar (no hay que recablear en cada página).
+document.getElementById("tik-res").addEventListener("click", function (ev) {
+  var b = ev.target.closest ? ev.target.closest("button[data-ticket]") : null;
+  if (b) abrirTicket(b.getAttribute("data-ticket"));
+});
+
+function tikNueva(q) {
+  tik.q = q; tik.offset = 0; tik.hay = false; tik.cargando = false;
+  var cont = document.getElementById("tik-res");
+  if (q.length === 1) {
+    cont.innerHTML = '<div class="vacio">Escribe al menos 2 letras o dígitos (por número, cajera o producto), o borra para ver todos.</div>';
+    return;
+  }
+  cont.innerHTML = '<div class="lista" id="tik-lista"></div><div id="tik-fin" class="vacio">Cargando…</div>';
+  tikPagina();
+}
+
+function tikPagina() {
+  if (tik.cargando || tik.q.length === 1) return;
+  tik.cargando = true;
+  var q = tik.q, off = tik.offset;
+  var fin = document.getElementById("tik-fin");
+  if (fin && off) fin.textContent = "Cargando más…";
+  pedirJSON("/tickets?q=" + encodeURIComponent(q) + "&offset=" + off).then(function (d) {
+    if (tik.q !== q) return;                 // el dueño ya cambió la búsqueda
+    var tickets = d.tickets || [];
+    tikAgregar(tickets);
+    tik.offset += tickets.length;
+    tik.hay = tickets.length >= tik.PAG;
+    tik.cargando = false;
+    var f = document.getElementById("tik-fin");
+    if (f) f.textContent = (tik.offset === 0) ? "Ningún ticket con ese contenido." : "";
+  }).catch(function (e) {
+    tik.cargando = false;
+    if (e && e.message === "codigo") return;
+    var f = document.getElementById("tik-fin"); if (f) f.textContent = "No se pudo buscar.";
+  });
+}
+
+function tikAgregar(tickets) {
+  var lista = document.getElementById("tik-lista");
+  if (!lista) return;
+  var html = "";
+  tickets.forEach(function (t) {
+    var num = String(t.ticket);
+    var sub = [];
+    if (t.hora) sub.push(escapar(fechaCorta(t.hora)) + " · " + escapar(hora(t.hora)));
+    if (t.monto != null) sub.push(escapar(pesos(t.monto)));
+    if (t.descripcion) sub.push(escapar(titulo(t.descripcion)));
+    if (t.cajero) sub.push(escapar(titulo(t.cajero)));
+    html += '<button class="item" data-ticket="' + escapar(num) + '">' +
+            '<div class="item-nom">Ticket ' + escapar(num) + "</div>" +
+            (sub.length ? '<div class="item-sub">' + sub.join(" · ") + "</div>" : "") +
+            "</button>";
+  });
+  lista.insertAdjacentHTML("beforeend", html);
+}
+
+// Infinite scroll: cerca del fondo (y estando en la pestaña Tickets), traer más.
+window.addEventListener("scroll", function () {
+  if (document.getElementById("vista-tik").style.display === "none") return;
+  if (tik.cargando || !tik.hay) return;
+  if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 400) tikPagina();
+});
+
+// --- Buscar: nombre/placa -> personas; placa/marca/submarca -> vehículos ---
+var cliTimer = null;
+document.getElementById("cli-q").addEventListener("input", function () {
+  var q = this.value.trim();
+  clearTimeout(cliTimer);
+  cliTimer = setTimeout(function () { cliBuscar(q); }, 250);
+});
+
+// Antes de escribir (o al borrar): UNA tabla con los últimos 20 lavados que
+// van entrando (tabla `carros`), la misma info que el Historial por placa
+// pero SIN la columna de visitas y CON el ticket al final. Se llena sola:
+// al cobrar sale la descripción de la cajera + ticket; al tomar la foto pasa
+// a modelo + placa; si la placa liga a lealtad, aparece el nombre del cliente.
+function cliRecientes() {
+  var cont = document.getElementById("cli-res");
+  cont.innerHTML = '<div class="vacio">Cargando…</div>';
+  pedirJSON("/carros-recientes?n=20").then(function (d) {
+    // Si el dueño ya empezó a escribir, esta respuesta ya no aplica.
+    if (document.getElementById("cli-q").value.trim().length >= 2) return;
+    var carros = d.carros || [];
+    if (!carros.length) { cont.innerHTML = '<div class="vacio">Todavía no hay lavados registrados.</div>'; return; }
+    cont.innerHTML = '<h2>Últimos lavados</h2>' + tablaLavados(carros);
+    cliCablearBotones(cont);
+  }).catch(function (e) {
+    if (e && e.message === "codigo") return;
+    cont.innerHTML = '<div class="vacio">No se pudo cargar.</div>';
+  });
+}
+
+// La tabla de "Últimos lavados": una fila por carro. Columnas como el
+// Historial por placa (Operación) menos Visitas, más Ticket al final. Todos
+// los enlaces (placa, cliente, secador, ticket) los cablea cliCablearBotones.
+function tablaLavados(carros) {
+  // "Día", no "Última vez": el rótulo venía copiado del Historial por placa,
+  // donde sí significa la última vez que ESA placa vino. Aquí cada renglón es
+  // un lavado y la columna es la fecha de ese mismo lavado.
+  var html = '<table><tr><th>Carro</th><th>Placa</th><th>Cliente</th>' +
+             '<th>Día</th><th>Hora de llegada</th><th>Secó</th><th>Ticket</th></tr>';
+  carros.forEach(function (c) {
+    // Con modelo (la foto reconoció submarca): marca + submarca + color
+    // ("MG RX5 Blanca"). Sin él: lo que puso la cajera, tipo + color
+    // ("Camioneta Blanca"). Igual que la regla de la tarjeta del supervisor.
+    var desc = c.submarca
+      ? [c.marca, c.submarca, c.color].filter(Boolean).join(" ")
+      : [c.tipo_unidad, c.color, c.marca].filter(Boolean).join(" ");
+    var placaTxt = c.placa_como_se_lee || c.placa || "";
+    html += "<tr><td>" + (desc ? escapar(titulo(desc)) : '<span class="tenue">—</span>') + "</td>" +
+            "<td>" + (placaTxt
+              ? '<button class="enlace" data-placa="' + escapar(placaTxt) + '"><b>' + escapar(placaTxt) + "</b></button>"
+              : '<span class="tenue">—</span>') + "</td>" +
+            "<td>" + clienteLavadoCel(c) + "</td>" +
+            "<td>" + (c.creado_en ? escapar(fechaCorta(c.creado_en)) : "—") + "</td>" +
+            "<td>" + (c.creado_en ? escapar(hora(c.creado_en)) : "—") + "</td>" +
+            "<td>" + secadoresCel(c.secadores) + "</td>" +
+            "<td>" + (c.ticket
+              ? '<button class="enlace" data-ticket="' + escapar(c.ticket) + '">' + escapar(c.ticket) + "</button>"
+              : '<span class="tenue">—</span>') + "</td></tr>";
+  });
+  return html + "</table>";
+}
+
+// La celda Cliente de "Últimos lavados": si la placa liga a un cliente de
+// lealtad, su nombre clicable a su perfil (data-persona); si no, el texto de
+// la nota de caja (sin liga, no es persona del CRM); si no hay nada, una raya.
+function clienteLavadoCel(c) {
+  if (c.cliente_lealtad && c.cliente_lealtad.id) {
+    return '<button class="enlace" data-persona="' + escapar(c.cliente_lealtad.id) + '">' +
+           escapar(titulo(c.cliente_lealtad.nombre)) + "</button>";
+  }
+  if (c.cliente) return escapar(titulo(c.cliente));
+  return '<span class="tenue">—</span>';
+}
+
+function cliBuscar(q) {
+  var cont = document.getElementById("cli-res");
+  // Menos de 2 letras (o vacio): en vez de una pantalla vacia, las ultimas
+  // visitas. Asi el dueño siempre ve algo util al entrar y al borrar.
+  if (q.length < 2) { cliRecientes(); return; }
+  cont.innerHTML = '<div class="vacio">Buscando…</div>';
+  Promise.all([
+    pedirJSON("/personas?q=" + encodeURIComponent(q)).catch(function (e) { if (e && e.message === "codigo") throw e; return { personas: [] }; }),
+    pedirJSON("/placas?q=" + encodeURIComponent(q)).catch(function (e) { if (e && e.message === "codigo") throw e; return { placas: [] }; })
+  ]).then(function (res) {
+    // Si el dueño siguió escribiendo, esta respuesta ya no aplica.
+    if (document.getElementById("cli-q").value.trim() !== q) return;
+    // 🔴 La lista viene recortada a 25 y aquí no se decía. El arreglo de la
+    // migración `134` sólo llegó a la pantalla de la caja: "garcia" trae 184
+    // personas y el dueño veía 25 sin ninguna señal de que faltaban 159 —
+    // podía concluir que un cliente no existe. El backend ya manda `total` y
+    // `limite`; sólo faltaba pintarlos.
+    cliResultados(res[0].personas || [], res[1].placas || [], null,
+                  res[0].total, res[0].limite);
+  }).catch(function (e) { if (e && e.message === "codigo") return; cont.innerHTML = '<div class="vacio">No se pudo buscar.</div>'; });
+}
+
+function cliResultados(personas, placas, encabezado, total, limite) {
+  var cont = document.getElementById("cli-res");
+  var html = cliResultadosHTML(personas, placas, encabezado);
+  // Cuántas hay de verdad. Sólo se dice cuando de verdad se recortó: si caben
+  // todas, el aviso sería ruido.
+  if (html && total != null && personas.length && total > personas.length) {
+    html += '<div class="aviso">De <b>' + total + '</b> clientes que coinciden se muestran ' +
+            'los primeros <b>' + (limite || personas.length) + '</b>. ' +
+            'Escribe más letras (apellido, o nombre y apellido) para acercarte al que buscas.</div>';
+  }
+  cont.innerHTML = html || '<div class="vacio">Nada encontrado.</div>';
+  cliCablearBotones(cont);
+}
+
+// Igual que cliResultados pero devuelve el HTML (sin escribir), para poder
+// concatenar la sección de personas con la de "Últimos lavados".
+function cliResultadosHTML(personas, placas, encabezado) {
+  var html = "";
+
+  if (personas.length) {
+    html += '<h2>' + escapar(encabezado || "Clientes") + '</h2><div class="lista">';
+    personas.forEach(function (p) {
+      var l = p.lealtad || {};
+      var sub = [];
+      if (p.telefono) sub.push(escapar(p.telefono));
+      if (p.placas && p.placas.length) sub.push(escapar(p.placas.join(" · ")));
+      html += '<button class="item" data-persona="' + p.id + '">' +
+              '<div class="item-nom">' + escapar(titulo(p.nombre) || "(sin nombre)") + "</div>" +
+              (sub.length ? '<div class="item-sub">' + sub.join(" · ") + "</div>" : "") +
+              (l.disponibles ? '<div class="item-badge">' + l.disponibles + " gratis</div>" : "") +
+              "</button>";
+    });
+    html += "</div>";
+  }
+
+  if (placas.length) {
+    html += '<h2>Vehículos</h2>' + notaPiso();
+    html += '<div class="lista">';
+    placas.forEach(function (v) {
+      var desc = [v.marca, v.submarca, v.tipo_unidad, v.color].filter(Boolean).join(" ");
+      var meta = v.visitas + (v.visitas === 1 ? " visita" : " visitas") + (v.cliente ? " · " + escapar(titulo(v.cliente)) : "");
+      html += '<button class="item" data-placa="' + escapar(v.placa_como_se_lee || v.placa) + '">' +
+              '<div class="item-nom">' + escapar(v.placa_como_se_lee || v.placa) + "</div>" +
+              '<div class="item-sub">' + (desc ? escapar(desc) + " · " : "") + meta + "</div>" +
+              "</button>";
+    });
+    html += "</div>";
+  }
+
+  return html;
+}
+
+// Cablea los botones data-persona / data-placa / data-ticket / data-trab.
+function cliCablearBotones(cont) {
+  var ps = cont.querySelectorAll("button[data-persona]");
+  for (var i = 0; i < ps.length; i++) (function (b) {
+    b.addEventListener("click", function () { abrirPersona(b.getAttribute("data-persona")); });
+  })(ps[i]);
+  var vs = cont.querySelectorAll("button[data-placa]");
+  for (var j = 0; j < vs.length; j++) (function (b) {
+    b.addEventListener("click", function () { abrirPlaca(b.getAttribute("data-placa")); });
+  })(vs[j]);
+  var ts = cont.querySelectorAll("button[data-ticket]");
+  for (var k = 0; k < ts.length; k++) (function (b) {
+    b.addEventListener("click", function () { abrirTicket(b.getAttribute("data-ticket")); });
+  })(ts[k]);
+  // Secadores de "Últimos lavados": al perfil del trabajador (otra vista).
+  var trs = cont.querySelectorAll("button[data-trab]");
+  for (var m = 0; m < trs.length; m++) (function (b) {
+    b.addEventListener("click", function () { irATrabajador(b.getAttribute("data-trab")); });
+  })(trs[m]);
+}
+
+function volverABuscar() { cliBuscar(document.getElementById("cli-q").value.trim()); }
+
+// --- Perfil de una PERSONA: tarjeta de lealtad + sus visitas ---
+function abrirPersona(id) {
+  var cont = document.getElementById("cli-res");
+  cont.innerHTML = '<div class="vacio">Cargando…</div>';
+  Promise.all([
+    pedirJSON("/personas?id=" + encodeURIComponent(id)),
+    pedirJSON("/historial?persona=" + encodeURIComponent(id))
+  ]).then(function (res) {
+    perfilPersona(res[0].persona || {}, res[1].historial || []);
+  }).catch(function (e) { if (e && e.message === "codigo") return; cont.innerHTML = '<div class="vacio">No se pudo cargar el perfil.</div>'; });
+}
+
+function perfilPersona(p, historial) {
+  var l = p.lealtad || {};
+  var html = '<button class="volver" id="cli-volver">← Volver a la búsqueda</button>';
+  html += '<div class="perfil-nom">' + escapar(titulo(p.nombre) || "(sin nombre)") + "</div>";
+  if (p.telefono) html += '<div class="sub">' + escapar(p.telefono) + "</div>";
+
+  html += '<div class="tarjeta-lealtad' + (l.disponibles ? " gratis" : "") + '">';
+  html +=   '<div class="tl-fila">';
+  html +=     '<div class="tl-cel"><div class="tl-num">' + (l.sellos != null ? l.sellos : "—") + '<span class="tl-de">/5</span></div><div class="tl-rot">Sellos</div></div>';
+  html +=     '<div class="tl-cel"><div class="tl-num">' + (l.disponibles || 0) + '</div><div class="tl-rot">Lavados gratis</div></div>';
+  html +=     '<div class="tl-cel"><div class="tl-num">' + (l.visitas_totales || 0) + '</div><div class="tl-rot">Visitas</div></div>';
+  html +=     '<div class="tl-cel"><div class="tl-num tl-money">' + pesos(p.gastado || 0) + '</div><div class="tl-rot">Gastado</div></div>';
+  html +=   "</div>";
+  html +=   l.disponibles
+    ? '<div class="tl-msg">Tiene ' + l.disponibles + (l.disponibles === 1 ? " lavado gratis" : " lavados gratis") + " por canjear</div>"
+    : '<div class="tl-msg tenue">Le faltan ' + (l.faltan != null ? l.faltan : "—") + " para el siguiente gratis</div>";
+  if (p.placas && p.placas.length) {
+    html += '<div class="tl-placas">';
+    // Clicables: llevan al historial de esa placa (su perfil de vehículo).
+    p.placas.forEach(function (pl) { html += '<button class="chip" data-placa="' + escapar(pl) + '">' + escapar(pl) + "</button>"; });
+    html += "</div>";
+  }
+  html += "</div>";
+
+  // Placas POR CONFIRMAR: salieron de las fotos del supervisor. No se dan por
+  // suyas todavía; aquí el dueño confirma con un toque o las quita si están mal.
+  if (p.placas_por_confirmar && p.placas_por_confirmar.length) {
+    html += '<div class="sugeridas">';
+    html += '<div class="sug-rot">Placas por confirmar <span class="sug-nota">(salieron de las fotos; confirma que sea suya)</span></div>';
+    p.placas_por_confirmar.forEach(function (pl) {
+      html += '<div class="sug-fila">' +
+                '<span class="sug-placa">' + escapar(pl) + '</span>' +
+                '<button class="sug-ok" data-confirmar="' + escapar(pl) + '">Sí es suya</button>' +
+                '<button class="sug-no" data-descartar="' + escapar(pl) + '">No</button>' +
+              '</div>';
+    });
+    html += '</div>';
+  }
+
+  html += "<h2>Visitas</h2>" + tablaVisitas(historial, { conPlaca: true, conMonto: true, conTicket: true });
+
+  var cont = document.getElementById("cli-res");
+  cont.innerHTML = html;
+  document.getElementById("cli-volver").addEventListener("click", volverABuscar);
+  cliCablearBotones(cont); // los chips y las placas de la tabla abren el perfil de la placa
+
+  // Confirmar / quitar una placa sugerida, y recargar el perfil.
+  cont.querySelectorAll("button[data-confirmar]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      placaAccion("/placa-confirmar", p.id, b.getAttribute("data-confirmar"));
+    });
+  });
+  cont.querySelectorAll("button[data-descartar]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      if (!confirm("¿Quitar la placa " + b.getAttribute("data-descartar") + " de " + (titulo(p.nombre) || "este cliente") + "?")) return;
+      placaAccion("/placa-descartar", p.id, b.getAttribute("data-descartar"));
+    });
+  });
+}
+
+// Confirma o quita una placa sugerida de una persona, y reabre su perfil.
+function placaAccion(ruta, persona, placa) {
+  pedir(ruta, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ persona: persona, placa: placa }) })
+    .then(function (r) { if (r.status === 401) { pedirCodigo(true); throw new Error("codigo"); } return r.json(); })
+    .then(function (d) { if (d && d.ok === false) { alert(d.error || "No se pudo"); return; } abrirPersona(persona); })
+    .catch(function (e) { if (e && e.message === "codigo") return; alert("No se pudo. Intenta otra vez."); });
+}
+
+// --- Perfil de una PLACA: todas sus visitas, con la persona de lealtad ---
+function abrirPlaca(placa) {
+  var cont = document.getElementById("cli-res");
+  cont.innerHTML = '<div class="vacio">Cargando…</div>';
+  pedirJSON("/historial?placa=" + encodeURIComponent(placa)).then(function (d) {
+    perfilPlaca(placa, d.historial || [], d.duenos || []);
+  }).catch(function (e) { if (e && e.message === "codigo") return; cont.innerHTML = '<div class="vacio">No se pudo cargar.</div>'; });
+}
+
+// ¿La placa se ve sospechosa de foto-mal-pegada? Señales físicamente imposibles
+// para un solo carro: colores que no coinciden, o 2+ visitas el mismo día local.
+// (Clientes distintos a lo largo del tiempo NO cuenta: un carro se comparte en
+// familia legítimamente.)
+function placaSospechosa(historial) {
+  if (!historial || historial.length < 2) return false;
+  var colores = {};
+  for (var i = 0; i < historial.length; i++) {
+    // 🔴 Se compara el color NORMALIZADO, no el crudo. Desde la migración
+    // `141` conviven dos formas de escribir el mismo color en la misma
+    // columna: la nota de la cajera en femenino (BLANCA) y la lista cerrada de
+    // la foto en masculino (BLANCO), más GRIS contra PLATEADO. Comparando
+    // crudo, 64 de 137 placas salían "sospechosas" siendo el mismo carro, y
+    // una alerta que se equivoca la mitad de las veces se deja de leer.
+    //
+    // La regla vive en la base (`color_norm`, migración 154) y no aquí: el día
+    // que haga falta la misma comparación en otra pantalla, no puede haber dos.
+    var col = historial[i].color_norm || historial[i].color;
+    if (col) colores[String(col).toUpperCase()] = 1;
+  }
+  if (Object.keys(colores).length > 1) return true;
+  var dias = {};
+  for (var j = 0; j < historial.length; j++) {
+    var d = fechaCorta(historial[j].fecha);
+    dias[d] = (dias[d] || 0) + 1;
+    if (dias[d] >= 2) return true;
+  }
+  return false;
+}
+
+function perfilPlaca(placa, historial, duenos) {
+  var html = '<button class="volver" id="cli-volver">← Volver a la búsqueda</button>';
+  html += '<div class="perfil-nom">' + escapar(placa) + "</div>";
+  var v0 = historial[0];
+  if (v0) {
+    var desc = [v0.marca, v0.submarca, v0.tipo, v0.color].filter(Boolean).join(" ");
+    if (desc) html += '<div class="sub">' + escapar(desc) + "</div>";
+  }
+  if (placaSospechosa(historial)) {
+    html += '<div class="aviso alerta">⚠ Ojo: esta placa aparece en carros que parecen ' +
+            '<b>distintos</b> (colores que no coinciden, o varios el mismo día). Casi seguro es una ' +
+            '<b>foto mal pegada o placa mal leída</b>: las visitas de abajo pueden ser de vehículos ' +
+            'diferentes, no del mismo carro.</div>';
+  }
+
+  // Dueño(s) de lealtad de la placa (persona_placas), clicables. Aquí es donde
+  // sale el cliente cuando la placa no tiene visitas lavadas que llenen la tabla.
+  if (duenos && duenos.length) {
+    // N-a-N: una placa puede tener varios clientes de lealtad (carro
+    // compartido). Salen todos, separados por coma y cada uno clicable.
+    var rotulo = duenos.length > 1 ? "Clientes en lealtad:" : "Cliente en lealtad:";
+    html += '<div class="duenos"><span class="duenos-rot">' + rotulo + "</span>" +
+            duenos.map(function (dn) {
+              // Si el enlace aún no está confirmado (salió de la foto), se marca.
+              var marca = dn.confirmada === false ? ' <span class="tenue">(por confirmar)</span>' : "";
+              return '<button class="enlace" data-persona="' + dn.id + '">' + escapar(titulo(dn.nombre)) + "</button>" + marca;
+            }).join(", ") + "</div>";
+  } else {
+    html += '<div class="duenos tenue">Sin cliente de lealtad asignado a esta placa.</div>';
+  }
+
+  html += '<div class="sub">' + historial.length + (historial.length === 1 ? " visita" : " visitas") + "</div>";
+  // Va SIEMPRE, no solo cuando faltan fotos. Aquí es donde un número suelto
+  // —"3 visitas"— se lee como el total de veces que vino ese carro, y no lo
+  // es: la placa sale de la foto y la foto es opcional. El aviso completo
+  // existía, pero vivía en la pestaña Operación y era condicional.
+  html += notaPiso();
+
+  // Galería: las fotos de esta placa, de la más nueva a la más vieja, con la
+  // fecha y hora en que se tomó cada una. Se cargan al tocar el botón (no de
+  // entrada) porque cada foto es una imagen que pesa.
+  html += '<button class="galeria-btn" id="galeria-btn">📷 Ver galería de fotos</button>';
+  html += '<div id="galeria"></div>';
+
+  html += "<h2>Visitas</h2>" + tablaVisitas(historial, { conCliente: true });
+
+  var cont = document.getElementById("cli-res");
+  cont.innerHTML = html;
+  document.getElementById("cli-volver").addEventListener("click", volverABuscar);
+  var gbtn = document.getElementById("galeria-btn");
+  if (gbtn) gbtn.addEventListener("click", function () { cargarGaleria(placa); });
+  cliCablearBotones(cont); // enlaces al dueño y a la persona de cada visita
+}
+
+// Carga y pinta la galería de fotos de una placa. El botón se esconde al
+// abrirla (no tiene caso volver a pedirla).
+function cargarGaleria(placa) {
+  var cont = document.getElementById("galeria");
+  var btn = document.getElementById("galeria-btn");
+  if (btn) btn.style.display = "none";
+  cont.innerHTML = '<div class="vacio">Cargando fotos…</div>';
+  pedirJSON("/fotos-placa?placa=" + encodeURIComponent(placa)).then(function (d) {
+    var fotos = d.fotos || [];
+    if (!fotos.length) { cont.innerHTML = '<div class="vacio">Esta placa no tiene fotos guardadas.</div>'; return; }
+    var html = '<div class="galeria-grid">';
+    fotos.forEach(function (f) {
+      var cuando = f.tomada_en ? (fechaCorta(f.tomada_en) + " · " + hora(f.tomada_en)) : "—";
+      html += '<figure class="foto">';
+      html += f.url
+        ? '<a href="' + escapar(f.url) + '" target="_blank" rel="noopener"><img src="' + escapar(f.url) + '" loading="lazy" alt="foto de la placa"></a>'
+        : '<div class="foto-sinurl">No disponible</div>';
+      html += '<figcaption>' + escapar(cuando) + "</figcaption>";
+      html += "</figure>";
+    });
+    html += "</div>";
+    cont.innerHTML = html;
+  }).catch(function (e) {
+    if (e && e.message === "codigo") return;
+    cont.innerHTML = '<div class="vacio">No se pudieron cargar las fotos.</div>';
+  });
+}
+
+// Tabla de visitas compartida por los dos perfiles, con columnas opcionales:
+//   opts.conPlaca   -> columna Placa (clicable, abre el perfil de la placa).
+//                      Solo en el perfil de PERSONA; en el de placa es la misma.
+//   opts.conCliente -> columna Cliente (la persona de lealtad de esa venta,
+//                      clicable). Solo en el perfil de PLACA; en el de persona
+//                      es ella misma.
+function tablaVisitas(lista, opts) {
+  opts = opts || {};
+  if (!lista.length) return '<div class="vacio">Sin visitas registradas.</div>';
+  var html = "<table><tr><th>Fecha</th>" +
+             (opts.conPlaca ? "<th>Placa</th>" : "") +
+             "<th>Entrada</th><th>Salida</th><th>Línea</th><th>Secó</th>" +
+             (opts.conMonto ? '<th class="num">Gastado</th>' : "") +
+             (opts.conCliente ? "<th>Cliente</th>" : "") +
+             (opts.conTicket ? "<th>Ticket</th>" : "") + "</tr>";
+  lista.forEach(function (v) {
+    html += "<tr><td>" + escapar(fechaCorta(v.fecha)) + "</td>";
+    if (opts.conPlaca) {
+      html += v.placa
+        ? '<td><button class="enlace" data-placa="' + escapar(v.placa) + '">' + escapar(v.placa) + "</button></td>"
+        : '<td class="tenue">—</td>';
+    }
+    html += "<td>" + escapar(hora(v.entrada)) + "</td>" +
+            "<td>" + escapar(hora(v.salida)) + "</td>" +
+            "<td>" + escapar(v.linea != null ? v.linea : "—") + "</td>" +
+            "<td>" + escapar((v.secadores && v.secadores.length) ? v.secadores.join(", ") : "—") + "</td>";
+    if (opts.conMonto) {
+      html += v.es_gratis ? '<td class="gastado-gratis">Gratis</td>'
+            : v.es_cortesia ? '<td class="gastado-cortesia">Cortesía</td>'
+            : (v.monto != null ? '<td class="num">' + escapar(pesos(v.monto)) + "</td>" : '<td class="tenue num">—</td>');
+    }
+    if (opts.conCliente) {
+      html += (v.persona && v.persona.id)
+        ? '<td><button class="enlace" data-persona="' + v.persona.id + '">' + escapar(titulo(v.persona.nombre)) + "</button></td>"
+        : '<td class="tenue">— sin asignar</td>';
+    }
+    if (opts.conTicket) {
+      html += v.ticket
+        ? '<td><button class="enlace" data-ticket="' + escapar(v.ticket) + '">' + escapar(v.ticket) + "</button></td>"
+        : '<td class="tenue">—</td>';
+    }
+    html += "</tr>";
+  });
+  return html + "</table>";
+}
+
+function fechaCorta(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
+}
+function hora(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
+}
+function pesos(n) {
+  if (n == null) return "—";
+  return "$" + Math.round(Number(n)).toLocaleString("es-MX");
+}
+
+// --- Modal del ticket: la venta completa de Zettle ---
+function pagoTxt(p) {
+  if (!p) return "—";
+  if (p.indexOf("CASH") >= 0) return "Efectivo";
+  if (p.indexOf("CARD") >= 0) return "Tarjeta";
+  return p;
+}
+function abrirTicket(num) {
+  var modal = document.getElementById("ticket-modal");
+  var card = document.getElementById("ticket-card");
+  card.innerHTML = '<div class="vacio">Cargando ticket…</div>';
+  modal.style.display = "flex";
+  pedirJSON("/ticket?num=" + encodeURIComponent(num)).then(function (d) {
+    card.innerHTML = ticketCard(num, d.ticket);
+    document.getElementById("ticket-cerrar").addEventListener("click", cerrarTicket);
+  }).catch(function (e) {
+    if (e && e.message === "codigo") { cerrarTicket(); return; }
+    card.innerHTML = ticketCard(num, null);
+    document.getElementById("ticket-cerrar").addEventListener("click", cerrarTicket);
+  });
+}
+function cerrarTicket() { document.getElementById("ticket-modal").style.display = "none"; }
+function ticketCard(num, t) {
+  if (!t) {
+    return '<h3>Ticket ' + escapar(num) + "</h3>" +
+      '<div class="sub">No se encontró en Zettle (puede ser anterior a sep-2025, o ticket mal anotado).</div>' +
+      '<button id="ticket-cerrar">Cerrar</button>';
+  }
+  var html = '<h3>Ticket ' + escapar(t.ticket) + "</h3>";
+  html += '<div class="sub">' + escapar(fechaCorta(t.hora)) + " · " + escapar(hora(t.hora)) + "</div>";
+  html += '<div class="sub">Cajera: ' + escapar(t.cajero || "—") + " · " + escapar(pagoTxt(t.pago)) + "</div>";
+  html += "<h2>Productos</h2>";
+  if (t.productos && t.productos.length) {
+    html += "<table>";
+    t.productos.forEach(function (p) {
+      html += "<tr><td>" + escapar([p.nombre, p.variante].filter(Boolean).join(" / ")) + "</td>" +
+              '<td class="num">×' + escapar(p.cantidad) + "</td>" +
+              '<td class="num">' + escapar(pesos(p.precio)) + "</td></tr>";
+    });
+    html += "</table>";
+  } else html += '<div class="vacio">—</div>';
+  if (t.descuentos && t.descuentos.length) {
+    html += "<h2>Descuentos</h2><table>";
+    t.descuentos.forEach(function (dc) {
+      html += "<tr><td>" + escapar(dc.nombre || "—") + '</td><td class="num">−' + escapar(pesos(dc.monto)) + "</td></tr>";
+    });
+    html += "</table>";
+  }
+  html += '<div class="ticket-total">Total: <b>' + escapar(pesos(t.monto)) + "</b></div>";
+  html += '<button id="ticket-cerrar">Cerrar</button>';
+  return html;
+}
+// Cerrar tocando el fondo (fuera de la tarjeta).
+document.getElementById("ticket-modal").addEventListener("click", function (ev) {
+  if (ev.target === this) cerrarTicket();
+});
+
+// =====================================================================
+// Sección TRABAJADORES — lista de empleados + perfil de secado por persona.
+// Incluye a quien hoy descansa o está fuera (no filtra por estado), para
+// poder abrir su historial aunque no salga en la grilla de asignar.
+// =====================================================================
+
+// 🔴 `fuera` significa "no está checado AHORA", no "no vino hoy". La
+// sincronización de Jibble marca `fuera` a todo el que no aparece checado en
+// ese momento, así que después de las 8 PM —cuando el taller cerró y todos se
+// poncharon— la pantalla decía "No checó hoy" de la plantilla completa,
+// incluida la gente que acababa de secar 20 carros. Es un dato falso dicho con
+// toda seguridad. No hay forma de saber desde aquí si vino: lo que se sabe es
+// que ahorita no está.
+function estadoTxt(e) {
+  if (e === "activo")   return "Activo ahora";
+  if (e === "descanso") return "En descanso";
+  return "No está checado";
+}
+
+function cargarTrabajadores() {
+  var cont = document.getElementById("trab-res");
+  cont.innerHTML = '<div class="vacio">Cargando…</div>';
+  pedirJSON("/trabajadores").then(function (d) {
+    var t = d.trabajadores || [];
+    if (!t.length) { cont.innerHTML = '<div class="vacio">No hay trabajadores registrados.</div>'; return; }
+    var html = '<div class="lista">';
+    t.forEach(function (w) {
+      var sub = [titulo(w.rol)];
+      sub.push(w.lavados + (w.lavados === 1 ? " lavado" : " lavados"));
+      if (w.rechazos) sub.push(w.rechazos + (w.rechazos === 1 ? " rechazo" : " rechazos"));
+      html += '<button class="item" data-trab="' + escapar(w.id) + '">' +
+              '<div class="item-nom">' + escapar(titulo(w.nombre_completo || w.nombre)) + "</div>" +
+              '<div class="item-sub">' + escapar(sub.join(" · ")) + "</div>" +
+              (w.estado === "activo" ? '<div class="item-badge">Activo</div>' : "") +
+              "</button>";
+    });
+    html += "</div>";
+    cont.innerHTML = html;
+    cont.querySelectorAll("button[data-trab]").forEach(function (b) {
+      b.addEventListener("click", function () { abrirTrabajador(b.getAttribute("data-trab")); });
+    });
+  }).catch(function (e) {
+    if (e && e.message === "codigo") return;
+    cont.innerHTML = '<div class="vacio">No se pudo cargar.</div>';
+  });
+}
+
+// El filtro vigente del perfil abierto. El historial completo de una persona
+// con meses de trabajo eran cientos de kB en una sola respuesta (PC:
+// 346 carros = 128 kB, creciendo para siempre), y encima venía todo revuelto:
+// no había forma de mirar "sus completos de esta semana", que es justo lo que
+// el dueño querría preguntar ahora que los minutos ya son honestos.
+var trabFiltro = null;
+
+function abrirTrabajador(id) {
+  trabFiltro = { id: id, desde: "", hasta: "", tipo: "", limite: 50 };
+  cargarTrabajador();
+}
+
+function cargarTrabajador() {
+  var cont = document.getElementById("trab-res");
+  cont.innerHTML = '<div class="vacio">Cargando…</div>';
+  var f = trabFiltro;
+  var q = "/trabajador?id=" + encodeURIComponent(f.id) + "&limite=" + f.limite;
+  if (f.desde) q += "&desde=" + encodeURIComponent(f.desde);
+  if (f.hasta) q += "&hasta=" + encodeURIComponent(f.hasta);
+  if (f.tipo)  q += "&tipo="  + encodeURIComponent(f.tipo);
+  pedirJSON(q).then(function (d) {
+    perfilTrabajador(d.trabajador);
+  }).catch(function (e) {
+    if (e && e.message === "codigo") return;
+    cont.innerHTML = '<div class="vacio">No se pudo cargar el perfil.</div>';
+  });
+}
+
+function perfilTrabajador(w) {
+  var cont = document.getElementById("trab-res");
+  if (!w) {
+    cont.innerHTML = '<button class="volver" id="trab-volver">← Volver a la lista</button>' +
+                     '<div class="vacio">No se encontró el trabajador.</div>';
+    document.getElementById("trab-volver").addEventListener("click", cargarTrabajadores);
+    return;
+  }
+  var f = trabFiltro || { desde: "", hasta: "", tipo: "", limite: 50 };
+  var filtrado = !!(f.desde || f.hasta || f.tipo);
+  var total = (w.total != null) ? w.total : (w.historial || []).length;
+  var mostrados = (w.historial || []).length;
+
+  var html = '<button class="volver" id="trab-volver">← Volver a la lista</button>';
+  html += '<div class="perfil-nom">' + escapar(titulo(w.nombre_completo || w.nombre)) + "</div>";
+  html += '<div class="sub">' + escapar(titulo(w.rol)) + " · " + escapar(estadoTxt(w.estado)) + "</div>";
+
+  // Los tres tipos NO se comparan entre sí (§12.1: peras con manzanas). Por
+  // eso el filtro existe: un promedio mental de esta tabla mezclando express
+  // con completos no significa nada.
+  html += '<div class="switch" id="trab-tipos">';
+  [["", "Todos"], ["con_aspirado", "Completos"], ["sin_aspirado", "Express"], ["encerado", "Encerado"]]
+    .forEach(function (t) {
+      html += '<button data-tipo="' + t[0] + '"' + (f.tipo === t[0] ? ' class="on"' : "") + ">" + t[1] + "</button>";
+    });
+  html += "</div>";
+
+  html += '<div class="barra rango">Del <input type="date" id="trab-desde" value="' + escapar(f.desde) + '">' +
+          ' al <input type="date" id="trab-hasta" value="' + escapar(f.hasta) + '">' +
+          ' <button id="trab-ver">Ver</button>' +
+          (filtrado ? ' <button id="trab-limpiar">Quitar filtros</button>' : "") + "</div>";
+
+  // Los contadores son de lo que se está mirando, no del histórico completo:
+  // un titular que dice 346 sobre una tabla de una semana es la misma
+  // contradicción que la 107 acaba de quitar del reporte del día.
+  html += '<div class="tarjeta-lealtad"><div class="tl-fila">';
+  html +=   '<div class="tl-cel"><div class="tl-num">' + total + '</div><div class="tl-rot">' +
+            (filtrado ? "Lavados (con el filtro)" : "Lavados") + "</div></div>";
+  html +=   '<div class="tl-cel"><div class="tl-num">' + (w.rechazos || 0) + '</div><div class="tl-rot">' +
+            (filtrado ? "Rechazos (con el filtro)" : "Rechazos") + "</div></div>";
+  html += "</div></div>";
+
+  html += "<h2>Historial de secado</h2>" + tablaSecados(w.historial || []);
+
+  // Cuánto se está viendo y cuánto falta. Un "mostrando 50" a secas no dice
+  // si quedó algo fuera, y un corte silencioso se lee como "esto es todo".
+  if (mostrados < total) {
+    html += '<div class="barra rango"><span>Mostrando ' + mostrados + " de " + total + " lavados.</span>" +
+            ' <button id="trab-mas">Ver 50 más</button>' +
+            ' <button id="trab-todo">Ver todos</button></div>';
+  } else if (total > 0) {
+    html += '<div class="sub">Los ' + total + (total === 1 ? " lavado" : " lavados") +
+            (filtrado ? " del filtro." : " de esta persona.") + "</div>";
+  }
+
+  cont.innerHTML = html;
+  document.getElementById("trab-volver").addEventListener("click", function () {
+    trabFiltro = null;
+    cargarTrabajadores();
+  });
+
+  cont.querySelectorAll("#trab-tipos button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      trabFiltro.tipo = b.getAttribute("data-tipo");
+      trabFiltro.limite = 50;   // otro filtro, se vuelve a empezar por arriba
+      cargarTrabajador();
+    });
+  });
+  document.getElementById("trab-ver").addEventListener("click", function () {
+    var d = document.getElementById("trab-desde").value;
+    var h = document.getElementById("trab-hasta").value;
+    if (d && h && d > h) { alert("El día inicial es posterior al final."); return; }
+    trabFiltro.desde = d;
+    trabFiltro.hasta = h;
+    trabFiltro.limite = 50;
+    cargarTrabajador();
+  });
+  var lim = document.getElementById("trab-limpiar");
+  if (lim) lim.addEventListener("click", function () {
+    trabFiltro.desde = ""; trabFiltro.hasta = ""; trabFiltro.tipo = ""; trabFiltro.limite = 50;
+    cargarTrabajador();
+  });
+  var mas = document.getElementById("trab-mas");
+  if (mas) mas.addEventListener("click", function () {
+    // Se vuelve a pedir con un tope mayor en vez de pegar páginas en el
+    // navegador: sin estado que mantener, no hay forma de duplicar ni de
+    // perder un renglón. Son decenas de kB en la pantalla del dueño, no en
+    // la del supervisor.
+    trabFiltro.limite = trabFiltro.limite + 50;
+    cargarTrabajador();
+  });
+  var todo = document.getElementById("trab-todo");
+  if (todo) todo.addEventListener("click", function () {
+    trabFiltro.limite = 0;   // 0 = todo
+    cargarTrabajador();
+  });
+
+  // Las placas del historial llevan al perfil de la placa (vista Clientes).
+  cont.querySelectorAll("button[data-placa]").forEach(function (b) {
+    b.addEventListener("click", function () { irAPlaca(b.getAttribute("data-placa")); });
+  });
+}
+
+// Cada renglón es un carro que esta persona secó: placa (clicable), tipo
+// de carro, inicio y fin del secado, minutos totales, y los motivos de
+// rechazo que le tocaron en ese carro (si los hubo).
+function tablaSecados(lista) {
+  if (!lista.length) return '<div class="vacio">Sin lavados registrados.</div>';
+  var html = "<table><tr><th>Fecha</th><th>Placa</th><th>Carro</th>" +
+             '<th>Inicio</th><th>Fin</th><th class="num">Minutos</th><th>Rechazos</th></tr>';
+  lista.forEach(function (v) {
+    var carro = [v.marca, v.submarca, v.tipo, v.color].filter(Boolean).join(" ");
+    var placaCel = v.placa
+      ? '<button class="enlace" data-placa="' + escapar(v.placa) + '">' + escapar(v.placa) + "</button>"
+      : '<span class="tenue">—</span>';
+    // secado_seg es nulo mientras la etapa de secado siga abierta (el carro
+    // no se ha entregado): se muestra "en curso" en vez de un número falso.
+    //
+    // ⚠️ Y los dos casos que TODO el resto del reporte excluye de sus
+    // promedios porque son ficción, y que aquí se imprimían crudos: el carro
+    // que cerró el cron a las 8:30 (nadie lo entregó, su hora de fin es
+    // fabricada — así salían 298 minutos a nombre de una persona) y el secado
+    // de menos de 3 minutos (un olvido registrado tarde, que salía como "0" o
+    // "1 minuto", como si hubiera secado un carro en un minuto).
+    //
+    // Ésta es la pantalla donde se evalúa a alguien con NOMBRE. El número se
+    // sigue mostrando, pero dicho como lo que es.
+    var minCel;
+    if (v.secado_seg == null) {
+      minCel = v.entregado ? "—" : '<span class="tenue">en curso</span>';
+    } else if (v.cerrado_solo) {
+      minCel = '<span class="tenue" title="Nadie lo entregó: lo cerró el corte de las 8:30, ' +
+               'así que la hora de fin es fabricada.">' +
+               Math.round(v.secado_seg / 60) + ' · cerrado solo</span>';
+    } else if (v.secado_corto) {
+      minCel = '<span class="tenue" title="Menos de 3 minutos es imposible de secar: ' +
+               'es un carro olvidado y registrado tarde, no trabajo.">' +
+               Math.round(v.secado_seg / 60) + ' · olvido</span>';
+    } else {
+      minCel = Math.round(v.secado_seg / 60);
+    }
+    var rech = (v.rechazos && v.rechazos.length)
+      ? '<span style="color:#ff7b72">' + escapar(v.rechazos.join(", ")) + "</span>"
+      : '<span class="tenue">—</span>';
+    html += "<tr><td>" + escapar(fechaCorta(v.fecha)) + "</td>" +
+            "<td>" + placaCel + "</td>" +
+            "<td>" + escapar(carro || "—") + "</td>" +
+            "<td>" + escapar(v.secado_inicio ? hora(v.secado_inicio) : "—") + "</td>" +
+            "<td>" + escapar(v.secado_fin ? hora(v.secado_fin) : "—") + "</td>" +
+            '<td class="num">' + minCel + "</td>" +
+            "<td>" + rech + "</td></tr>";
+  });
+  return html + "</table>";
+}
+
+cargarCodigo();
+if (!CODIGO) pedirCodigo(false); else arrancar();
+</script>

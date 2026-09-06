@@ -1,0 +1,17 @@
+{
+  "name": "RUSH Caja",
+  "short_name": "RUSH Caja",
+  "description": "Lealtad y clientes (6to lavado gratis) para la cajera",
+  "lang": "es-MX",
+  "start_url": "./caja.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "icons": [
+    { "src": "icono-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icono-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icono-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

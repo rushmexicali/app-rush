@@ -1,0 +1,3265 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1117">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icono-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>RUSH — Cola</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    background:#0d1117; color:#fff;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 12px 12px 40px;
+    font-size: 18px;
+  }
+  header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding: 6px 4px 14px;
+  }
+  /* El logo es la palabra completa. Se fija la ALTURA y el ancho sale
+     solo, para que no se deforme si algun dia cambia el archivo. */
+  #logo { height: 30px; width: auto; display: block; }
+  /* Respaldo si la imagen no carga: se ve la palabra, no un hueco. */
+  h1 { font-size: 26px; letter-spacing:1px; margin:0; }
+  #cuantos { font-size: 20px; color:#8b949e; font-weight:700; }
+
+  .carro {
+    border-radius: 16px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+    border-left: 14px solid var(--color);
+    background: #161b22;
+    display: grid;
+    /* Columnas explicitas: el texto a la izquierda, el reloj a la
+       derecha. Sin esto el reloj se colaba a la primera columna. */
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 12px;
+  }
+  .carro.demorado { background:#3d1418; border-color:#ff4d4f; --guion:#3fb950; }
+
+  .unidad {
+    grid-column: 1; grid-row: 1;
+    font-size: 27px; font-weight: 800; line-height:1.15;
+  }
+  .unidad .falta { color:#6e7681; font-weight:600; font-style:italic; font-size:21px; }
+
+  /* La placa va en su PROPIO renglon, entre el tipo de carro y el
+     servicio. Mezclada en la misma linea que "CAMIONETA NEGRA HONDA" se
+     perdia. Mas chica que el tipo, pero en recuadro blanco para que salte
+     a la vista sin tener que leerla.
+
+     Si el carro no tiene placa este renglon no existe y la fila queda en
+     cero: no hay row-gap, asi que no deja hueco. */
+  .placa {
+    grid-column: 1; grid-row: 2;
+    justify-self: start;
+    margin-top: 5px;
+    font-family: ui-monospace, "Consolas", monospace;
+    font-size: 20px; font-weight: 700; letter-spacing: 1.5px;
+    background:#f0f6fc; color:#0d1117;
+    border-radius: 4px; padding: 2px 9px;
+  }
+
+  .servicio {
+    grid-column: 1; grid-row: 3;
+    font-size: 17px; color:#adbac7; margin-top:3px; line-height:1.25;
+  }
+
+  /* Los secadores asignados, en la tarjeta y del MISMO tamaño que el
+     renglon del servicio (17px): el dueño los quiere visibles sin abrir
+     el carro. Va dentro del bloque del servicio a proposito, para no
+     reacomodar la rejilla ni empujar el estado, la foto y los botones a
+     otra fila. Mas claro que el servicio para que los nombres salten. */
+  .secadores-tarjeta {
+    font-size: 17px; font-weight: 700; color:#e6edf3;
+    margin-top: 4px; line-height: 1.3;
+  }
+
+  /* La columna derecha: el contador y, ENCIMA de el, el boton de borrar
+     (solo en carros sin asignar). Se apilan y se centran como grupo, asi
+     que una tarjeta sin boton (secando) se ve exactamente igual que antes:
+     solo el reloj, centrado. El boton queda "arriba del contador", que es
+     donde el dueno pidio ese espacio. */
+  .medidor {
+    grid-column: 2; grid-row: 1 / span 3;
+    align-self: center; justify-self: end;
+    display: flex; flex-direction: column;
+    align-items: flex-end; justify-content: center;
+    gap: 10px;
+  }
+  .reloj {
+    font-size: 38px; font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .demorado .reloj { color:#ff7875; }
+
+  /* "Borrar unidad": saca de la cola un carro sin asignar que quedo de
+     basura (se fue el cliente, se olvido). Se ve claramente distinto del
+     boton de accion: borde rojo, chico, arriba del reloj. Solo aparece en
+     carros SIN asignar. Apagado hasta que el carro lleve 30 min sin
+     asignar, para que un toque por accidente no borre uno que iba bien.
+     Mismo patron "se ve apagado, no desaparece" que la camara. */
+  .borrar {
+    min-height: 46px; padding: 0 14px;
+    font-size: 16px; font-weight: 800;
+    color:#ff7875; background: transparent;
+    border: 2px solid #ff4d4f; border-radius: 12px;
+    cursor: pointer; white-space: nowrap;
+  }
+  .borrar:active { background:#3d1418; }
+  /* Antes de los 30 min: apagado y sin toque. El texto lo dice para que el
+     supervisor sepa por que no se puede todavia. */
+  .borrar[disabled] { opacity:.3; cursor:default; }
+  /* En una tarjeta ya demorada (toda roja) el borde rojo se perderia: se
+     pasa a blanco para que siga saltando. */
+  .demorado .borrar { color:#fff; border-color:#fff; }
+
+  /* Ocupa SOLO la primera columna. Antes se extendia a todo el ancho
+     (1 / -1) en la misma fila del boton de la foto, y aunque no se veia,
+     se montaba encima y se robaba los toques. */
+  .estado {
+    grid-column: 1; grid-row: 4;
+    margin-top: 12px;
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  }
+  .etiqueta {
+    background: var(--color); color:#08090b;
+    font-weight: 800; font-size: 17px;
+    padding: 5px 14px; border-radius: 999px;
+    text-transform: uppercase; letter-spacing:.5px;
+  }
+  .demorado .etiqueta { background:#ff4d4f; color:#fff; }
+
+  /* El express tiene que saltar a la vista sin leerlo. Como el amarillo
+     ya lo usa el estado "en tunel", no basta el color: la tarjeta
+     completa lleva marco amarillo y la etiqueta lleva banderita. */
+  .carro.expreso { box-shadow: inset 0 0 0 3px #ffd400; }
+  .express {
+    background:#ffd400; color:#000;
+    font-weight:900; font-size:17px;
+    padding:5px 14px; border-radius:999px;
+    letter-spacing:.5px;
+  }
+  /* Servicio que NO es un lavado normal: encerado, super brillo, lavado
+     a mano. Existe porque los secadores no leen el ticket y lo tratan
+     como lavado, y eso genera quejas de clientes.
+
+     MORADO y no amarillo: el amarillo ya es del express y significa "va
+     a la linea 1". Esto significa otra cosa — "el trabajo es distinto" —
+     y confundirlos seria peor que no marcarlo. El morado estaba libre
+     (era del estado "por asignar", que ya no existe). */
+  /* TRES colores, uno por familia de servicio. Se escogieron evitando
+     los que ya significan algo:
+       rojo    = demora        naranja quedaria muy cerca
+       amarillo= express/tunel
+       azul    = prelavado     verde = secando
+       blanco  = el recuadro de la placa
+     Quedaron libres el morado, el cian y el naranja. El naranja se le da
+     al DETALLADO, que es el mas raro: si algun dia se confunde con el
+     rojo de demora, es el que menos veces va a pasar. */
+  .aviso-servicio {
+    color:#000; font-weight:900; font-size:17px;
+    padding:5px 14px; border-radius:999px; letter-spacing:.5px;
+  }
+  .aviso-servicio.encerado  { background:#a371f7; }  /* encerado y super brillo */
+  .aviso-servicio.mano      { background:#22d3ee; }  /* lavado a mano */
+  .aviso-servicio.detallado { background:#ff8c00; }  /* detallado */
+
+  /* El marco. Un carro puede llevar VARIAS banderitas (un Super Brillo
+     lavado a mano lleva morada y cian), pero marco solo hay uno: gana el
+     del servicio, porque el "a mano" ya se ve en su propia etiqueta y el
+     servicio es el que causa las quejas de cliente. */
+  .carro.marco-encerado  { box-shadow: inset 0 0 0 3px #a371f7; }
+  .carro.marco-detallado { box-shadow: inset 0 0 0 3px #ff8c00; }
+  .carro.marco-mano      { box-shadow: inset 0 0 0 3px #22d3ee; }
+
+  .linea { font-size:18px; color:#8b949e; font-weight:700; }
+
+  /* Aviso de secador que se poncho con el carro asignado. Va en la
+     tarjeta, no en una pantalla aparte: el supervisor tiene que verlo
+     sin ir a buscarlo. */
+  .ausente {
+    grid-column: 1 / -1; grid-row: 5;
+    margin-top: 10px;
+    background:#3d1418; color:#ffb3b3;
+    border-left: 5px solid #ff4d4f;
+    border-radius: 10px;
+    padding: 9px 12px;
+    font-size: 17px; font-weight: 700;
+    line-height: 1.25;
+  }
+  /* Si la tarjeta ya esta demorada (toda roja), el aviso de reasignar se
+     vuelve VERDE: en rojo sobre rojo se perdia. Es el mismo verde de los
+     guiones del boton (ver --guion). */
+  .demorado .ausente {
+    background:#0f2e18; color:#7ee787;
+    border-left-color:#3fb950;
+  }
+
+  /* Los botones son lo mas importante de la pantalla: gigantes, uno por
+     accion, y el texto dice QUE HACE, no algo generico. */
+  /* Dos renglones: el principal solo, gigante, y abajo los dos
+     secundarios repartidos a la mitad. Los tres en una sola fila dejaban
+     el principal en ~130px, muy angosto para "Asignar unidad". */
+  .acciones {
+    grid-column: 1 / -1; grid-row: 6;
+    margin-top: 14px;
+    display: flex; gap: 10px; flex-wrap: wrap;
+  }
+  .avanzar {
+    flex: 1 0 100%;
+    min-height: 76px;
+    font-size: 23px; font-weight: 800;
+    color:#08090b; background: var(--color);
+    border: none; border-radius: 14px;
+    padding: 10px 12px;
+    line-height:1.15;
+    cursor: pointer;
+  }
+  .demorado .avanzar { background:#ff4d4f; color:#fff; }
+  .avanzar:active { filter: brightness(.8); }
+  .avanzar[disabled] { opacity:.45; }
+
+  /* Guiones rojos marchando por la orilla de un boton (- - - -), dando la
+     vuelta. Se usa en DOS casos:
+       - el boton de Asignar, porque el supervisor le picaba al icono
+         redondo de prelavado por ser del mismo azul;
+       - el boton de Corregir cuando un secador asignado ya marco salida,
+         para llevar al supervisor a reasignar ahi.
+     La clase es generica (`.girando`) para poder ponersela a cualquiera.
+
+     Son cuatro tiras de guiones, una por lado, que marchan en circulo
+     (arriba -> derecha -> abajo -> izquierda). Se anima
+     'background-position', que se queda DENTRO de la caja: no hay nada
+     que rotar, asi que nunca se sale del boton (que es lo que pasaba al
+     rotar un elemento tan ancho). border-radius 14px = el de los dos
+     botones. */
+  .girando { position: relative; }
+  .girando::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 14px;
+    pointer-events: none;
+    /* El color del guion sale de --guion (rojo por defecto). En una
+       tarjeta demorada, que ya es toda roja, se vuelve verde para
+       contrastar y no perderse — ver .carro.demorado abajo. */
+    background-image:
+      repeating-linear-gradient(90deg, var(--guion, #ff2626) 0 22px, transparent 22px 33px),
+      repeating-linear-gradient(90deg, var(--guion, #ff2626) 0 22px, transparent 22px 33px),
+      repeating-linear-gradient(0deg,  var(--guion, #ff2626) 0 22px, transparent 22px 33px),
+      repeating-linear-gradient(0deg,  var(--guion, #ff2626) 0 22px, transparent 22px 33px);
+    background-size: 33px 3px, 33px 3px, 3px 33px, 3px 33px;
+    background-position: 0 0, 0 100%, 0 0, 100% 0;
+    background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+    animation: girar-lineas 0.8s linear infinite;
+  }
+  @keyframes girar-lineas {
+    to { background-position: 33px 0, -33px 100%, 0 -33px, 100% 33px; }
+  }
+
+  /* Corregir siempre visible, pero claramente secundario para que nadie
+     lo confunda con el boton de avanzar. */
+  .corregir {
+    flex: 1; min-height: 64px;
+    font-size: 18px; font-weight: 700;
+    color:#adbac7; background: transparent;
+    border: 2px solid #30363d; border-radius: 14px;
+    cursor: pointer;
+  }
+  .corregir:active { background:#30363d; }
+  .corregir[disabled] { opacity:.3; }
+
+  /* La foto es OPCIONAL y no debe estorbar. Botones chicos, al lado del
+     reloj, para que en dia pesado se ignoren sin siquiera notarlo. */
+  .fotos {
+    grid-column: 2; grid-row: 4;
+    justify-self: end; align-self: center;
+    margin-top: 12px;
+    display: flex; gap: 8px; align-items: center;
+  }
+  .foto {
+    /* Mas grande que el icono para que el area de toque sea generosa:
+       el supervisor lo va a picar con el pulgar, a veces con guantes
+       mojados. */
+    height: 58px; width: 70px; font-size: 24px;
+    background: transparent;
+    border: 2px solid #30363d; border-radius: 12px;
+    color: #8b949e;
+    cursor: pointer; padding: 0;
+    overflow: hidden;
+  }
+  .foto:active { background:#30363d; }
+  .foto img { width:100%; height:100%; object-fit:cover; display:block; }
+  .foto.subiendo { opacity:.4; }
+  /* La foto se habilita solo cuando el carro ya tiene carril y secador.
+     Antes de eso el boton SE VE apagado (no desaparece): un boton que
+     aparece solo confunde al supervisor de la tercera edad. */
+  .foto[disabled] { opacity:.28; cursor:default; }
+
+  /* Boton de info: abre el desglose de tiempos del carro. Va donde antes
+     estaba la galeria (a la izquierda de la camara), mas chico y apagado
+     para que el pulgar caiga en la camara por default. Es un boton aparte
+     y no un toque a la tarjeta a proposito: evita que el desglose se abra
+     por accidente al querer picar otra cosa. */
+  .info {
+    width: 48px; height: 58px;
+    background: transparent;
+    border: 2px solid #30363d; border-radius: 12px;
+    color: #8b949e; cursor: pointer; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .info:active { background:#30363d; }
+  .info svg { width: 27px; height: 27px; display: block; }
+
+  #camara { display: none; }
+
+  /* Pantalla de acceso. Se teclea una sola vez por telefono. */
+  #acceso {
+    display:none;
+    position:fixed; inset:0; z-index:50;
+    background:#0d1117;
+    padding:28px 22px;
+    flex-direction:column; justify-content:center; gap:18px;
+  }
+  #logo-acceso { height:44px; width:auto; align-self:flex-start; margin-bottom:6px; }
+  #acceso h2 { font-size:28px; }
+  #acceso p { color:#8b949e; font-size:18px; line-height:1.4; }
+  #campo {
+    width:100%; min-height:70px;
+    font-size:26px; font-weight:700; text-align:center;
+    letter-spacing:2px; text-transform:uppercase;
+    background:#161b22; color:#fff;
+    border:2px solid #30363d; border-radius:14px;
+    padding:12px;
+  }
+  #entrar {
+    width:100%; min-height:76px;
+    font-size:24px; font-weight:800;
+    background:#2f81f7; color:#fff;
+    border:none; border-radius:14px; cursor:pointer;
+  }
+  #malcodigo { color:#ff7875; font-size:18px; font-weight:700; display:none; }
+
+  /* ---- Pantalla de asignar linea, marca y secadores ---- */
+  #asignar {
+    display:none;
+    position:fixed; inset:0; z-index:40;
+    background:#0d1117;
+    overflow-y:auto;
+    padding:16px 14px 120px;
+  }
+  #asignar .quien {
+    font-size:28px; font-weight:800; line-height:1.15; margin-bottom:2px;
+  }
+  #asignar .cual { font-size:18px; color:#8b949e; margin-bottom:18px; }
+
+  .seccion { font-size:20px; font-weight:800; margin:20px 0 10px; color:#adbac7; }
+  .seccion .pendiente { color:#e3b341; font-weight:700; }
+  .seccion .listo { color:#3fb950; }
+
+  /* Campo para escribir un color que no esta en los comunes. Se ve
+     SIEMPRE en mayusculas: el text-transform lo pinta, pero el valor real
+     lo sube el 'input' en vivo (solo con CSS se mandarian minusculas y el
+     formato no quedaria uniforme con lo que llega de la nota de caja). */
+  .color-otro-input {
+    width:100%; min-height:64px; margin-top:9px;
+    font-size:22px; font-weight:800; text-align:center;
+    letter-spacing:1px; text-transform:uppercase;
+    background:#161b22; color:#fff;
+    border:2px solid #2f81f7; border-radius:13px; padding:10px;
+  }
+  .color-otro-input::placeholder { color:#6e7681; font-weight:700; letter-spacing:.5px; }
+
+  /* ---- Foto obligatoria al asignar (26/jul/2026) ----
+     Boton grande de un solo toque, como pide el CLAUDE.md. Azul mientras
+     falta, verde cuando ya quedo, atenuado mientras sube. */
+  #asig-foto-boton {
+    width:100%; min-height:104px; margin-top:2px;
+    display:flex; align-items:center; justify-content:center; gap:14px;
+    font-size:24px; font-weight:800;
+    background:#161b22; color:#fff;
+    border:3px solid #2f81f7; border-radius:15px; padding:16px;
+  }
+  #asig-foto-boton .ico { width:44px; height:44px; flex:none; }
+  #asig-foto-boton .mini {
+    width:64px; height:64px; border-radius:10px; object-fit:cover; flex:none;
+  }
+  #asig-foto-boton:active { filter:brightness(.85); }
+  #asig-foto-boton.lista    { border-color:#3fb950; }
+  #asig-foto-boton.subiendo { opacity:.65; }
+
+  .rejilla { display:grid; gap:9px; }
+  .rejilla.marcas    { grid-template-columns: repeat(2, 1fr); }
+  .rejilla.tipos     { grid-template-columns: repeat(2, 1fr); }
+  .rejilla.colores   { grid-template-columns: repeat(3, 1fr); }
+  .rejilla.motivos   { grid-template-columns: repeat(2, 1fr); }
+  .rejilla.entrega2  { grid-template-columns: repeat(2, 1fr); gap:12px; }
+
+  /* ---- Confirmar entrega / lista de entregados ---- */
+  /* Mismo patron de pantalla completa que #asignar: el supervisor ya lo
+     conoce. Debajo de #acceso (50) y encima de #asignar (40). */
+  #entrega, #entregados {
+    display:none;
+    position:fixed; inset:0; z-index:45;
+    background:#0d1117;
+    overflow-y:auto;
+    padding:18px 14px 40px;
+  }
+  /* Sin relleno arriba: se lo queda la cabecera fija, para que al pegarse
+     no deje una franja de fondo encima. */
+  #entregados { padding-top:0; }
+
+  #entregados-cabecera {
+    position:sticky; top:0; z-index:2;
+    background:#0d1117;
+    padding:14px 0 12px;
+    border-bottom:1px solid #21262d;
+    margin-bottom:14px;
+  }
+  #entregados-cerrar {
+    width:100%; min-height:64px; margin-bottom:12px;
+    font-size:19px; font-weight:800;
+    background:#161b22; color:#e6edf3;
+    border:2px solid #30363d; border-radius:14px; cursor:pointer;
+  }
+  #entregados-cerrar:active { background:#30363d; }
+
+  /* El boton de volver y el selector de dia, en la misma fila. */
+  .fila-cabecera { display:flex; gap:10px; align-items:center; }
+  .fila-cabecera #entregados-cerrar { flex:1 1 auto; }
+  #entregados-dia {
+    flex:0 0 auto; min-height:52px; max-width:46%;
+    background:#21262d; color:#e6edf3; border:1px solid #30363d;
+    border-radius:12px; padding:0 12px; font-size:17px; font-weight:700;
+  }
+
+  /* Desglose de un carro. Encima de #entregados (45) porque se abre
+     desde ahi; si no, quedaria por debajo y no se veria — el mismo
+     problema que ya se resolvio con la pantalla de corregir. */
+  #detalle {
+    display:none; position:fixed; inset:0; z-index:47;
+    background:#0d1117; overflow-y:auto; padding:0 14px 40px;
+  }
+  #detalle-cabecera { position:sticky; top:0; background:#0d1117; padding:14px 0 10px; }
+  #detalle-cerrar {
+    width:100%; min-height:52px; background:#21262d; color:#e6edf3;
+    border:1px solid #30363d; border-radius:12px; font-size:18px; font-weight:700;
+  }
+  #detalle-cerrar:active { background:#30363d; }
+
+  #detalle h2 { font-size:28px; font-weight:800; margin:6px 0 2px; line-height:1.15; }
+  #detalle .sub { font-size:17px; color:#8b949e; margin-bottom:16px; }
+
+  /* Cada tiempo en su renglon, con el numero grande a la derecha. Se
+     lee de un vistazo sin tener que buscar. */
+  .tiempo {
+    display:flex; justify-content:space-between; align-items:baseline;
+    gap:12px; padding:14px 0; border-bottom:1px solid #21262d;
+  }
+  .tiempo .que  { font-size:19px; color:#adbac7; font-weight:700; }
+  .tiempo .cuanto {
+    font-size:30px; font-weight:800; font-variant-numeric:tabular-nums;
+  }
+  .tiempo.total .que, .tiempo.total .cuanto { color:#ffd400; }
+  /* Etapa que esta corriendo ahora mismo: en verde (el color de secando),
+     para que se lea de un vistazo que ese numero esta vivo. */
+  .tiempo.corriendo .que, .tiempo.corriendo .cuanto { color:#3fb950; }
+  .tiempo .vacio2 { font-size:19px; color:#6e7681; font-style:italic; font-weight:600; }
+
+  #detalle .quienes { margin-top:20px; }
+  #detalle .quienes .titulo2 { font-size:19px; color:#adbac7; font-weight:700; margin-bottom:8px; }
+  #detalle .quienes .nombre { font-size:24px; font-weight:800; line-height:1.35; }
+  #entrega .quien, #entregados .quien { font-size:28px; font-weight:800; line-height:1.15; }
+  #entrega .cual,  #entregados .cual  { font-size:18px; color:#8b949e; margin-top:4px; }
+  #entrega .rejilla.entrega2 { margin-top:26px; }
+
+  /* Entregar en verde, rechazar en rojo: el color dice cual es cual sin
+     tener que leer, como el resto de la app. */
+  .opcion.bueno { background:#3fb950; border-color:#3fb950; color:#08090b; min-height:96px; font-size:24px; }
+  .opcion.malo  { background:transparent; border-color:#ff4d4f; color:#ff7875; min-height:96px; font-size:24px; }
+  .opcion.volver { width:100%; margin-top:26px; min-height:66px; font-size:19px; }
+  /* Mientras viaja la peticion. Se APAGA visualmente y el texto dice que
+     esta haciendo: el candado `ocupado` ya evitaba el doble toque, pero sin
+     nada en pantalla el supervisor cree que el boton no sirve y sigue
+     picandole. Va atenuado y no gris del todo para que no parezca roto. */
+  .opcion.enviando { opacity:.55; }
+  /* El boton que confirma el rechazo, debajo de los motivos. Del ancho
+     completo y separado de la rejilla para que no se confunda con un
+     motivo mas. */
+  #ent-rechazar { width:100%; margin-top:18px; }
+  /* Va ARRIBA de los motivos, no abajo: es la salida de "me equivoque", y
+     tiene que verse antes de empezar a marcar. Sin el margen grande de
+     .opcion.volver, que esta pensado para un boton de hasta abajo. */
+  #ent-volver { margin-top:0; margin-bottom:18px; }
+
+  /* Tarjeta de un entregado: mucho mas sencilla que la de la cola. Aqui
+     no hay cronometro ni etapas, solo reconocerlo y poder restaurarlo. */
+  .entregado {
+    background:#161b22; border:1px solid #30363d; border-radius:14px;
+    padding:12px 14px; margin-bottom:10px;
+    display:flex; align-items:center; gap:12px;
+  }
+  .entregado .datos { flex:1; min-width:0; }
+  .entregado .titulo { font-size:19px; font-weight:800; line-height:1.2; }
+  .entregado .pie { font-size:15px; color:#8b949e; margin-top:3px; }
+  .entregado .placa2 {
+    display:inline-block; font-family: ui-monospace, "Consolas", monospace;
+    font-size:15px; font-weight:700; letter-spacing:1px;
+    background:#f0f6fc; color:#0d1117; border-radius:4px; padding:1px 6px; margin-right:6px;
+  }
+  /* Amarillo: es el MISMO #e3b341 que ya usa el tunel en la cola, no un
+     amarillo nuevo. La app no debe acumular tonos distintos del mismo
+     color o dejan de significar algo. */
+  .restaurar {
+    flex:0 0 auto; min-height:60px; padding:0 16px;
+    font-size:17px; font-weight:700;
+    background:transparent; color:#e3b341;
+    border:2px solid #e3b341; border-radius:12px; cursor:pointer;
+  }
+  .restaurar:active { background:rgba(227,179,65,.18); }
+
+  /* Corregir va al lado de Restaurar, apilados. Mas apagado a proposito:
+     los dos son acciones raras, pero restaurar es la que el supervisor
+     viene buscando cuando entra aqui. */
+  .corregir-ent {
+    background:#21262d; color:#adbac7; border:1px solid #30363d;
+    border-radius:12px; padding:12px 16px; font-size:17px; font-weight:700;
+    flex-shrink:0; margin-top:8px;
+  }
+  .corregir-ent:active { background:#30363d; }
+
+  /* Los dos botones de la tarjeta, uno debajo del otro. */
+  .entregado .acciones { display:flex; flex-direction:column; flex-shrink:0; }
+
+  /* Boton para entrar a los entregados. Al final de la cola, no arriba:
+     no debe competir con los carros que si necesitan atencion. */
+  #ver-entregados {
+    width:100%; margin-top:6px; min-height:64px;
+    font-size:19px; font-weight:700;
+    background:transparent; color:#adbac7;
+    border:2px solid #30363d; border-radius:14px; cursor:pointer;
+  }
+  #ver-entregados:active { background:#161b22; }
+  .rejilla.lineas    { grid-template-columns: repeat(3, 1fr); }
+  .rejilla.secadores { grid-template-columns: repeat(2, 1fr); }
+
+  /* Secador: circulo de color con iniciales + nombre. Sin fotos en
+     Jibble, el color es lo que hace el trabajo de la cara: es unico por
+     persona y no cambia nunca. */
+  .persona {
+    display:flex; align-items:center; gap:11px;
+    text-align:left; padding:9px 11px; min-height:72px;
+  }
+  .circulo {
+    width:46px; height:46px; flex:0 0 46px;
+    border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:18px; font-weight:900; color:#08090b;
+    letter-spacing:.5px;
+  }
+  .persona .quien2 { font-size:18px; font-weight:700; line-height:1.15; }
+  .persona .nota2 { font-size:14px; color:#e3b341; font-weight:700; margin-top:2px; }
+
+  /* En descanso: atenuado pero SI se puede tocar. El CLAUDE.md pide no
+     quitarlos, porque pueden regresar en un minuto. */
+  .opcion.descansando { opacity:.5; border-style:dashed; }
+  .opcion.descansando.elegida { opacity:1; }
+
+  #sin-secadores {
+    grid-column: 1 / -1;
+    color:#ff7875; font-size:17px; font-weight:700;
+    padding:14px; border:2px dashed #3d1418; border-radius:12px;
+    text-align:center;
+  }
+
+  .opcion {
+    min-height: 68px;
+    font-size: 20px; font-weight: 800;
+    background:#161b22; color:#fff;
+    border:2px solid #30363d; border-radius:13px;
+    padding:8px 6px; cursor:pointer;
+    line-height:1.1;
+  }
+  .opcion:active { background:#21262d; }
+  .opcion.elegida { background:#2f81f7; border-color:#2f81f7; color:#fff; }
+  .opcion[disabled] { opacity:.25; }
+
+  .lineas .opcion { min-height:78px; font-size:26px; }
+  .lineas .opcion.solo-express { border-color:#ffd400; color:#ffd400; }
+
+  /* Barra fija abajo: el boton de confirmar siempre al alcance del
+     pulgar, sin tener que buscar el final de la pantalla. */
+  #barra {
+    position:fixed; left:0; right:0; bottom:0; z-index:41;
+    background:#0d1117; border-top:1px solid #21262d;
+    padding:12px 14px calc(12px + env(safe-area-inset-bottom));
+    display:flex; gap:10px;
+  }
+  #confirmar {
+    flex:1; min-height:78px;
+    font-size:23px; font-weight:800;
+    background:#3fb950; color:#08090b;
+    border:none; border-radius:14px; cursor:pointer;
+  }
+  #confirmar[disabled] { background:#21262d; color:#6e7681; }
+  #cancelar {
+    width:110px; min-height:78px;
+    font-size:19px; font-weight:700;
+    background:transparent; color:#adbac7;
+    border:2px solid #30363d; border-radius:14px; cursor:pointer;
+  }
+
+  #vacio { text-align:center; color:#6e7681; padding:70px 20px; font-size:22px; }
+  #error {
+    display:none; background:#3d1418; color:#ffb3b3;
+    padding:12px; border-radius:12px; margin-bottom:12px; font-size:17px;
+  }
+
+  /* Visor de la foto en grande. Encima de TODO (60): se abre desde la cola
+     (la miniatura de la tarjeta), desde el desglose y desde finalizados.
+     Fondo negro para que la foto no compita con nada. */
+  #visor-foto {
+    display:none; position:fixed; inset:0; z-index:60;
+    background:#000;
+    flex-direction:column;
+  }
+  #visor-foto-img {
+    flex:1 1 auto; width:100%; min-height:0;
+    object-fit:contain; background:#000;
+  }
+  #visor-foto-barra {
+    flex:0 0 auto; display:flex; gap:10px;
+    padding:12px 14px calc(12px + env(safe-area-inset-bottom));
+    background:#0d1117; border-top:1px solid #21262d;
+  }
+  #visor-foto-cerrar {
+    flex:0 0 auto; min-width:120px; min-height:64px;
+    font-size:19px; font-weight:700;
+    background:transparent; color:#adbac7;
+    border:2px solid #30363d; border-radius:14px; cursor:pointer;
+  }
+  #visor-foto-cerrar:active { background:#161b22; }
+  /* Reemplazar en azul, la accion principal del visor cuando el carro se
+     esta trabajando. Se esconde en el desglose de finalizados: ahi ya se
+     entrego, se asume correcta. */
+  #visor-foto-reemplazar {
+    flex:1; min-height:64px;
+    font-size:20px; font-weight:800;
+    background:#2f81f7; color:#fff;
+    border:none; border-radius:14px; cursor:pointer;
+  }
+  #visor-foto-reemplazar:active { filter:brightness(.85); }
+
+  /* La foto dentro del desglose: un recuadro que se abre en grande al
+     tocarlo. Del ancho de la pantalla para que se reconozca el carro sin
+     tener que abrirlo. */
+  .foto-detalle {
+    display:block; width:100%; margin:14px 0 4px; padding:0;
+    background:#161b22; border:1px solid #30363d; border-radius:14px;
+    overflow:hidden; cursor:pointer;
+  }
+  .foto-detalle img {
+    width:100%; max-height:240px; object-fit:cover; display:block;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <!-- Si la imagen no carga (wifi caido en la primera visita, antes de que
+       el service worker la guarde), onerror deja el texto en su lugar. Un
+       hueco en el encabezado se ve como app rota. -->
+  <img id="logo" src="RUSH-Logo.png" alt="RUSH"
+       onerror="this.outerHTML='&lt;h1&gt;RUSH&lt;/h1&gt;'">
+  <div id="cuantos"></div>
+</header>
+
+<div id="error"></div>
+<div id="lista"></div>
+<div id="vacio" style="display:none">No hay carros en proceso</div>
+
+<!-- Al FINAL, no arriba: los carros que necesitan atencion van primero.
+     Es un boton y no una pestaña a proposito — el CLAUDE.md pide toques
+     directos, sin elementos de navegacion permanentes. -->
+<button id="ver-entregados">Finalizados</button>
+
+<div id="asignar">
+  <div class="quien" id="asig-quien"></div>
+  <div class="cual" id="asig-cual"></div>
+
+  <!-- Tipo y color: SOLO en modo Corregir. Al asignar, la pantalla es solo
+       linea + secador (24/jul/2026); el tipo/color ya vienen de la nota de
+       la cajera y la marca/submarca de la foto. La marca ya no se captura a
+       mano en ningun lado. -->
+  <div id="asig-datos" style="display:none">
+    <div class="seccion">Tipo</div>
+    <div class="rejilla tipos" id="asig-tipos"></div>
+
+    <div class="seccion">Color</div>
+    <div class="rejilla colores" id="asig-colores"></div>
+    <!-- El campo vive FUERA de la rejilla (que se redibuja) para que no se
+         borre mientras el supervisor teclea. Se muestra/oculta, no se
+         recrea. -->
+    <div id="asig-color-otro" style="display:none">
+      <input id="asig-color-input" class="color-otro-input" type="text"
+             inputmode="text" autocomplete="off" autocapitalize="characters"
+             placeholder="ESCRIBE EL COLOR">
+    </div>
+  </div>
+
+  <div id="asig-solo-asignar">
+    <div class="seccion">Línea <span id="asig-linea-estado" class="pendiente">— falta</span></div>
+    <div class="rejilla lineas" id="asig-lineas"></div>
+
+    <div class="seccion">Secadores <span id="asig-sec-estado" class="pendiente">— elige de 1 a 4</span></div>
+    <div class="rejilla secadores" id="asig-secadores"></div>
+
+    <!-- Tunelero, supervisores y gerente. Van en su propia seccion y
+         DEBAJO porque el caso comun es elegir un secador; estos entran
+         cuando hay tanto trabajo que ellos tambien se ponen a secar.
+         El titulo se esconde solo si no hay nadie. -->
+    <div class="seccion" id="asig-otros-titulo" style="display:none">También pueden secar</div>
+    <div class="rejilla secadores" id="asig-otros"></div>
+
+    <!-- La foto se toma AQUI, en el momento de asignar (26/jul/2026). Es
+         OBLIGATORIA: la foto es autoritativa y de ella salen placa, marca,
+         submarca y tipo. No se puede "Empezar a secar" sin ella. Se puede
+         reemplazar despues desde la tarjeta sin problema. Solo aparece al
+         asignar (no en Corregir), lo controla pintarFotoAsignar(). -->
+    <div id="asig-foto-bloque" style="display:none">
+      <div class="seccion">Foto del carro <span id="asig-foto-estado" class="pendiente">— falta</span></div>
+      <button id="asig-foto-boton" type="button"></button>
+    </div>
+  </div>
+</div>
+
+<div id="barra" style="display:none">
+  <button id="confirmar" disabled>Empezar a secar</button>
+  <button id="cancelar">Cancelar</button>
+</div>
+
+<!-- Confirmar la entrega. Se abre al tocar "Entregado": el secador avisa
+     que ya quedo, pero el supervisor revisa antes de soltar el carro. -->
+<div id="entrega">
+  <div class="quien" id="ent-quien"></div>
+  <div class="cual" id="ent-cual"></div>
+  <!-- Se dice QUIEN seco a proposito: el supervisor esta a punto de
+       registrarle un rechazo a una persona con nombre y debe ver a quien
+       antes de tocar. -->
+  <div class="cual" id="ent-secadores"></div>
+
+  <div id="ent-decidir">
+    <div class="rejilla entrega2">
+      <button class="opcion bueno" data-entregar="1">Entregar</button>
+      <button class="opcion malo" data-rechazar="1">Rechazar</button>
+    </div>
+  </div>
+
+  <div id="ent-motivos" style="display:none">
+    <!-- Se pueden marcar VARIOS. No se rechaza al tocar uno: hay que
+         confirmar con el boton de abajo. Toca de nuevo un motivo para
+         quitarlo. -->
+    <!-- Del rechazo SI hay regreso. Antes, el que le picaba a "Rechazar"
+         por error solo tenia "Cancelar", que cierra TODA la pantalla y lo
+         devuelve a la cola: para el supervisor eso se lee como que el
+         boton no sirve. Sospecha de la auditoria de por que esta pantalla
+         llevaba 25 dias sin un solo uso. -->
+    <button id="ent-volver" class="opcion volver">← No, sí quedó bien</button>
+    <div class="seccion">¿Qué le faltó? <span class="pendiente">— marca todo lo que aplique</span></div>
+    <div class="rejilla motivos" id="ent-lista-motivos"></div>
+    <button id="ent-rechazar" class="opcion malo" disabled>RECHAZAR</button>
+  </div>
+
+  <button id="ent-cerrar" class="opcion volver">Cancelar</button>
+</div>
+
+<!-- Los entregados de hoy, por si se entrego uno por equivocacion. -->
+<div id="entregados">
+  <!-- La cabecera va FIJA arriba. En un dia de 100 carros, el supervisor
+       baja al numero 80 a buscar uno; si el boton de volver estuviera al
+       final (o incluso solo arriba) tendria que recorrer toda la lista de
+       regreso. Fijo, es un toque desde donde sea. -->
+  <div id="entregados-cabecera">
+    <div class="fila-cabecera">
+      <button id="entregados-cerrar">&#8592;&nbsp; Volver a la cola</button>
+      <!-- Un <select> nativo, no un menu propio: el CLAUDE.md prohibe
+           menus y gestos, pero el selector del telefono es UN toque y
+           lo abre el sistema con letra grande. Escribir un desplegable
+           a mano seria mas menu, no menos. -->
+      <select id="entregados-dia" title="Ver otro día"></select>
+    </div>
+    <div class="quien">Finalizados</div>
+    <div class="cual" id="entregados-cuantos"></div>
+  </div>
+  <div id="entregados-lista"></div>
+</div>
+
+<!-- Desglose de un carro. Se abre al tocar su tarjeta en Finalizados. -->
+<div id="detalle">
+  <div id="detalle-cabecera">
+    <button id="detalle-cerrar">&#8592;&nbsp; Volver</button>
+  </div>
+  <div id="detalle-cuerpo"></div>
+</div>
+
+<!-- Ver la foto en grande. Se abre al tocar la miniatura de una tarjeta
+     (con boton para reemplazarla) o la foto del desglose (sin el, porque
+     ahi ya se entrego y se asume correcta). -->
+<div id="visor-foto">
+  <img id="visor-foto-img" src="" alt="Foto del carro">
+  <div id="visor-foto-barra">
+    <button id="visor-foto-cerrar">&#8592;&nbsp; Volver</button>
+    <button id="visor-foto-reemplazar">Reemplazar foto</button>
+  </div>
+</div>
+
+<!-- capture="environment" abre la camara TRASERA directo, no la galeria.
+     Lo pide el CLAUDE.md: el supervisor no debe navegar por archivos.
+     El boton de galeria se quito el 20/jul/2026: no se usaba. -->
+<input id="camara" type="file" accept="image/*" capture="environment">
+
+<div id="acceso">
+  <img id="logo-acceso" src="RUSH-Logo.png" alt="RUSH" onerror="this.style.display='none'">
+  <h2>Código de acceso</h2>
+  <p>Escribe el código que te dieron. Solo se pide esta vez: el teléfono lo recuerda.</p>
+  <input id="campo" type="text" autocomplete="off" autocapitalize="characters" placeholder="RUSH-----">
+  <div id="malcodigo">Ese código no es correcto</div>
+  <button id="entrar">Entrar</button>
+</div>
+
+<script>
+// De donde salen los datos. No es un secreto: la llave de la base vive
+// en la Edge Function y nunca llega al telefono.
+var API = "https://rwoyfvddhlabmmuvkpjx.supabase.co/functions/v1/app";
+
+// Colores por estado. Vienen del CLAUDE.md: el supervisor reconoce el
+// estado por color, sin tener que leer.
+var COLORES = {
+  prelavado:   "#2f81f7",  // azul
+  tunel:       "#e3b341",  // amarillo
+  por_asignar: "#a371f7",  // morado
+  secando:     "#3fb950",  // verde
+  entregado:   "#6e7681"
+};
+
+var TEXTOS = {
+  // "Prelavado + Túnel" porque desde el flujo de un solo toque este
+  // estado cubre las dos cosas: nadie marca cuando sale del túnel, así
+  // que el carro sigue aquí hasta que se le asigna secador. El nombre
+  // viejo hacía creer que el túnel era otra etapa que alguien marcaba.
+  prelavado:   "Prelavado + Túnel",
+  tunel:       "En túnel",
+  por_asignar: "Falta asignar",
+  secando:     "Secando",
+  entregado:   "Entregado"
+};
+
+// El boton dice QUE ACCION HACE, no el estado ni algo generico como
+// "siguiente". Regla del CLAUDE.md: el supervisor lee el boton y sabe
+// exactamente que va a pasar al tocarlo.
+// Desde el 19/jul/2026 el supervisor NO marca prelavado ni túnel: no le
+// da tiempo, está asignando. Un solo toque antes de secar. Las etapas se
+// reconstruyen solas en la base (el túnel dura 4 min, está medido).
+//
+// tunel y por_asignar siguen aquí solo por los carros que venían en
+// camino cuando cambió el flujo.
+var ACCIONES = {
+  prelavado:   "Asignar unidad",
+  tunel:       "Asignar unidad",
+  por_asignar: "Asignar unidad",
+  secando:     "ENTREGAR"
+};
+
+// El boton "Borrar unidad" aparece en los dos estados en que el carro sigue
+// EN LA COLA, y desde el primer segundo: el dueno quito los umbrales de
+// tiempo el 31/ago/2026 ("dejalo permanentemente activado").
+//
+// ⚠️ Antes se veia apagado hasta cumplir 30 min sin asignar o 2 h secando, y
+// la base ademas lo rechazaba. Las dos rejas se fueron. LO QUE QUEDA ES LA
+// CONFIRMACION de abajo: es la unica, asi que no se quita.
+//
+// Los demas estados no llevan boton (un entregado se recupera desde
+// Finalizados con "Restaurar", no se borra desde aqui), y la base tambien lo
+// impide.
+var BORRAR_ESTADOS = { prelavado: true, secando: true };
+
+// Los colores más vistos en la operación real. Un solo botón por color:
+// BLANCA y BLANCO son el mismo color y contarlos aparte ensucia el
+// reporte y el historial por placa.
+var COLORES_COMUNES = ["BLANCO", "GRIS", "NEGRO", "ROJO", "AZUL", "VERDE"];
+
+var TIPOS = {
+  pickup:    "PICKUP",
+  camioneta: "CAMIONETA",
+  automovil: "AUTO",
+  pasajeros: "PASAJEROS"
+};
+
+var carros = [];
+
+// Firma de lo ultimo que se DIBUJO. Sirve para no reconstruir el HTML de
+// la lista cuando nada estructural cambio: rehacerlo cada segundo (solo
+// para mover el reloj) recreaba los botones y reiniciaba la animacion de
+// los guiones, que se veia como un tironcito. Ver pintar() y
+// actualizarRelojes().
+var firmaRender = null;
+
+// --- El boton "atras" del telefono cierra la pantalla, no sale de la app -
+// En una app de pantalla completa el back del telefono sale de la app. Aqui
+// se atrapa: cada pantalla que se abre encima (Asignar, Entrega,
+// Finalizados, Detalle) empuja un estado al historial; el back —o el boton
+// de Volver/Cancelar— consume uno y corre el cierre de esa pantalla, en vez
+// de salir. Al no quedar ninguna, el back ya si sale normal.
+//
+// La regla para no desincronizar: TODO cierre (boton o back) pasa por
+// cerrarPantalla() -> history.back() -> popstate, que es el unico que
+// ejecuta el cierre real. Abrir empuja uno; cerrar consume uno.
+var cerradores = [];
+
+function registrarPantalla(cerrar) {
+  cerradores.push(cerrar);
+  // pushState puede fallar en file:// (preview); en https (la app real)
+  // funciona. Si falla, la app sigue igual, solo sin atrapar el back.
+  try { history.pushState({ rush: cerradores.length }, ""); } catch (e) {}
+}
+
+function cerrarPantalla() {
+  if (cerradores.length) history.back();
+}
+
+// 🔴 Una respuesta que llega tarde NO puede cerrar la pantalla que este
+// encima, sea cual sea.
+//
+// Pasaba asi: el supervisor toca "Entregar", el wifi se atora, se cansa y
+// cancela, abre Corregir de otro carro y empieza a capturar — y cuando el
+// POST viejo por fin contesta, su `cerrarPantalla()` cierra CORREGIR y se
+// pierde lo capturado (o cierra Finalizados). Reproducido en el navegador.
+//
+// El arreglo es el mismo patron de `detalleToken`: se apunta cual pantalla
+// pidio, y al volver solo se cierra si sigue siendo la de encima.
+function pantallaActual() {
+  return cerradores.length ? cerradores[cerradores.length - 1] : null;
+}
+function cerrarSiSigue(mia) {
+  if (mia && pantallaActual() === mia) cerrarPantalla();
+}
+
+window.addEventListener("popstate", function () {
+  if (cerradores.length) {
+    var cerrar = cerradores.pop();
+    cerrar();
+  }
+});
+
+// --- Codigo de acceso ------------------------------------------------
+// El repositorio es publico, asi que la URL de la API se puede
+// encontrar. El codigo evita que un desconocido vea la cola o mueva
+// carros. Se teclea una vez por telefono y ahi se queda.
+//
+// Tambien se acepta en la direccion (...?c=CODIGO) para poder mandar un
+// enlace listo por WhatsApp y que el supervisor no teclee nada.
+var CODIGO = "";
+
+function cargarCodigo() {
+  var enLiga = new URLSearchParams(location.search).get("c");
+  if (enLiga) {
+    CODIGO = enLiga.trim().toUpperCase();
+    try { localStorage.setItem("rush_codigo", CODIGO); } catch (e) {}
+    // Se limpia de la barra de direcciones para que no ande a la vista.
+    history.replaceState({}, "", location.pathname);
+    return;
+  }
+  try { CODIGO = localStorage.getItem("rush_codigo") || ""; } catch (e) { CODIGO = ""; }
+}
+
+function pedirCodigo(fallo) {
+  document.getElementById("acceso").style.display = "flex";
+  // 🔴 El aviso solo se PRENDE aqui; apagarlo es cosa del que teclea de
+  // nuevo. Antes se apagaba con `fallo = false`, y como el poll de cada 3 s
+  // llama a pedirCodigo(false) cuando no hay codigo, el mensaje "Ese codigo
+  // no es correcto" se borraba solo antes de que al supervisor le diera
+  // tiempo de leerlo.
+  if (fallo) document.getElementById("malcodigo").style.display = "block";
+  document.getElementById("campo").focus();
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  document.getElementById("entrar").addEventListener("click", function () {
+    var v = document.getElementById("campo").value.trim().toUpperCase();
+    if (!v) return;
+    CODIGO = v;
+    try { localStorage.setItem("rush_codigo", CODIGO); } catch (e) {}
+    document.getElementById("acceso").style.display = "none";
+    document.getElementById("malcodigo").style.display = "none";
+    consultar();
+  });
+  document.getElementById("campo").addEventListener("keydown", function (ev) {
+    if (ev.key === "Enter") document.getElementById("entrar").click();
+  });
+});
+
+// ⚠️ La guarda de nulos NO es adorno: sin ella un campo vacio se pinta como
+// el texto "null" o "undefined" en un boton de secador o en la etiqueta de
+// estado. Esta funcion vive IGUAL en los tres HTML y este era el unico que
+// habia divergido; si se toca una, se tocan las tres.
+function escapar(t) {
+  return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) {
+    return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
+  });
+}
+
+// Iniciales para el circulo de un secador ponchado que ya no viene en
+// Jibble: se arman del nombre, para que igual se reconozca.
+function iniciales(nombre) {
+  var p = String(nombre || "").trim().split(/\s+/);
+  var a = (p[0] || "")[0] || "";
+  var b = (p[1] || "")[0] || "";
+  return (a + b).toUpperCase() || "?";
+}
+
+function reloj(segundos) {
+  if (segundos < 0) segundos = 0;
+  var m = Math.floor(segundos / 60);
+  var s = segundos % 60;
+  if (m < 60) return m + ":" + (s < 10 ? "0" : "") + s;
+  var h = Math.floor(m / 60);
+  m = m % 60;
+  return h + ":" + (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+}
+
+function describir(c) {
+  // Como reconocer el carro a simple vista. Marca, submarca y tipo salen de
+  // la FOTO (24/jul/2026); el supervisor ya no captura datos del vehiculo.
+  //
+  // Si la foto detecto el MODELO (submarca), ese manda: "TOYOTA COROLLA
+  // BLANCO", y se quita el tipo generico — un Corolla ya se sabe que es
+  // auto. Se deja la marca para que modelos ambiguos no queden huerfanos
+  // ("MAZDA MAZDA3", "CHRYSLER 300"). Si no hay modelo, cae a lo que puso
+  // la cajera: TIPO COLOR (mas la marca si la foto alcanzo a leer el logo).
+  var partes = [];
+  if (c.submarca) {
+    if (c.marca) partes.push(c.marca);
+    partes.push(c.submarca);
+  } else {
+    if (c.tipo_unidad) partes.push(TIPOS[c.tipo_unidad] || c.tipo_unidad.toUpperCase());
+    if (c.color) partes.push(c.color);
+    if (c.marca) partes.push(c.marca);
+    // La placa NO va aqui: tiene su propio renglon debajo (ver .placa). Si
+    // no hay datos pero si placa, el "Sin datos" no aparece.
+    if (partes.length === 0) {
+      return c.placa ? "" : '<span class="falta">Sin datos del carro</span>';
+    }
+    return escapar(partes.join(" "));
+  }
+  if (c.color) partes.push(c.color);
+  return escapar(partes.join(" "));
+}
+
+function pintar() {
+  // Si nada de lo que afecta el DIBUJO cambio, no se reconstruye el HTML:
+  // hacerlo cada segundo (solo por el reloj) recreaba los botones y
+  // reiniciaba la animacion de los guiones. Los relojes y el rojo de
+  // demora los mueve actualizarRelojes(), que no toca los botones.
+  // El reloj y "demorado" NO entran en la firma: son por tiempo, no por
+  // datos, y se actualizan aparte.
+  var firma = JSON.stringify(carros.map(function (c) {
+    return [c.id, c.estado, c.linea, c.es_express, c.producto, c.variante,
+            c.aviso, c.a_mano, c.tipo_unidad, c.color, c.marca, c.submarca, c.placa,
+            c.foto, (c.ausentes || []).join(","), (c.secadores || []).join(","), !!FOTOS_RENDIDAS[c.id]];
+  }));
+  if (firma === firmaRender && document.querySelector("#lista .carro")) {
+    return;
+  }
+  firmaRender = firma;
+
+  var ahora = Date.now();
+  var html = "";
+
+  for (var i = 0; i < carros.length; i++) {
+    var c = carros[i];
+    var seg = Math.floor((ahora - new Date(c.etapa_inicio).getTime()) / 1000);
+    // limite -1 = rojo siempre (falta asignar), 0 = nunca (tunel).
+    var demorado = c.limite === -1 || (c.limite > 0 && seg > c.limite);
+    var servicio = (c.producto || "") + (c.variante && c.variante !== c.producto ? " · " + c.variante : "");
+
+    // data-id: para que actualizarRelojes() encuentre el carro de cada
+    // tarjeta sin reconstruirla.
+    html += '<div class="carro' + (demorado ? " demorado" : "") + (c.es_express ? " expreso" : "") +
+            marcoDelCarro(c) +
+            '" data-id="' + c.id +
+            '" style="--color:' + (COLORES[c.estado] || "#6e7681") + '">';
+    html +=   '<div class="unidad">' + describir(c) + '</div>';
+    // La placa, en su renglon, entre el tipo de carro y el servicio. Solo
+    // aparece si se pudo leer: si no, no se pinta nada (ni hueco, ni un
+    // "sin placa" que no le sirve de nada al supervisor).
+    // Se muestra con guiones si la lectura los trajo (placa_display); en la
+    // base la placa vive SIEMPRE sin guiones (para casar caja<->supervisor).
+    if (c.placa) html += '<div class="placa">' + escapar(c.placa_display || c.placa) + '</div>';
+    // Columna derecha: el reloj SIEMPRE, y ENCIMA de el el boton de borrar
+    // cuando el carro sigue en la cola (prelavado o secando). Va HABILITADO
+    // desde el primer segundo (31/ago/2026). Los demas estados no tienen
+    // boton: el .medidor queda con solo el reloj y se ve identico a antes.
+    html +=   '<div class="medidor">';
+    if (BORRAR_ESTADOS[c.estado]) {
+      html += '<button class="borrar" data-borrar="' + c.id + '"' +
+              ' title="Sacar de la cola sin contar sus tiempos">Borrar unidad</button>';
+    }
+    html +=     '<div class="reloj">' + reloj(seg) + '</div>';
+    html +=   '</div>';
+    // Los secadores van DENTRO del bloque del servicio, del mismo tamaño,
+    // para que el dueño los vea sin abrir el carro. Solo si ya hay: antes
+    // de asignar la lista viene vacia y no se pinta nada.
+    var secTarjeta = (c.secadores && c.secadores.length)
+      ? '<div class="secadores-tarjeta">' + escapar(c.secadores.join(", ")) + '</div>'
+      : "";
+    html +=   '<div class="servicio">' + escapar(servicio) + secTarjeta + '</div>';
+    // Foto: si ya hay, se ve la miniatura; si no, el icono de camara.
+    // Nunca estorba ni bloquea: el carro puede salir sin foto.
+    //
+    // Se habilita SOLO cuando el carro ya tiene carril y secador. Antes de
+    // eso el carro puede no estar identificable todavia, y ahi es cuando se
+    // le pegaba la foto al carro equivocado (paso el 19/jul). Deshabilitado
+    // -> se ve apagado, no desaparece.
+    var asignado = !!(c.linea && c.secadores && c.secadores.length);
+    html +=   '<div class="fotos">';
+    // Boton de info (la i en un circulo), donde antes estaba la galeria.
+    // Abre el desglose de tiempos del carro. Es un boton y no un toque a la
+    // tarjeta a proposito, para no abrirlo por accidente.
+    html +=     '<button class="info" data-info="' + c.id + '" title="Ver tiempos del carro">' +
+                  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+                  'stroke-linecap="round" stroke-linejoin="round">' +
+                  '<circle cx="12" cy="12" r="9"></circle>' +
+                  '<line x1="12" y1="11" x2="12" y2="16"></line>' +
+                  '<circle cx="12" cy="7.6" r="1.05" fill="currentColor" stroke="none"></circle>' +
+                  '</svg></button>';
+    // La camara. El de galeria se quito el 20/jul/2026 — no se usaba.
+    html +=     '<button class="foto" data-foto="' + c.id + '"' +
+                  (asignado ? ' title="Tomar foto del carro"'
+                            : ' disabled title="Primero asigna carril y secador"') + '>' +
+                  (c.foto ? '<img src="' + escapar(c.foto) + '" alt="">' : '&#128247;') +
+                '</button>';
+    html +=   '</div>';
+
+    html +=   '<div class="estado">';
+    // Un lavado a mano NO entra al tunel, asi que su etiqueta no lo
+    // menciona: dice solo "Prelavado" y la banderita cian se encarga de
+    // avisar lo demas. Prometerle un tunel a un carro que se lava a mano
+    // es de las cosas que hacen que el supervisor deje de creerle a la
+    // pantalla.
+    var textoEstado = TEXTOS[c.estado] || c.estado;
+    if (c.a_mano && c.estado === "prelavado") textoEstado = "Prelavado";
+    html +=     '<span class="etiqueta">' + escapar(textoEstado) + '</span>';
+    // Mientras no tenga linea, la etiqueta recuerda a donde va. Ya
+    // asignado seria repetir lo que dice la etiqueta de al lado.
+    if (c.es_express) {
+      html += '<span class="express">&#9873; EXPRESS' + (c.linea ? "" : " &rarr; LÍNEA 1") + '</span>';
+    }
+    // Va DESPUES del express y en su propio color: si el carro es las dos
+    // cosas, se ven las dos. El texto sale de la base (columna generada),
+    // asi que un producto nuevo en "Paquetes Especial" se anuncia solo.
+    // Dos banderitas independientes: QUE trabajo es, y COMO se lava. Un
+    // Super Brillo lavado a mano lleva las dos, y las dos importan.
+    if (c.aviso) {
+      html += '<span class="aviso-servicio ' + claseDeAviso(c.aviso) + '">&#9888; ' +
+              escapar(c.aviso) + '</span>';
+    }
+    if (c.a_mano) {
+      html += '<span class="aviso-servicio mano">&#9888; LAVADO A MANO</span>';
+    }
+    if (c.linea)      html += '<span class="linea">Línea ' + escapar(c.linea) + '</span>';
+    html +=   '</div>';
+
+    // Se poncho quien lo estaba secando. No se reasigna solo: el
+    // supervisor decide, porque puede ser que otro ya lo haya tomado.
+    if (c.ausentes && c.ausentes.length) {
+      html += '<div class="ausente">&#9888; ' + escapar(c.ausentes.join(", ")) +
+              ' marcó salida.<br>Asigna a otro secador</div>';
+    }
+
+    // La foto se rindio tras ~35 min de reintentos. Antes esto solo salia en
+    // la CONSOLA —que nadie mira en un telefono— y la foto se borraba: el
+    // supervisor la habia tomado, la daba por hecha, y el carro se quedaba
+    // sin ella para siempre. Ahora se le dice en la tarjeta del carro, que
+    // es donde esta el boton para volver a tomarla.
+    if (FOTOS_RENDIDAS[c.id]) {
+      html += '<div class="ausente">&#9888; La foto no se pudo subir.' +
+              '<br>Tómala otra vez</div>';
+    }
+
+    html +=   '<div class="acciones">';
+    // Los rayos rojos giran solo cuando el boton dice "Asignar unidad"
+    // (todo lo que no es secando). En "Entregado" no: ahi es verde y no
+    // se confunde.
+    html +=     '<button class="avanzar' + (c.estado !== "secando" ? " girando" : "") +
+                  '" data-accion="avanzar" data-carro="' + c.id + '">' +
+                  escapar(ACCIONES[c.estado] || "Siguiente") + '</button>';
+    // Corregir abre la pantalla de captura (tipo, color, marca, secadores).
+    // Sirve siempre, incluso antes de asignar. Si un secador ya marco
+    // salida, lleva los guiones rojos: es aqui donde se reasigna.
+    var secadorSalio = c.ausentes && c.ausentes.length;
+    html +=     '<button class="corregir' + (secadorSalio ? " girando" : "") +
+                  '" data-editar="' + c.id + '">Corregir</button>';
+    // Regresar deshace el paso anterior. En prelavado no hay a donde.
+    html +=     '<button class="corregir" data-accion="corregir" data-carro="' + c.id +
+                  '"' + (c.estado === "prelavado" ? " disabled" : "") + '>Regresar</button>';
+    html +=   '</div>';
+    html += '</div>';
+  }
+
+  document.getElementById("lista").innerHTML = html;
+  document.getElementById("vacio").style.display = carros.length ? "none" : "block";
+  document.getElementById("cuantos").textContent = carros.length ? carros.length + " en proceso" : "";
+}
+
+// Cada segundo, SOLO mueve el reloj y el rojo de demora de cada tarjeta,
+// sin reconstruir el HTML. Asi la animacion de los guiones del boton
+// corre fluida en vez de reiniciarse cada segundo. La tarjeta se ubica
+// por su data-id.
+function actualizarRelojes() {
+  var ahora = Date.now();
+  var tarjetas = document.querySelectorAll("#lista .carro");
+  for (var i = 0; i < tarjetas.length; i++) {
+    var el = tarjetas[i];
+    var id = Number(el.getAttribute("data-id"));
+    var c = null;
+    for (var j = 0; j < carros.length; j++) {
+      if (carros[j].id === id) { c = carros[j]; break; }
+    }
+    if (!c) continue;
+
+    var seg = Math.floor((ahora - new Date(c.etapa_inicio).getTime()) / 1000);
+    var demorado = c.limite === -1 || (c.limite > 0 && seg > c.limite);
+    var rel = el.querySelector(".reloj");
+    if (rel) rel.textContent = reloj(seg);
+    // El rojo de demora se maneja con la clase en la tarjeta: togglearla
+    // NO recrea el boton, asi que los guiones siguen corriendo.
+    el.classList.toggle("demorado", demorado);
+    // ⛔ Aqui vivia el codigo que HABILITABA el boton de borrar al cruzar su
+    // umbral (30 min sin asignar / 2 h secando). Se fue el 31/ago/2026: el
+    // boton ya nace habilitado en pintar(), asi que no hay nada que prender
+    // cada segundo. Si algun dia vuelve un umbral, tiene que volver AQUI y no
+    // en pintar(): pintar() no se corre cada segundo (su firma no incluye el
+    // tiempo), y el boton no se prenderia hasta que cambiara algun dato.
+  }
+}
+
+// Cuantas consultas seguidas han fallado, y cuando fue la ultima buena.
+var fallosSeguidos = 0;
+var ultimoDatoBueno = 0;
+
+function avisarError(hay) {
+  var e = document.getElementById("error");
+
+  if (!hay) { fallosSeguidos = 0; e.style.display = "none"; return; }
+  fallosSeguidos++;
+
+  // Un parpadeo del wifi no debe llenar la pantalla de alarmas: la siguiente
+  // consulta lo arregla sola. Pero SI hay que avisar cuando deja de ser un
+  // parpadeo. Antes el aviso solo salia con la cola vacia, asi que con carros
+  // en pantalla un corte de red no producia ninguna senal: los cronometros
+  // seguian corriendo y las tarjetas se seguian poniendo rojas con datos de
+  // hace media hora, y el supervisor no tenia como saberlo.
+  var duro = fallosSeguidos >= 4;                 // ~12 s de silencio
+  if (!duro && carros.length > 0) { e.style.display = "none"; return; }
+
+  e.style.display = "block";
+  if (duro && ultimoDatoBueno) {
+    var min = Math.floor((Date.now() - ultimoDatoBueno) / 60000);
+    e.textContent = min >= 1
+      ? "Sin conexion. Lo que ves es de hace " + min + (min === 1 ? " minuto." : " minutos.")
+      : "Sin conexion. Reintentando...";
+  } else {
+    e.textContent = "Sin conexion. Reintentando...";
+  }
+}
+
+// Corte a los 20 s. Sin esto, una peticion colgada con el wifi flojo dejaba
+// `ocupado` puesto para siempre y TODOS los botones de la cola dejaban de
+// responder, sin alerta y sin cambio de color: para el supervisor la app se
+// trababa y la unica salida era cerrarla y volverla a abrir.
+var PEDIR_CORTE_MS = 20000;
+
+// ⚠️ /foto NO puede usar el corte corto. Esa ruta sube la imagen y ADEMAS
+// espera la lectura de la placa, que del lado del servidor corta a los 25 s:
+// con 20 s se abortarian subidas que iban bien, y el reintento volveria a
+// pagar la lectura en Anthropic. El corte largo sigue existiendo para que una
+// peticion de verdad colgada no deje el candado de la cola de fotos puesto.
+var CORTE_POR_RUTA = { "/foto": 45000 };
+
+function pedir(ruta, opciones) {
+  opciones = opciones || {};
+  opciones.headers = opciones.headers || {};
+  opciones.headers["x-codigo"] = CODIGO;
+  opciones.cache = "no-store";
+  if (typeof AbortController === "function" && !opciones.signal) {
+    var corta = new AbortController();
+    opciones.signal = corta.signal;
+    var corte = CORTE_POR_RUTA[ruta.split("?")[0]] || PEDIR_CORTE_MS;
+    var reloj = setTimeout(function () { corta.abort(); }, corte);
+    return fetch(API + ruta, opciones).then(
+      function (r) { clearTimeout(reloj); return r; },
+      function (e) { clearTimeout(reloj); throw e; }
+    );
+  }
+  return fetch(API + ruta, opciones);
+}
+
+// --- Aviso cuando entra un carro -------------------------------------
+// El CLAUDE.md lo pide asi: el supervisor no siempre ve la pantalla, y
+// un carro que entra sin que nadie se entere es justo el problema que
+// esta app existe para resolver.
+
+var conocidos = null;   // null = primera carga, no se avisa de nada
+var audio = null;
+
+// El sonido se genera aqui mismo en vez de traer un archivo: funciona
+// aunque no haya wifi y no hay nada que descargar.
+function despertarAudio() {
+  if (audio) return;
+  try {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) audio = new AC();
+  } catch (e) {}
+}
+
+function sonar() {
+  if (!audio) return;
+  try {
+    if (audio.state === "suspended") audio.resume();
+    // Dos notas cortas ascendentes: se oyen sobre el ruido del taller
+    // sin ser una alarma molesta.
+    [[880, 0], [1320, 0.16]].forEach(function (par) {
+      var osc = audio.createOscillator();
+      var vol = audio.createGain();
+      osc.type = "square";
+      osc.frequency.value = par[0];
+      osc.connect(vol);
+      vol.connect(audio.destination);
+      var t = audio.currentTime + par[1];
+      vol.gain.setValueAtTime(0.0001, t);
+      vol.gain.exponentialRampToValueAtTime(0.35, t + 0.02);
+      vol.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+      osc.start(t);
+      osc.stop(t + 0.15);
+    });
+  } catch (e) {}
+}
+
+function avisarCarrosNuevos(nuevos) {
+  var ids = nuevos.map(function (c) { return c.id; });
+
+  if (conocidos === null) { conocidos = ids; return; }   // primera carga
+
+  var entraron = ids.filter(function (id) { return conocidos.indexOf(id) < 0; });
+  conocidos = ids;
+
+  if (entraron.length > 0) {
+    sonar();
+    // Patron largo-corto-largo: se siente distinto a una notificacion
+    // cualquiera del telefono.
+    if (navigator.vibrate) navigator.vibrate([250, 120, 250]);
+  }
+}
+
+// La pantalla no se debe apagar sola mientras el supervisor trabaja.
+var candado = null;
+function mantenerPantallaEncendida() {
+  if (!navigator.wakeLock) return;
+  navigator.wakeLock.request("screen")
+    .then(function (c) {
+      candado = c;
+      // ⚠️ Hay que soltar la variable cuando Android suelta el candado. Sin
+      // esto, `candado` se quedaba con el objeto ya liberado, `!candado` daba
+      // false y NUNCA se volvia a pedir: tras el primer minimizado la pantalla
+      // se apagaba sola el resto del turno, justo lo que el codigo de abajo
+      // dice que evita.
+      c.addEventListener("release", function () { candado = null; });
+    })
+    .catch(function () {});
+}
+document.addEventListener("visibilitychange", function () {
+  // Android suelta el candado al minimizar; se vuelve a pedir al volver.
+  if (document.visibilityState === "visible" && !candado) mantenerPantallaEncendida();
+});
+
+// 🔴 La respuesta VIEJA no puede pisar a la nueva.
+//
+// El poll dispara cada 3 s sin esperar a que la anterior conteste. Con el wifi
+// del taller flojo eso deja dos (o cinco) respuestas en vuelo, y llegan en el
+// orden que se les da la gana: una de hace 20 segundos aterriza DESPUES de la
+// recien pedida y repinta la cola con carros que ya se entregaron, tarjetas
+// que ya no estan rojas y secadores que ya se reasignaron. El supervisor ve
+// la cola "brincar" hacia atras sin explicacion.
+//
+// El contador es el mismo patron que ya usan los buscadores de la caja y del
+// reporte: cada consulta se lleva su numero y solo se pinta la ultima.
+var consultaToken = 0;
+// Numero de la ultima consulta que de verdad PINTO la cola. No es lo mismo
+// que `consultaToken` (la ultima LANZADA), y confundirlos dejaba mudo el
+// aviso de "sin conexion" con el wifi colgado. Ver el .catch de abajo.
+var consultaOk = 0;
+// Cuantas consultas hay en vuelo. Con el wifi flojo el poll de cada 3 s
+// apilaba peticiones que no se abortan hasta los 20 s: hasta siete a la vez
+// por el mismo dato. No se lanza otra si ya hay TOPE_EN_VUELO.
+var enVuelo = 0;
+var TOPE_EN_VUELO = 3;
+
+function consultar() {
+  if (!CODIGO) { pedirCodigo(false); return; }
+  if (enVuelo >= TOPE_EN_VUELO) return;
+  var miToken = ++consultaToken;
+  enVuelo++;
+
+  pedir("/cola")
+    .then(function (r) {
+      // 🔴 Aqui se comparaba contra `consultaToken` —la ultima consulta
+      // LANZADA— y eso congelaba la cola PARA SIEMPRE en cuanto la latencia
+      // pasaba de los 3 s del poll: cada respuesta llegaba cuando ya se
+      // habia lanzado otra, asi que NINGUNA se pintaba. Sin error de por
+      // medio no salia el banner, los cronometros seguian corriendo sobre
+      // datos viejos, un carro nuevo no aparecia ni sonaba, y el outbox de
+      // fotos dejaba de empujarse (flushOutbox solo corre al pintar). El
+      // corte de 20 s no ayuda: con 3-19 s no se aborta nada. Medido en el
+      // arnes: latencia 3.5 s -> 13 respuestas en 39 s, 0 pintadas.
+      //
+      // Lo correcto es descartar solo lo que es MAS VIEJO que lo ultimo
+      // PINTADO. Eso conserva "la respuesta vieja no pisa a la nueva" y
+      // quita el bloqueo: con las respuestas en orden, cada una pinta.
+      if (miToken <= consultaOk) return null;       // llego tarde: se tira
+      if (r.status === 401) {
+        // Codigo malo: se olvida para que no siga fallando en silencio.
+        try { localStorage.removeItem("rush_codigo"); } catch (e) {}
+        CODIGO = "";
+        pedirCodigo(true);
+        return null;
+      }
+      return r.json();
+    })
+    .then(function (d) {
+      if (!d) return;
+      // Segundo filtro, por si dos respuestas venian en vuelo y la vieja
+      // aterriza despues de que la nueva ya pinto.
+      if (miToken <= consultaOk) return;
+      // ⚠️ Antes era `carros = d.carros || []`, y eso convertia CUALQUIER
+      // respuesta que no fuera la cola —un 500 de la base, un 503 por un
+      // secreto perdido— en "no hay carros en proceso", y en el renglon de
+      // abajo apagaba el aviso de error. Con 15 carros lavandose, la pantalla
+      // decia que ya no habia nada y no daba ninguna senal de falla.
+      if (!d.carros || Object.prototype.toString.call(d.carros) !== "[object Array]") {
+        avisarError(true);
+        return;                       // no se toca la cola: mas vale vieja que falsa
+      }
+      carros = d.carros;
+      ultimoDatoBueno = Date.now();
+      consultaOk = miToken;           // esta consulta SI trajo datos
+      avisarCarrosNuevos(carros);
+      avisarError(false);
+      pintar();
+      // El poll es tambien el latido que empuja la cola de fotos: mira si
+      // toca reintentar alguna. Casi siempre sale sin subir nada (candados).
+      flushOutbox();
+    })
+    // La falla vieja tampoco cuenta: si una consulta de hace 20 s se corta
+    // DESPUES de que la nueva ya pinto bien, encender el aviso seria mentir
+    // al reves.
+    //
+    // 🔴 Pero se comparaba contra `consultaToken` —el numero de la ULTIMA
+    // consulta LANZADA—, y con el wifi COLGADO (la conexion se abre y nunca
+    // contesta) eso deja al supervisor sin ninguna senal: cada peticion se
+    // corta a los 20 s, y para entonces el poll de cada 3 s ya lanzo siete
+    // mas, asi que TODA falla se descarta por vieja y `fallosSeguidos` se
+    // queda en cero para siempre. Medido en el navegador: 85 s colgado, 22
+    // peticiones abortadas, 0 avisos — con los cronometros corriendo y las
+    // tarjetas poniendose rojas con datos de hace minuto y medio.
+    //
+    // Lo que hay que preguntar no es "salio otra despues", sino "ya PINTO
+    // bien alguna despues". Si nadie pinto, esta falla es la mas reciente
+    // que se sabe y si cuenta.
+    .catch(function () { if (miToken > consultaOk) avisarError(true); })
+    // Pase lo que pase, esta consulta ya no esta en vuelo. Sin esto el
+    // contador se quedaria arriba del tope y la cola dejaria de sondear.
+    .then(function () { enVuelo--; }, function () { enVuelo--; });
+}
+
+// --- Asignar linea y secadores ---------------------------------------
+// La marca ya no se captura a mano: sale de la foto (24/jul/2026). Por eso
+// se quito la grilla de marcas y sus dos listas.
+
+// De que color va la banderita de servicio especial.
+//
+// Solo se nombran las DOS excepciones; todo lo demas cae en morado. Eso
+// importa: cuando el dueno de de alta un producto nuevo en "Paquetes
+// Especial", se va a anunciar solo y en morado, sin tocar codigo. Si
+// aqui se listaran todos, un producto nuevo saldria sin color.
+//
+// El texto viene de la base (columna generada carros.aviso); esto es
+// solo presentacion, por eso vive aqui y no en SQL.
+var COLOR_AVISO = {
+  "DETALLADO": "detallado"
+};
+function claseDeAviso(aviso) {
+  return COLOR_AVISO[aviso] || "encerado";
+}
+
+// De que color va el marco cuando el carro lleva varias banderitas.
+// Gana el servicio sobre el "a mano": el a mano ya se ve en su etiqueta,
+// y el servicio es el que genera las quejas de cliente.
+function marcoDelCarro(c) {
+  if (c.aviso)  return " marco-" + claseDeAviso(c.aviso);
+  if (c.a_mano) return " marco-mano";
+  return "";
+}
+
+// Se llenan desde Jibble, que se sincroniza solo cada minuto.
+var SECADORES = [];
+var FUERA = 0;
+// 🔴 "Nadie aparece checado" es un DATO, y se estaba pintando tambien cuando
+// la lista no se habia pedido todavia (la primera vez que se abre Asignar) o
+// cuando /secadores fallo. Un error disfrazado de dato: el supervisor concluye
+// que nadie checo. Son tres estados distintos y se dicen distinto.
+var SECADORES_ESTADO = "nunca";   // "nunca" | "ok" | "falla"
+
+// Como se lee cada rol debajo del nombre. Solo se muestra para los que
+// NO son secadores: poner "secador" en la seccion de secadores seria
+// repetir el titulo trece veces.
+var ROLES = {
+  tunelero:   "tunelero",
+  supervisor: "supervisor",
+  gerente:    "gerente"
+};
+
+function cargarSecadores() {
+  return pedir("/secadores")
+    .then(function (r) {
+      if (!r.ok) throw new Error("El servidor respondio " + r.status);
+      return r.json();
+    })
+    .then(function (d) {
+      // Misma regla que la cola: una respuesta que NO es una lista de
+      // secadores no es "hoy no hay nadie checado" — es una falla. Con
+      // `d.secadores || []` la grilla de asignar salia VACIA y el supervisor
+      // se quedaba sin nadie a quien asignar, con el taller lleno de gente y
+      // sin ninguna senal de que algo se rompio.
+      if (!d || d.ok === false ||
+          Object.prototype.toString.call(d.secadores) !== "[object Array]") {
+        throw new Error("La respuesta no trae la lista de secadores");
+      }
+      SECADORES = d.secadores;
+      FUERA = d.fuera || 0;
+      SECADORES_ESTADO = "ok";
+    })
+    .catch(function () {
+      // Se conserva la lista anterior, que es mejor que ninguna; pero si no
+      // hay ninguna, la pantalla tiene que decir que fallo, no que no hay
+      // nadie.
+      SECADORES_ESTADO = "falla";
+    });
+}
+
+// Una sola pantalla con DOS modos. asig.modo dice cual:
+//
+//   "asignar"  -> lo abre el boton grande. Pide linea y secadores.
+//   "corregir" -> lo abre el boton Corregir. Solo captura datos; nada
+//                 es obligatorio, el supervisor entra a poner una cosa
+//                 y se sale.
+//
+// Es la misma pantalla y no dos porque el supervisor ya la conoce: lo
+// unico que cambia es cuanto pide.
+var asig = null;
+// Se abre el campo de "otro color" cuando el supervisor lo pide, o solo,
+// si el color que ya trae el carro no es de los comunes.
+var verColorManual = false;
+
+function abrirPantalla(c, modo) {
+  asig = {
+    carro: c.id,
+    modo: modo,
+    estado: c.estado,
+    express: !!c.es_express,
+    tipo: c.tipo_unidad || null,
+    color: c.color || null,
+    linea: c.linea || null,
+    // Se PRESELECCIONan los secadores que el carro ya tiene (ids), para que
+    // en Corregir salgan marcados y se puedan editar libre, igual que el
+    // tipo y el color. En Asignar viene vacio (el carro aun no tiene). Se
+    // filtran nulos (asignaciones viejas sin id de empleado).
+    secadores: (c.secador_ids || []).filter(Boolean),
+    // id -> nombre de los secadores actuales, para resolver el nombre
+    // aunque la persona haya checado salida (ya no este en Jibble).
+    nombreActualPorId: {},
+    // Foto obligatoria al asignar (26/jul/2026). Aqui SOLO se toma; NO se
+    // sube hasta que /asignar responda ok, para que el flujo de subida y
+    // lectura de placa quede igual que antes (en background, sin bloquear).
+    // fotoDataURL es la imagen ya achicada, lista para mandar al confirmar.
+    //
+    // 🔑 El requisito se cumple con la PLACA, no con la foto (15/ago/2026).
+    // Antes bastaba con que existiera una foto (`!!c.foto`), asi que un carro
+    // fotografiado desde la caja sin que se leyera la placa daba el requisito
+    // por cumplido y nadie volvia a intentar: 65 carros en 11 dias (~6 al dia)
+    // acabaron con foto y sin placa. Ahora, si hay foto pero no salio la placa,
+    // se le pide otra al supervisor — que la toma en el patio, donde el carro
+    // si se deja fotografiar. Ver CLAUDE.md §11.70.
+    foto: c.foto || null,
+    fotoPreview: c.foto || null,
+    fotoDataURL: null,
+    fotoLista: !!c.placa,
+    fotoSinPlaca: !!c.foto && !c.placa,
+    fotoProcesando: false
+  };
+  var idsPrev = c.secador_ids || [], nomsPrev = c.secadores || [];
+  for (var kk = 0; kk < idsPrev.length; kk++) {
+    if (idsPrev[kk]) asig.nombreActualPorId[idsPrev[kk]] = nomsPrev[kk] || "Secador";
+  }
+  verColorManual = false;
+
+  // Los express solo pueden ir a la 1, asi que se elige sola: un toque
+  // menos, y se elimina la posibilidad de equivocarse.
+  if (asig.express) asig.linea = 1;
+
+  var detalle = [c.producto];
+  if (c.variante && c.variante !== c.producto) detalle.push(c.variante);
+  if (c.es_express) detalle.push("va a la LÍNEA 1");
+  // El aviso se repite aqui a proposito, aunque ya salga en la tarjeta:
+  // esta es la pantalla donde se decide QUIEN lo seca, y es el momento
+  // exacto en que conviene que el supervisor sepa que no es un lavado
+  // normal. Repetirlo cuesta un renglon; no repetirlo cuesta una queja.
+  if (c.aviso)  detalle.push("⚠ " + c.aviso);
+  if (c.a_mano) detalle.push("⚠ LAVADO A MANO");
+
+  document.getElementById("asig-quien").innerHTML = describir(c);
+  document.getElementById("asig-cual").textContent = detalle.filter(Boolean).join("  ·  ");
+
+  // Linea y secadores solo cuando se esta asignando o corrigiendo un carro
+  // que YA seca. Al corregir, los secadores vienen preseleccionados y se
+  // editan (editar_carro los reconcilia sin tocar el reloj); la linea
+  // tambien se puede cambiar ahi.
+  document.getElementById("asig-solo-asignar").style.display =
+    (modo === "asignar" || c.estado === "secando") ? "block" : "none";
+
+  // Tipo y color solo se editan en Corregir (por si la nota de la cajera
+  // viene mal). Al asignar, la pantalla es solo linea + secador.
+  document.getElementById("asig-datos").style.display =
+    (modo === "corregir") ? "block" : "none";
+
+  var pantalla = document.getElementById("asignar");
+  pantalla.style.display = "block";
+  document.getElementById("barra").style.display = "flex";
+  // Hasta ARRIBA. #asignar es un contenedor fijo con su propio scroll:
+  // conserva donde quedo la vez pasada (tipico: abajo, en secadores), y
+  // el supervisor no ve que arriba hay cosas por llenar. window.scrollTo
+  // mueve el body, no este contenedor — hay que reiniciarlo a mano.
+  pantalla.scrollTop = 0;
+  window.scrollTo(0, 0);
+  pintarAsignacion();
+  registrarPantalla(cerrarAsignacion);   // el back del telefono la cierra
+
+  // Se refresca al abrir: entre que se cargo la pantalla y llego este
+  // carro, alguien pudo haber checado, salido o entrado a descanso.
+  // Tambien en Corregir de un carro secando, porque ahi los secadores ya
+  // se editan y hay que tener la lista fresca.
+  if (modo === "asignar" || (modo === "corregir" && c.estado === "secando")) {
+    cargarSecadores().then(pintarAsignacion);
+  }
+}
+
+function abrirAsignacion(c) { abrirPantalla(c, "asignar"); }
+
+function cerrarAsignacion() {
+  asig = null;
+  document.getElementById("asignar").style.display = "none";
+  document.getElementById("barra").style.display = "none";
+
+  // Si se venia de los entregados, se regresa ahi y no a la cola: el
+  // supervisor estaba revisando esa lista y perderla seria hacerlo
+  // buscar el carro otra vez. Se recarga para que el dato ya salga
+  // corregido.
+  if (volverAEntregados) {
+    volverAEntregados = false;
+    // Sin registrar: el estado de Finalizados sigue en la pila desde que se
+    // abrio (Corregir solo lo escondio, no lo saco).
+    abrirEntregados(true);
+  }
+}
+
+function botonOpcion(texto, elegida, atributos, clases) {
+  return '<button class="opcion' + (elegida ? " elegida" : "") +
+         (clases ? " " + clases : "") + '" ' +
+         (atributos || "") + '>' + escapar(texto) + '</button>';
+}
+
+function pintarAsignacion() {
+  if (!asig) return;
+
+  // --- Tipo de unidad ---
+  // Se toca dos veces para quitarlo: el supervisor puede haberle picado
+  // por error y debe poder dejarlo vacio en vez de tener que inventar uno.
+  var h = "";
+  var tipos = ["automovil", "camioneta", "pickup", "pasajeros"];
+  for (var t = 0; t < tipos.length; t++) {
+    h += botonOpcion(TIPOS[tipos[t]], asig.tipo === tipos[t], 'data-tipo="' + tipos[t] + '"');
+  }
+  document.getElementById("asig-tipos").innerHTML = h;
+
+  // --- Color ---
+  h = "";
+  for (var k = 0; k < COLORES_COMUNES.length; k++) {
+    h += botonOpcion(COLORES_COMUNES[k], asig.color === COLORES_COMUNES[k],
+                     'data-color="' + escapar(COLORES_COMUNES[k]) + '"');
+  }
+  // Boton para un color que no esta en los comunes. Si el color que ya
+  // trae el carro no es de la lista (ej. GUINDA de la nota), el boton lo
+  // muestra y queda activo — el supervisor ve lo que hay.
+  var colorEsOtro = asig.color && COLORES_COMUNES.indexOf(asig.color) < 0;
+  h += botonOpcion(colorEsOtro ? asig.color : "Otro…", colorEsOtro, 'data-color-otro="1"');
+  document.getElementById("asig-colores").innerHTML = h;
+
+  // El campo se muestra si el supervisor lo pidio o si el color ya es de
+  // "otro". No se reescribe su valor mientras esta enfocado, para no
+  // pelear con lo que se esta tecleando.
+  var caja = document.getElementById("asig-color-otro");
+  var campoColor = document.getElementById("asig-color-input");
+  if (verColorManual || colorEsOtro) {
+    caja.style.display = "block";
+    if (document.activeElement !== campoColor) {
+      campoColor.value = colorEsOtro ? asig.color : "";
+    }
+  } else {
+    caja.style.display = "none";
+  }
+
+  // La marca ya no se captura aqui: sale de la foto (24/jul/2026).
+
+  // --- Lineas ---
+  h = "";
+  for (var n = 1; n <= 6; n++) {
+    // La 1 es solo de express; las demas solo para los que no lo son.
+    var permitida = asig.express ? (n === 1) : (n !== 1);
+    h += botonOpcion(
+      "Línea " + n,
+      asig.linea === n,
+      'data-linea="' + n + '"' + (permitida ? "" : " disabled"),
+      n === 1 ? "solo-express" : ""
+    );
+  }
+  document.getElementById("asig-lineas").innerHTML = h;
+
+  // --- Secadores ---
+  // Se pintan DOS rejillas con la misma funcion: arriba los secadores
+  // (el caso comun) y abajo el tunelero, los supervisores y el gerente,
+  // que tambien secan cuando hay carga. La division sale de "orden", que
+  // ya viene calculado de la base — la pantalla no sabe de jerarquias.
+  function pintarPersona(p) {
+    var puesto = asig.secadores.indexOf(p.id) >= 0;
+    // Al llegar a 4 se apagan los demas, en vez de avisar despues del
+    // error. Mas vale que el boton no se deje tocar a que regane.
+    var lleno = asig.secadores.length >= 4 && !puesto;
+    var clases = "persona" + (p.estado === "descanso" ? " descansando" : "");
+
+    // Al gerente no se le pone "agregado a mano": no es un parche de
+    // turno, es de planta. Decirlo confundiria.
+    var nota = p.fuera ? "ya no aparece"
+             : p.estado === "descanso" ? "en descanso"
+             : (p.manual && !p.permanente) ? "agregado a mano"
+             : (p.rol && p.rol !== "secador") ? ROLES[p.rol]
+             : "";
+
+    var dentro = '<span class="circulo" style="background:' + escapar(p.color || "#6e7681") + '">' +
+                   escapar(p.iniciales || "?") + '</span>' +
+                 '<span><span class="quien2">' + escapar(p.mostrar) + '</span>' +
+                   (nota ? '<span class="nota2">' + escapar(nota) + '</span>' : '') +
+                 '</span>';
+
+    return '<button class="opcion ' + clases + (puesto ? " elegida" : "") + '" ' +
+           'data-secador="' + escapar(p.id) + '"' + (lleno ? " disabled" : "") + '>' +
+           dentro + '</button>';
+  }
+
+  var deSecado = [], deApoyo = [];
+  for (var s = 0; s < SECADORES.length; s++) {
+    (SECADORES[s].orden ? deApoyo : deSecado).push(SECADORES[s]);
+  }
+
+  // En Corregir, un secador YA asignado que checo salida no viene en la
+  // lista de Jibble. Se agrega como entrada gris para que se vea marcado y
+  // el supervisor pueda quitarlo: si no, "ver lo que esta seleccionado"
+  // fallaria justo cuando hay algo que corregir.
+  if (asig.modo === "corregir") {
+    var enGrid = {};
+    for (var g = 0; g < SECADORES.length; g++) enGrid[SECADORES[g].id] = true;
+    for (var w = 0; w < asig.secadores.length; w++) {
+      var idw = asig.secadores[w];
+      if (idw && !enGrid[idw]) {
+        var nomw = asig.nombreActualPorId[idw] || "Secador";
+        deSecado.push({
+          id: idw, mostrar: nomw, iniciales: iniciales(nomw),
+          color: "#6e7681", estado: "activo", rol: "secador", orden: 0, fuera: true
+        });
+        enGrid[idw] = true;
+      }
+    }
+  }
+
+  h = "";
+  if (deSecado.length === 0 && deApoyo.length === 0) {
+    // Si Jibble falla o nadie checo, no se deja al supervisor sin salida —
+    // pero se dice CUAL de las tres cosas es. "Nadie aparece checado" cuando
+    // la lista ni se ha pedido es un error pintado como dato.
+    var vacio;
+    if (SECADORES_ESTADO === "nunca")      vacio = "Cargando la lista…";
+    else if (SECADORES_ESTADO === "falla") vacio = "No se pudo cargar la lista.<br>Usa \"No aparece\" para agregarlo a mano.";
+    else                                   vacio = "Nadie aparece checado.<br>Usa \"No aparece\" para agregarlo a mano.";
+    h += '<div id="sin-secadores">' + vacio + '</div>';
+  }
+  for (var a = 0; a < deSecado.length; a++) h += pintarPersona(deSecado[a]);
+  // Respaldo obligatorio del CLAUDE.md: la app nunca se queda bloqueada
+  // porque una integracion externa fallo.
+  h += botonOpcion("+ No aparece", false, 'data-manual="1"');
+  document.getElementById("asig-secadores").innerHTML = h;
+
+  var otros = "";
+  for (var b2 = 0; b2 < deApoyo.length; b2++) otros += pintarPersona(deApoyo[b2]);
+  document.getElementById("asig-otros").innerHTML = otros;
+  // El titulo solo estorba si abajo no hay nadie.
+  document.getElementById("asig-otros-titulo").style.display = deApoyo.length ? "" : "none";
+
+  // --- Que falta ---
+  function marcar(id, listo, texto) {
+    var e = document.getElementById(id);
+    e.className = listo ? "listo" : "pendiente";
+    e.textContent = texto;
+  }
+  marcar("asig-linea-estado", !!asig.linea, asig.linea ? "— línea " + asig.linea : "— falta");
+  // Resumen tipo el tablero de Jibble: cuantos hay de cada cosa. Da el
+  // panorama sin tener que contar botones. Igual en Asignar y en Corregir:
+  // en los dos se eligen secadores.
+  var enDescanso = SECADORES.filter(function (x) { return x.estado === "descanso"; }).length;
+  var disponibles = SECADORES.length - enDescanso;
+  // "1 de 4" se leia como "llevas 1 de los 4 que necesitas". Nunca fue
+  // un requisito: con UNO basta, y caben hasta 4.
+  var resumen = asig.secadores.length
+    ? "— " + asig.secadores.length + (asig.secadores.length === 1 ? " elegido" : " elegidos")
+    : "— elige al menos 1  (" + disponibles + " activos" +
+      (enDescanso ? ", " + enDescanso + " en descanso" : "") +
+      (FUERA ? ", " + FUERA + " fuera" : "") + ")";
+  marcar("asig-sec-estado", asig.secadores.length > 0, resumen);
+
+  // La foto (solo al asignar; en Corregir se maneja desde la tarjeta).
+  pintarFotoAsignar();
+
+  var btn = document.getElementById("confirmar");
+
+  // Al corregir casi nada es obligatorio: el supervisor entra a poner una
+  // cosa y se sale. La unica regla: un carro que ya seca no puede quedarse
+  // sin ningun secador (se borrarian todas sus asignaciones).
+  if (asig.modo === "corregir") {
+    if (asig.estado === "secando" && asig.secadores.length === 0) {
+      btn.disabled = true;
+      btn.textContent = "Deja al menos un secador";
+    } else {
+      btn.disabled = false;
+      btn.textContent = "Guardar";
+    }
+    return;
+  }
+
+  // Un boton gris sin explicacion se ve igual que un boton roto. Si no
+  // se puede confirmar, el boton DICE que falta en vez de quedarse mudo.
+  // Mientras el telefono achica la foto recien tomada, el boton espera:
+  // es casi instantaneo, pero evita confirmar sin la foto lista.
+  if (asig.fotoProcesando) {
+    btn.disabled = true;
+    btn.textContent = "Procesando foto…";
+    return;
+  }
+
+  var faltan = [];
+  if (!asig.linea) faltan.push("la línea");
+  if (asig.secadores.length === 0) faltan.push("un secador");
+  // La foto es obligatoria al asignar: es autoritativa y de ella salen
+  // placa, marca, submarca y tipo (24/jul/2026).
+  if (!asig.fotoLista) faltan.push("la foto");
+
+  btn.disabled = faltan.length > 0;
+  btn.textContent = faltan.length === 0
+    ? "Empezar a secar"
+    : "Falta " + (faltan.length === 1 ? faltan[0]
+                : faltan.slice(0, -1).join(", ") + " y " + faltan[faltan.length - 1]);
+}
+
+// Dibuja el bloque de la foto obligatoria. Solo en modo "asignar": en
+// Corregir la foto se reemplaza desde la tarjeta, y nada es obligatorio.
+function pintarFotoAsignar() {
+  var bloque = document.getElementById("asig-foto-bloque");
+  if (!asig || asig.modo !== "asignar") { bloque.style.display = "none"; return; }
+  bloque.style.display = "block";
+
+  var boton  = document.getElementById("asig-foto-boton");
+  var estado = document.getElementById("asig-foto-estado");
+  boton.classList.remove("lista", "subiendo");
+
+  var CAMARA =
+    '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>' +
+    '<circle cx="12" cy="13" r="4"></circle></svg>';
+
+  if (asig.fotoProcesando) {
+    boton.classList.add("subiendo");
+    boton.disabled = true;
+    boton.innerHTML = CAMARA + '<span>Procesando foto…</span>';
+    estado.className = "pendiente";
+    estado.textContent = "— procesando…";
+  } else if (asig.fotoLista) {
+    boton.classList.add("lista");
+    boton.disabled = false;
+    boton.innerHTML = (asig.fotoPreview ? '<img class="mini" src="' + escapar(asig.fotoPreview) + '" alt="">' : CAMARA) +
+                      '<span>Cambiar foto</span>';
+    estado.className = "listo";
+    estado.textContent = "— lista ✓";
+  } else if (asig.fotoSinPlaca) {
+    // Ya hay foto, pero de ella NO salio la placa. Es el caso de las pickup
+    // grandes (Tundra) que desde la ventana de la caja tapan la placa. Aqui el
+    // carro ya esta en el patio y si se deja fotografiar bien, asi que se pide
+    // el segundo intento — que es lo unico que faltaba para cerrar el hueco de
+    // los ~6 carros diarios que se quedaban con foto y sin placa.
+    boton.disabled = false;
+    boton.innerHTML = (asig.fotoPreview ? '<img class="mini" src="' + escapar(asig.fotoPreview) + '" alt="">' : CAMARA) +
+                      '<span>Tomar foto otra vez</span>';
+    estado.className = "pendiente";
+    estado.textContent = "— no se leyó la placa";
+  } else {
+    boton.disabled = false;
+    boton.innerHTML = CAMARA + '<span>Tomar foto</span>';
+    estado.className = "pendiente";
+    estado.textContent = "— falta";
+  }
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  document.getElementById("asignar").addEventListener("click", function (ev) {
+    var b = ev.target.closest("button");
+    if (!b || !asig) return;
+
+    // Tipo y color se apagan al volver a tocarlos: si el supervisor le
+    // pico por error debe poder dejarlo vacio, no quedarse obligado a
+    // inventar un dato.
+    if (b.dataset.tipo) {
+      asig.tipo = (asig.tipo === b.dataset.tipo) ? null : b.dataset.tipo;
+    }
+    else if (b.dataset.color) {
+      asig.color = (asig.color === b.dataset.color) ? null : b.dataset.color;
+      // Al elegir un color de la lista se cierra el campo de "otro": si
+      // habia algo escrito ahi, el comun lo reemplaza.
+      verColorManual = false;
+    }
+    else if (b.dataset.colorOtro) {
+      verColorManual = !verColorManual;
+      // Al cerrarlo se limpia el color que se habia escrito a mano; deja
+      // el carro sin color en vez de conservar uno que ya no se ve.
+      if (!verColorManual && asig.color && COLORES_COMUNES.indexOf(asig.color) < 0) {
+        asig.color = null;
+      }
+      pintarAsignacion();
+      if (verColorManual) {
+        var campo = document.getElementById("asig-color-input");
+        if (campo) campo.focus();
+      }
+      return;
+    }
+    else if (b.dataset.linea) { asig.linea = Number(b.dataset.linea); }
+    else if (b.dataset.manual) {
+      var nom = prompt("¿Cómo se llama? (no aparece en Jibble)");
+      if (!nom || nom.trim().length < 2) return;
+      pedir("/secador-manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre: nom.trim() })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.ok === false) { alert(d.error || "No se pudo agregar"); return; }
+          return cargarSecadores().then(function () {
+            // Queda elegido de una vez: si el supervisor se tomo la
+            // molestia de agregarlo, es porque lo va a usar ahora.
+            if (d && d.id && asig && asig.secadores.length < 4) asig.secadores.push(d.id);
+            pintarAsignacion();
+          });
+        })
+        .catch(function () { alert("Sin conexión."); });
+      return;
+    }
+    else if (b.dataset.secador) {
+      var i = asig.secadores.indexOf(b.dataset.secador);
+      if (i >= 0) {
+        asig.secadores.splice(i, 1);       // quitarlo nunca pregunta
+      } else if (asig.secadores.length < 4) {
+        var quien = SECADORES.filter(function (x) { return x.id === b.dataset.secador; })[0];
+
+        // Se PUEDE asignar a alguien en descanso: muchos regresan antes
+        // de que se acabe su hora porque les conviene por la propina.
+        // Pero se confirma, para que nunca sea por accidente.
+        if (quien && quien.estado === "descanso") {
+          var min = quien.desde
+            ? Math.floor((Date.now() - new Date(quien.desde).getTime()) / 60000)
+            : null;
+          var aviso = quien.mostrar + " está en DESCANSO" +
+                      (min !== null ? " desde hace " + min + " min" : "") +
+                      ".\n\n¿Asignarlo de todos modos?";
+          if (!confirm(aviso)) return;
+        }
+        asig.secadores.push(b.dataset.secador);
+      }
+    } else return;
+
+    if (navigator.vibrate) navigator.vibrate(15);
+    pintarAsignacion();
+  });
+
+  // Color escrito a mano: se sube a MAYUSCULAS en cada tecla. El CSS solo
+  // lo pinta en mayusculas; sin esto, lo que se guarda irian minusculas y
+  // el formato no quedaria uniforme con lo que llega de la nota de caja.
+  document.getElementById("asig-color-input").addEventListener("input", function () {
+    var pos = this.selectionStart;
+    this.value = this.value.toUpperCase();
+    try { this.setSelectionRange(pos, pos); } catch (e) {}
+    if (asig) asig.color = this.value.trim() || null;
+  });
+
+  document.getElementById("cancelar").addEventListener("click", function () { cerrarPantalla(); });
+
+  // Tomar (o cambiar) la foto desde la pantalla de asignar. Abre la camara
+  // trasera directo, igual que en la tarjeta. La foto solo se guarda aqui;
+  // se sube al confirmar (tomarFotoAsignar via el listener de la camara).
+  document.getElementById("asig-foto-boton").addEventListener("click", function () {
+    if (!asig || asig.fotoProcesando) return;
+    carroDeLaFoto = asig.carro;
+    document.getElementById("camara").click();
+  });
+
+  document.getElementById("confirmar").addEventListener("click", function () {
+    if (!asig || ocupado) return;
+    ocupado = true;
+    this.disabled = true;
+    if (navigator.vibrate) navigator.vibrate(30);
+
+    // 🔴 La foto se encola ANTES de mandar /asignar, no despues.
+    //
+    // Antes se encolaba solo si /asignar contestaba ok, "para no crear una
+    // foto de un carro que no se asigno". El razonamiento se cae en el caso
+    // que de verdad pasa: la peticion se corta a los 20 s PERO el servidor si
+    // asigno. El supervisor reintenta, la base contesta "Ese carro ya esta
+    // secando" (ok:false), la rama de exito nunca corre, y la foto —que ya se
+    // tomo— se pierde en silencio. 8 carros asignados sin foto desde el
+    // 10/ago, 4 de ellos el 29/ago.
+    //
+    // Encolar antes no tiene el costo que se temia: la foto ES de ese carro,
+    // que ya existe en la cola desde que se cobro. Lo peor que puede pasar es
+    // que suba la foto de un carro que se quedo en prelavado, y eso no
+    // estorba a nadie; perderla si.
+    var carroDeFoto = asig.carro;
+    if (asig.modo === "asignar" && asig.fotoDataURL) {
+      guardarPendiente(carroDeFoto, asig.fotoDataURL);
+    }
+    var miPantallaAsig = pantallaActual();
+
+    // La misma pantalla llama a dos rutas distintas segun el modo. Se
+    // ramifica aqui y no se duplica la barra: #confirmar y #cancelar
+    // tienen sus escuchas amarradas una sola vez.
+    var ruta, cuerpo;
+    if (asig.modo === "corregir") {
+      ruta = "/editar";
+      cuerpo = {
+        carro: asig.carro,
+        tipo_unidad: asig.tipo,
+        color: asig.color,
+        // La marca ya no se manda: sale de la foto (24/jul/2026).
+        // La linea solo se manda si el carro ya esta secando; antes de eso
+        // la base la rechaza porque todavia no hay secadores asignados.
+        linea: asig.estado === "secando" ? asig.linea : null
+      };
+      // Los secadores tambien solo si ya seca: ahi la pantalla los mostro
+      // editables. editar_carro los reconcilia SIN tocar las etapas, asi que
+      // el cronometro de secado no se reinicia (a diferencia de Regresar).
+      if (asig.estado === "secando") {
+        cuerpo.empleados = asig.secadores;
+        cuerpo.secadores = asig.secadores.map(function (id) {
+          var p = SECADORES.filter(function (x) { return x.id === id; })[0];
+          return p ? p.mostrar : (asig.nombreActualPorId[id] || id);
+        });
+      }
+    } else {
+      ruta = "/asignar";
+      // Al asignar solo van linea y secadores (24/jul/2026). El tipo/color
+      // ya se guardaron desde la nota; la marca/submarca salen de la foto.
+      // De los secadores se mandan las dos cosas: el id para medir
+      // eficiencia por persona, y el nombre tal como se ve hoy, para que el
+      // historial siga diciendo quien seco aunque salga de Jibble.
+      cuerpo = {
+        carro: asig.carro,
+        linea: asig.linea,
+        empleados: asig.secadores,
+        secadores: asig.secadores.map(function (id) {
+          var p = SECADORES.filter(function (x) { return x.id === id; })[0];
+          return p ? p.mostrar : id;
+        })
+      };
+    }
+
+    pedir(ruta, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cuerpo)
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.ok === false) { alert(d.error || "No se pudo"); pintarAsignacion(); return; }
+        // La foto ya esta en la cola durable (se encolo antes de mandar). De
+        // ahi se sube en background y se reintenta sola si el wifi la tira; la
+        // lectura de placa/marca aparece con el siguiente consultar().
+        flushOutbox();
+        cerrarSiSigue(miPantallaAsig);
+      })
+      // Si falló por red, la pantalla de Asignar sigue abierta: hay que volver
+      // a habilitar el botón (pintarAsignacion lo recalcula) para que el
+      // supervisor pueda reintentar sin Cancelar. Sin esto quedaba muerto.
+      .catch(function () { alert("Sin conexión. Intenta otra vez."); if (asig) pintarAsignacion(); })
+      .then(function () { ocupado = false; consultar(); });
+  });
+});
+
+// --- La foto del carro (opcional) ------------------------------------
+// Nunca bloquea nada. En dia pesado el supervisor la ignora y el carro
+// sale igual; el CLAUDE.md lo pide asi.
+
+var carroDeLaFoto = null;
+
+// El wifi del taller es flojo, asi que la foto se achica AQUI antes de
+// subirla. Una foto de celular pesa 3-5 MB; asi queda en ~150 KB.
+function achicar(archivo) {
+  return new Promise(function (listo, falla) {
+    var lector = new FileReader();
+    lector.onerror = falla;
+    lector.onload = function () {
+      var img = new Image();
+      img.onerror = falla;
+      img.onload = function () {
+        var max = 1280;
+        var an = img.width, al = img.height;
+        if (an > al && an > max) { al = Math.round(al * max / an); an = max; }
+        else if (al > max)       { an = Math.round(an * max / al); al = max; }
+
+        var lienzo = document.createElement("canvas");
+        lienzo.width = an; lienzo.height = al;
+        lienzo.getContext("2d").drawImage(img, 0, 0, an, al);
+        listo(lienzo.toDataURL("image/jpeg", 0.6));
+      };
+      img.src = lector.result;
+    };
+    lector.readAsDataURL(archivo);
+  });
+}
+
+// --- Confirmar la entrega --------------------------------------------
+// Tocar "Entregado" ya no entrega: abre esta pantalla. Sale del uso real
+// — el secador avisa que ya quedo, pero el supervisor revisa antes de
+// soltar el carro, y si algo falto queda registrado a nombre de quien lo
+// seco. El objetivo no es castigar: es saber a quien entrenar y en que.
+var entrega = null;      // el carro que se esta por entregar
+var MOTIVOS = [];        // se piden una vez y se guardan
+var motivosElegidos = []; // los que el supervisor marco en el rechazo actual
+
+// Respaldo. La lista buena vive en la base (motivos_de_rechazo), pero el
+// supervisor NUNCA debe quedarse en una pantalla de rechazo sin botones:
+// eso es un callejon sin salida en medio del turno.
+var MOTIVOS_RESPALDO = [
+  "Tablero", "Vidrios", "Rines", "Interior",
+  "Marcos de puertas", "Cajuela", "Carroceria mojada", "Otro"
+];
+
+function cargarMotivos() {
+  if (MOTIVOS.length) return Promise.resolve();
+  return pedir("/motivos")
+    .then(function (r) { return r.json(); })
+    .then(function (d) { MOTIVOS = (d && d.motivos && d.motivos.length) ? d.motivos : MOTIVOS_RESPALDO; })
+    // Se cae al respaldo tanto si la red falla como si la respuesta viene
+    // vacia o con error: lo que importa es que haya botones.
+    .catch(function () { MOTIVOS = MOTIVOS_RESPALDO; });
+}
+
+function abrirEntrega(c) {
+  entrega = c;
+  document.getElementById("ent-quien").innerHTML = describir(c);
+
+  var detalle = [c.producto];
+  if (c.variante && c.variante !== c.producto) detalle.push(c.variante);
+  if (c.linea) detalle.push("Línea " + c.linea);
+  document.getElementById("ent-cual").textContent = detalle.filter(Boolean).join("  ·  ");
+
+  // Quien lo seco. Si por lo que sea no se sabe, se dice, en vez de
+  // dejar el renglon vacio y que parezca que nadie lo seco.
+  var quienes = (c.secadores && c.secadores.length)
+    ? "Secó: " + c.secadores.join(" + ")
+    : "Sin secador registrado";
+  document.getElementById("ent-secadores").textContent = quienes;
+
+  document.getElementById("ent-decidir").style.display = "block";
+  document.getElementById("ent-motivos").style.display = "none";
+  document.getElementById("entrega").style.display = "block";
+  window.scrollTo(0, 0);
+  registrarPantalla(cerrarEntrega);   // el back del telefono la cierra
+  cargarMotivos();
+}
+
+function cerrarEntrega() {
+  entrega = null;
+  document.getElementById("entrega").style.display = "none";
+}
+
+function pintarMotivos() {
+  // Ultima red de seguridad: si por lo que sea la lista llego vacia, se
+  // usa el respaldo. Una pantalla de rechazo sin botones deja al
+  // supervisor atorado.
+  var lista = MOTIVOS.length ? MOTIVOS : MOTIVOS_RESPALDO;
+  var h = "";
+  for (var i = 0; i < lista.length; i++) {
+    // Se pinta "elegida" el que ya esta marcado: se pueden marcar varios.
+    var marcado = motivosElegidos.indexOf(lista[i]) >= 0;
+    h += botonOpcion(lista[i], marcado, 'data-motivo="' + escapar(lista[i]) + '"');
+  }
+  document.getElementById("ent-lista-motivos").innerHTML = h;
+
+  // El boton de confirmar se apaga si no hay nada marcado, y dice cuantos
+  // van para que se vea que se puede marcar mas de uno.
+  var btn = document.getElementById("ent-rechazar");
+  btn.disabled = motivosElegidos.length === 0;
+  btn.textContent = motivosElegidos.length > 1
+    ? "RECHAZAR (" + motivosElegidos.length + ")"
+    : "RECHAZAR";
+}
+
+// 🔴 Mientras la peticion viaja, el boton lo DICE.
+//
+// `ocupado` ya impedia el doble toque, pero EN SILENCIO: el supervisor tocaba
+// "Entregar", el boton se quedaba igualito, y con el wifi flojo pasaban hasta
+// 20 segundos (el corte) sin una sola senal. Para el —que es de la tercera
+// edad— eso se lee como "el boton no sirve", asi que volvia a tocarlo tres
+// veces y los tres toques se los tragaba el candado.
+//
+// Devuelve la funcion que lo deja como estaba.
+function enEnvio(b, texto) {
+  var antes = b.textContent;
+  b.textContent = texto;
+  b.classList.add("enviando");
+  b.disabled = true;
+  return function () {
+    b.textContent = antes;
+    b.classList.remove("enviando");
+    b.disabled = false;
+  };
+}
+
+document.getElementById("entrega").addEventListener("click", function (ev) {
+  var b = ev.target.closest("button");
+  if (!b || !entrega || ocupado) return;
+
+  if (b.dataset.entregar) {
+    ocupado = true;
+    var listoEntregar = enEnvio(b, "Entregando…");
+    var miPantallaEnt = pantallaActual();
+    if (navigator.vibrate) navigator.vibrate(30);
+    pedir("/avanzar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ carro: entrega.id })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d && d.ok === false) alert(d.error || "No se pudo"); cerrarSiSigue(miPantallaEnt); })
+      .catch(function () { alert("Sin conexión. Intenta otra vez."); })
+      .then(function () { listoEntregar(); ocupado = false; consultar(); });
+    return;
+  }
+
+  if (b.id === "ent-volver") {
+    // Regresa a la decision, sin cerrar la pantalla ni tocar el carro. Lo
+    // ya marcado se borra: si el supervisor se arrepintio, no debe quedar
+    // nada apuntado esperandolo.
+    motivosElegidos = [];
+    pintarMotivos();
+    document.getElementById("ent-motivos").style.display = "none";
+    document.getElementById("ent-decidir").style.display = "block";
+    if (navigator.vibrate) navigator.vibrate(15);
+    return;
+  }
+
+  if (b.dataset.rechazar) {
+    // No se rechaza todavia: primero hay que decir que falto. El motivo
+    // es lo que hace util el registro — sin el solo se sabe que alguien
+    // falla, no que ensenarle. Se puede marcar MAS DE UNO.
+    motivosElegidos = [];
+    pintarMotivos();
+    document.getElementById("ent-decidir").style.display = "none";
+    document.getElementById("ent-motivos").style.display = "block";
+    if (navigator.vibrate) navigator.vibrate(15);
+    return;
+  }
+
+  if (b.dataset.motivo) {
+    // Marca o desmarca. NO rechaza: eso lo hace el boton RECHAZAR de
+    // abajo, para poder juntar varias cosas en un solo rechazo.
+    var m = b.dataset.motivo;
+    var idx = motivosElegidos.indexOf(m);
+    if (idx >= 0) motivosElegidos.splice(idx, 1);
+    else motivosElegidos.push(m);
+    if (navigator.vibrate) navigator.vibrate(15);
+    pintarMotivos();
+    return;
+  }
+
+  if (b.id === "ent-rechazar") {
+    if (!motivosElegidos.length) return;
+    ocupado = true;
+    var listoRechazar = enEnvio(b, "Registrando…");
+    var miPantallaRech = pantallaActual();
+    if (navigator.vibrate) navigator.vibrate([30, 60, 30]);
+    // Se mandan TODOS los motivos marcados. La base los guarda como UN
+    // solo rechazo (mismo grupo) con varias filas: cuenta como un evento,
+    // no como varios. Ver migracion 054.
+    pedir("/rechazar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ carro: entrega.id, motivos: motivosElegidos })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.ok === false) { alert(d.error || "No se pudo"); return; }
+        cerrarSiSigue(miPantallaRech);
+      })
+      .catch(function () { alert("Sin conexión. Intenta otra vez."); })
+      .then(function () {
+        listoRechazar();
+        // Se vuelve a calcular el rotulo: `pintarMotivos` es quien decide si
+        // dice "RECHAZAR" o "RECHAZAR (3)" y si va apagado. Restaurar el
+        // texto viejo a secas lo dejaria desfasado.
+        pintarMotivos();
+        ocupado = false;
+        consultar();
+      });
+    return;
+  }
+});
+
+document.getElementById("ent-cerrar").addEventListener("click", function () { cerrarPantalla(); });
+
+// --- Los entregados de hoy -------------------------------------------
+// Por si se entrego uno por equivocacion. Restaurar reusa la misma ruta
+// de deshacer que el boton "Regresar" de la cola.
+//
+// "Corregir" abre la MISMA pantalla que en la cola, en modo corregir, asi
+// que solo toca tipo/color/marca: editar_carro no mueve estado ni
+// tiempos, y la linea no se manda porque el carro ya no esta secando.
+// Sirve para arreglar una captura mala despues de entregar.
+var ENTREGADOS = [];
+
+// #entregados esta ENCIMA de #asignar (z-index 45 contra 40), asi que
+// hay que esconderlo o la pantalla de corregir se abriria por debajo y
+// no se veria. Al cerrar se vuelve, recargado para ver el cambio.
+var volverAEntregados = false;
+
+// Que dia se esta viendo. "" = hoy.
+var diaEntregados = "";
+
+// Se llena una sola vez con los dias que tienen datos. Viene de
+// /reportes, que ya existia para la pagina del dueno.
+function cargarDiasDisponibles() {
+  var sel = document.getElementById("entregados-dia");
+  if (sel.options.length) return Promise.resolve();   // ya se cargo
+
+  return pedir("/reportes")
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var hoy = d.hoy;
+      var dias = (d.dias || []).map(function (x) { return x.fecha; });
+      // Hoy siempre primero, aunque todavia no tenga fila congelada.
+      if (dias.indexOf(hoy) === -1) dias.unshift(hoy);
+      dias.sort().reverse();
+
+      var h = "";
+      for (var i = 0; i < dias.length; i++) {
+        var etiqueta = dias[i] === hoy ? "Hoy" : comoSeLee(dias[i]);
+        h += '<option value="' + escapar(dias[i] === hoy ? "" : dias[i]) + '">' +
+             escapar(etiqueta) + "</option>";
+      }
+      sel.innerHTML = h;
+    })
+    .catch(function () { /* sin selector, pero la lista de hoy si sirve */ });
+}
+
+// "2026-07-19" -> "19 jul". Se arma a mano y no con Date para que no se
+// recorra un dia por la zona horaria.
+var MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+function comoSeLee(fecha) {
+  var p = String(fecha).split("-");
+  if (p.length !== 3) return fecha;
+  return Number(p[2]) + " " + (MESES[Number(p[1]) - 1] || p[1]);
+}
+
+// yaAbierta = true cuando NO es una apertura fresca (refrescar la lista,
+// cambiar de dia, o volver desde Corregir): ahi no se registra otra vez en
+// el historial, porque el estado de esta pantalla ya esta en la pila.
+// 🔴 La respuesta de OTRO dia no puede pintarse bajo el dia que se esta
+// viendo. Con el wifi lento, cambiar el selector dos veces dejaba la lista
+// del dia viejo bajo el rotulo "Hoy" — y Restaurar y Corregir actuaban
+// sobre ESOS carros. Mismo token que ya usan la cola y el desglose.
+var entregadosToken = 0;
+
+function abrirEntregados(yaAbierta) {
+  document.getElementById("entregados").style.display = "block";
+  document.getElementById("entregados-lista").innerHTML =
+    '<div class="cual">Cargando…</div>';
+  window.scrollTo(0, 0);
+  if (!yaAbierta) registrarPantalla(cerrarEntregados);   // el back la cierra
+  cargarDiasDisponibles();
+
+  var miToken = ++entregadosToken;
+
+  pedir("/entregados" + (diaEntregados ? "?fecha=" + encodeURIComponent(diaEntregados) : ""))
+    .then(function (r) {
+      if (!r.ok) throw new Error("El servidor respondio " + r.status);
+      return r.json();
+    })
+    .then(function (d) {
+      if (miToken !== entregadosToken) return;   // ya se pidio otro dia
+      // Misma regla que la cola y que los secadores: si no viene una lista,
+      // es un error, no un dia sin entregas. Con `d.carros || []` la pantalla
+      // decia "Todavia no se ha entregado ningun carro hoy" despues de 80
+      // entregas, y el supervisor buscaba a mano el que queria restaurar.
+      if (!d || d.ok === false ||
+          Object.prototype.toString.call(d.carros) !== "[object Array]") {
+        throw new Error("La respuesta no trae la lista de entregados");
+      }
+      var lista = d.carros;
+      // Se guarda para que "Corregir" pueda abrir la pantalla con los
+      // datos que ya vinieron, sin pedirlos otra vez.
+      ENTREGADOS = lista;
+      document.getElementById("entregados-cuantos").textContent =
+        lista.length ? lista.length + " del más reciente al más viejo" : "";
+
+      if (!lista.length) {
+        document.getElementById("entregados-lista").innerHTML =
+          '<div class="cual">' +
+          (diaEntregados ? "Ese día no se entregó ningún carro."
+                         : "Todavía no se ha entregado ningún carro hoy.") +
+          '</div>';
+        return;
+      }
+
+      var h = "";
+      for (var i = 0; i < lista.length; i++) {
+        var c = lista[i];
+        var quien = describir(c);
+        var hora = c.entregado_en
+          ? new Date(c.entregado_en).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" })
+          : "";
+        var pie = [hora ? "Entregado " + hora : "", c.linea ? "Línea " + c.linea : ""]
+                    .filter(Boolean).join("  ·  ");
+
+        // La placa va en el pie y no en el titulo: aqui el supervisor
+        // BUSCA un carro entre muchos, y la placa es lo unico que no se
+        // repite. "AUTO GRIS HONDA" hay cinco; EEE-500-E hay uno.
+        var placa = c.placa ? '<span class="placa2">' + escapar(c.placa_display || c.placa) + '</span>' : "";
+
+        // Se toca la zona de DATOS, no la tarjeta entera: si fuera toda,
+        // un dedo que falla el boton de Restaurar abriria el desglose y
+        // el supervisor pensaria que el boton no sirve.
+        h += '<div class="entregado">' +
+               '<div class="datos" data-detalle="' + c.id + '">' +
+                 '<div class="titulo">' + quien + '</div>' +
+                 '<div class="pie">' + placa + escapar(pie) + '</div>' +
+               '</div>' +
+               '<div class="acciones">' +
+                 // Restaurar solo aparece en el dia de HOY: desde la migracion
+                 // 150 la base rechaza restaurar un carro de otro dia (ya esta
+                 // en un reporte congelado), asi que dejarlo visible seria un
+                 // boton que solo sabe contestar que no. Corregir si sirve
+                 // cualquier dia: no mueve tiempos ni estado.
+                 (diaEntregados ? "" :
+                   '<button class="restaurar" data-restaurar="' + c.id + '">Restaurar</button>') +
+                 '<button class="corregir-ent" data-corregir-ent="' + c.id + '">Corregir</button>' +
+               '</div>' +
+             '</div>';
+      }
+      document.getElementById("entregados-lista").innerHTML = h;
+    })
+    .catch(function () {
+      if (miToken !== entregadosToken) return;   // falla vieja: ya se pidio otro dia
+      document.getElementById("entregados-lista").innerHTML =
+        '<div class="cual">No se pudo cargar.</div>';
+    });
+}
+
+function cerrarEntregados() {
+  document.getElementById("entregados").style.display = "none";
+}
+
+// Se envuelve (no se pasa abrirEntregados directo) porque el listener le
+// mandaria el evento como primer argumento, y eso lo tomaria como
+// "yaAbierta" y no registraria la pantalla.
+document.getElementById("ver-entregados").addEventListener("click", function () { abrirEntregados(); });
+document.getElementById("entregados-cerrar").addEventListener("click", function () { cerrarPantalla(); });
+
+// --- Desglose de un carro --------------------------------------------
+// Cuanto duro cada etapa y quien lo seco. Todo viene ya sumado de la
+// base (detalle_del_carro): un carro puede tener VARIAS filas de la
+// misma etapa porque "Corregir" reabre la anterior, y sumarlo aqui
+// seria repetir una regla que ya vive en SQL.
+function duracion(seg) {
+  if (seg === null || seg === undefined) return null;
+  var m = Math.round(seg / 60);
+  if (m < 60) return m + " min";
+  return Math.floor(m / 60) + " h " + (m % 60) + " min";
+}
+
+// enVivo: en el desglose de un carro que todavia se trabaja, los tiempos
+// se muestran como cronometro (mm:ss) para que se vea correr; ya entregado
+// se muestran en minutos, mas facil de leer de un vistazo.
+function renglonTiempo(que, seg, clase, enVivo) {
+  var d = (seg === null || seg === undefined) ? null
+        : (enVivo ? reloj(seg) : duracion(seg));
+  return '<div class="tiempo' + (clase ? " " + clase : "") + '">' +
+           '<span class="que">' + escapar(que) + '</span>' +
+           (d ? '<span class="cuanto">' + escapar(d) + '</span>'
+              : '<span class="vacio2">sin registro</span>') +
+         '</div>';
+}
+
+// El cuerpo del desglose. Sirve para un carro entregado (estatico) y para
+// uno que aun se trabaja (enVivo): ahi la etapa abierta se cuenta desde su
+// inicio hasta ahora, y el total desde que pago.
+function cuerpoDetalle(c, enVivo) {
+  // Segundos de una etapa: los cerrados que da la base MAS, si es la etapa
+  // abierta, lo que lleva corriendo. Asi el secado (o el prelavado de un
+  // carro sin asignar) cuenta en vivo.
+  function corre(etapa) {
+    return enVivo && c.entregado_en == null && c.abierta_etapa === etapa && c.abierta_inicio;
+  }
+  function seg(etapa, cerrado) {
+    var s = (cerrado == null ? 0 : cerrado);
+    if (corre(etapa)) s += Math.floor((Date.now() - new Date(c.abierta_inicio).getTime()) / 1000);
+    return s;
+  }
+
+  var servicio = [c.producto, (c.variante && c.variante !== c.producto) ? c.variante : ""]
+                   .filter(Boolean).join("  ·  ");
+
+  var h = "";
+  h += "<h2>" + describir(c) + "</h2>";
+  if (c.placa) h += '<div class="placa">' + escapar(c.placa_display || c.placa) + "</div>";
+  h += '<div class="sub">' + escapar(servicio) +
+       (c.linea ? "  ·  Línea " + escapar(c.linea) : "") + "</div>";
+
+  // Las mismas banderitas de la cola, para reconocer el carro.
+  if (c.es_express) h += '<span class="express">&#9873; EXPRESS</span> ';
+  if (c.aviso) {
+    h += '<span class="aviso-servicio ' + claseDeAviso(c.aviso) + '">&#9888; ' +
+         escapar(c.aviso) + "</span> ";
+  }
+  if (c.a_mano) h += '<span class="aviso-servicio mano">&#9888; LAVADO A MANO</span>';
+
+  // La foto del carro, si la tiene. Se abre en grande al tocarla (sin
+  // boton de reemplazo: aqui ya se entrego, se asume correcta). La firma
+  // la manda la Edge Function en c.foto.
+  if (c.foto) {
+    h += '<button class="foto-detalle" data-ver-foto="' + escapar(c.foto) + '">' +
+           '<img src="' + escapar(c.foto) + '" alt="Foto del carro"></button>';
+  }
+
+  // Prelavado. Corre en vivo si el carro todavia no se asigna (raro que se
+  // abra el detalle ahi, pero queda honesto).
+  h += renglonTiempo("Prelavado" + (corre("prelavado") ? " · en curso" : ""),
+                     enVivo ? seg("prelavado", c.prelavado_seg) : c.prelavado_seg,
+                     corre("prelavado") ? "corriendo" : "", enVivo);
+
+  // El tunel siempre esta cerrado (dura lo que dura la maquina). No se
+  // muestra en un lavado a mano: no entro.
+  if (!c.a_mano && c.tunel_seg) {
+    h += renglonTiempo("Túnel", c.tunel_seg, "", enVivo);
+  }
+
+  // Secado. Es el que corre mientras el carro se trabaja. Solo se muestra
+  // si ya empezo (o ya termino): en prelavado no existe todavia.
+  if (c.secando_seg != null || corre("secando") || c.entregado_en != null) {
+    h += renglonTiempo("Secado" + (corre("secando") ? " · en curso" : ""),
+                       enVivo ? seg("secando", c.secando_seg) : c.secando_seg,
+                       corre("secando") ? "corriendo" : "", enVivo);
+  }
+
+  // Total de pago a entrega. En vivo cuenta desde que pago hasta ahora.
+  var total = c.entregado_en != null ? c.total_seg
+            : (enVivo ? Math.floor((Date.now() - new Date(c.creado_en).getTime()) / 1000) : null);
+  h += renglonTiempo("Total con nosotros", total, "total", enVivo);
+
+  // Los avisos honestos: un tiempo que no es real hay que decirlo, porque
+  // en esta pantalla se lee como si fuera medido.
+  if (c.cerrado_automaticamente) {
+    h += '<div class="ausente">&#9888; Nadie lo entregó: se cerró solo al final del día.' +
+         "<br>Su tiempo no es real y no cuenta en los promedios.</div>";
+  }
+  if (c.tiempo_imposible) {
+    h += '<div class="ausente">&#9888; Se entregó más rápido de lo posible.' +
+         "<br>Casi seguro fue un error o una prueba; no cuenta en el reporte.</div>";
+  }
+  // El tercero, que faltaba (133). Un secado de menos de 3 minutos es un
+  // olvido registrado tarde: el supervisor perdio la huella del carro y, al
+  // acordarse, lo asigno y lo entrego de un jalon. El reporte del dueno y el
+  // perfil del trabajador ya lo decian; aqui el numero se leia como si fuera
+  // un secado de verdad. Lo manda la base (segundos_minimos_de_secado), no
+  // un 180 escrito aqui: dos reglas para la misma pregunta siempre se
+  // desfasan.
+  if (c.secado_corto) {
+    h += '<div class="ausente">&#9888; El secado salió demasiado corto para ser real.' +
+         "<br>Se ve como un carro que se olvidó y se cerró de un jalón; su secado no cuenta en los promedios.</div>";
+  }
+
+  // Ya entregado dice "Lo secaron"; todavia trabajandose, "Secando ahora".
+  var titulo = c.entregado_en != null ? "Lo secaron" : "Secando ahora";
+  h += '<div class="quienes"><div class="titulo2">' + titulo + "</div>";
+  if (c.secadores && c.secadores.length) {
+    for (var i = 0; i < c.secadores.length; i++) {
+      h += '<div class="nombre">' + escapar(c.secadores[i]) + "</div>";
+    }
+  } else {
+    h += '<div class="vacio2">' +
+         (c.entregado_en == null ? "Aún sin asignar" : "Sin secador registrado") + "</div>";
+  }
+  h += "</div>";
+  return h;
+}
+
+// El carro que se esta viendo y el timer del cronometro en vivo.
+var detalleCarro = null;
+var detalleTimer = null;
+// Cada apertura del desglose se lleva su numero, y solo la ULTIMA manda.
+// Es el mismo patron de `consultaToken` en la cola, que aqui faltaba: sin
+// el, una respuesta lenta que aterriza tarde produce tres cosas, todas
+// medidas en el navegador con el wifi a 15 s (23/ago... 24/ago/2026):
+//
+//   1. Se cierra la pantalla antes de que llegue la respuesta -> el
+//      cronometro NACE sobre una pantalla ya cerrada y sigue corriendo.
+//   2. Se abre el desglose del carro A, se cierra, y se abre el del B ->
+//      la respuesta tardia de A se pinta en la pantalla que el supervisor
+//      abrio para B: placa, tiempos y foto de OTRO carro. (Medido: 5
+//      repintados del carro 101 en la pantalla del 102.)
+//   3. Dos aperturas en vivo en vuelo -> el segundo setInterval pisa al
+//      primero sin apagarlo, y ese queda vivo y ya inalcanzable: repinta
+//      cada segundo el desglose que el supervisor este leyendo. (Medido:
+//      8 repintados en 3 s de una pantalla ESTATICA, con detalleTimer en
+//      null, o sea sin que la app supiera que existia.)
+//
+// Los tres se cierran con el mismo guard, porque son el mismo bug.
+var detalleToken = 0;
+
+// enVivo lo manda el boton de info de la cola; desde Finalizados no se
+// manda (undefined), y el carro ya entregado se ve estatico.
+function abrirDetalle(id, enVivo) {
+  var miToken = ++detalleToken;
+  clearInterval(detalleTimer); detalleTimer = null;
+  detalleCarro = null;
+
+  document.getElementById("detalle").style.display = "block";
+  document.getElementById("detalle-cuerpo").innerHTML = '<div class="sub">Cargando…</div>';
+  document.getElementById("detalle").scrollTop = 0;
+  window.scrollTo(0, 0);
+  registrarPantalla(cerrarDetalle);   // el back del telefono la cierra
+
+  pedir("/carro?id=" + encodeURIComponent(id))
+    .then(function (r) { return r.json(); })
+    .then(function (c) {
+      // Llego tarde: o ya se cerro la pantalla, o el supervisor abrio otro
+      // carro. En los dos casos esta respuesta ya no manda.
+      if (miToken !== detalleToken) return;
+      if (!c || c.error) {
+        document.getElementById("detalle-cuerpo").innerHTML =
+          '<div class="sub">No se pudo cargar.</div>';
+        return;
+      }
+      detalleCarro = c;
+      // Solo cuenta en vivo si lo pidieron Y el carro sigue abierto.
+      detalleCarro._enVivo = !!enVivo && c.entregado_en == null;
+      pintarDetalle();
+      // El cronometro se refresca cada segundo, igual que el de la cola.
+      if (detalleCarro._enVivo) detalleTimer = setInterval(pintarDetalle, 1000);
+    })
+    .catch(function () {
+      if (miToken !== detalleToken) return;
+      document.getElementById("detalle-cuerpo").innerHTML =
+        '<div class="sub">Sin conexión.</div>';
+    });
+}
+
+function pintarDetalle() {
+  if (!detalleCarro) return;
+  document.getElementById("detalle-cuerpo").innerHTML =
+    cuerpoDetalle(detalleCarro, detalleCarro._enVivo);
+}
+
+function cerrarDetalle() {
+  // Se invalida lo que venga en camino: sin esto, una respuesta que llega
+  // DESPUES de cerrar arrancaba el cronometro sobre la pantalla ya cerrada.
+  detalleToken++;
+  // Se apaga el cronometro al cerrar: si no, seguiria corriendo en el
+  // fondo gastando bateria sin que nadie lo vea.
+  clearInterval(detalleTimer); detalleTimer = null;
+  detalleCarro = null;
+  document.getElementById("detalle").style.display = "none";
+}
+
+document.getElementById("detalle-cerrar").addEventListener("click", function () { cerrarPantalla(); });
+
+// Tocar la foto del desglose la abre en grande, sin boton de reemplazo.
+document.getElementById("detalle-cuerpo").addEventListener("click", function (ev) {
+  var f = ev.target.closest("[data-ver-foto]");
+  if (f) abrirVisorFoto(f.dataset.verFoto, null, false);
+});
+
+// Cambiar de dia recarga la lista. El valor "" es hoy. yaAbierta: la
+// pantalla ya esta abierta, no se registra otra vez.
+document.getElementById("entregados-dia").addEventListener("change", function () {
+  diaEntregados = this.value;
+  abrirEntregados(true);
+});
+
+document.getElementById("entregados-lista").addEventListener("click", function (ev) {
+  // Tocar los datos del carro abre su desglose. Va PRIMERO para que un
+  // toque dentro de .datos no se confunda con los botones de al lado.
+  var det = ev.target.closest("[data-detalle]");
+  if (det) { abrirDetalle(Number(det.dataset.detalle)); return; }
+
+  // Corregir no pasa por "ocupado": no cambia la etapa del carro, igual
+  // que la camara en la cola.
+  var corr = ev.target.closest("button[data-corregir-ent]");
+  if (corr) {
+    var id = Number(corr.dataset.corregirEnt);
+    var carro = ENTREGADOS.filter(function (x) { return x.id === id; })[0];
+    if (!carro) return;
+    volverAEntregados = true;
+    document.getElementById("entregados").style.display = "none";
+    abrirPantalla(carro, "corregir");
+    return;
+  }
+
+  var b = ev.target.closest("button[data-restaurar]");
+  if (!b || ocupado) return;
+
+  // Restaurar devuelve el carro a la cola y REINICIA el cronometro de secado.
+  // Es la misma clase de accion que "Regresar" y que "Borrar unidad", asi que
+  // se confirma igual: el CLAUDE.md pide que nunca haya un paso asi por
+  // accidente.
+  if (!confirm("¿Regresar este carro a la cola?\n\nVuelve a estar secando con su línea y sus secadores, y el cronómetro de secado empieza de nuevo.")) return;
+
+  ocupado = true;
+  // 🔴 Antes era `b.disabled = true` a secas y NADIE lo volvia a prender: si
+  // la red fallaba, el boton quedaba muerto hasta que la lista se
+  // reconstruyera sola, aunque el aviso dijera "Intenta otra vez". Con
+  // enEnvio() ademas dice lo que esta haciendo.
+  var listoRestaurar = enEnvio(b, "Restaurando…");
+  if (navigator.vibrate) navigator.vibrate(30);
+
+  // Misma ruta que el boton "Regresar": desde entregado, regresar_etapa
+  // lo devuelve a secando con su linea y sus secadores.
+  pedir("/corregir", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ carro: Number(b.dataset.restaurar) })
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d && d.ok === false) { alert(d.error || "No se pudo restaurar"); return; }
+      abrirEntregados(true);   // refresca; ya esta abierta, no re-registra
+    })
+    .catch(function () { alert("Sin conexión. Intenta otra vez."); })
+    .then(function () { listoRestaurar(); ocupado = false; consultar(); });
+});
+
+// La foto se achica, se sube, y de ahi sale la placa. Es una sola funcion
+// para que el camino no se pueda desincronizar.
+function subirFoto(archivo, id) {
+  if (!archivo || !id) return;
+  // Ya no se sube aqui a pelo. La foto se achica, se guarda en la cola
+  // durable y se sube desde ahi con reintentos acotados: asi una subida
+  // que se cae por wifi flojo no se pierde en silencio (el carro sigue
+  // sin foto, pero la foto YA TOMADA se reintenta sola hasta que pega).
+  // Lo unico que se avisa aqui es no poder PROCESAR la imagen; la subida
+  // nunca se da por perdida.
+  if (navigator.vibrate) navigator.vibrate(30);
+  achicar(archivo)
+    .then(function (imagen) { return guardarPendiente(id, imagen); })
+    .then(flushOutbox)
+    .catch(function () { alert("No se pudo procesar la foto. Intenta otra vez."); });
+}
+
+// La foto tomada en la pantalla de asignar NO se sube todavia: se achica y
+// se guarda en asig, y se manda hasta que /asignar responda ok. Asi el flujo
+// de subida y lectura de placa queda igual que antes (en background), y no se
+// crea una foto para un carro que al final no se asigno.
+function tomarFotoAsignar(archivo) {
+  if (!archivo || !asig) return;
+  var id = asig.carro;
+  asig.fotoProcesando = true;
+  pintarAsignacion();
+  achicar(archivo)
+    .then(function (imagen) {
+      if (!asig || asig.carro !== id) return;   // cerraron o cambiaron de carro
+      asig.fotoDataURL = imagen;
+      asig.fotoPreview = imagen;
+      asig.fotoLista = true;
+      // Ya tomo una nueva: se apaga el aviso de "no se leyó la placa". Si esta
+      // tampoco sirve, no se le vuelve a pedir en el mismo momento — la lectura
+      // ocurre despues, en segundo plano, y detenerlo aqui lo dejaria atorado
+      // con un carro que no se deja fotografiar.
+      asig.fotoSinPlaca = false;
+      asig.fotoProcesando = false;
+      pintarAsignacion();
+    })
+    .catch(function () {
+      if (!asig || asig.carro !== id) return;
+      asig.fotoProcesando = false;
+      pintarAsignacion();
+      alert("No se pudo procesar la foto. Intenta otra vez.");
+    });
+}
+
+// --- Cola durable de fotos por subir (outbox) ------------------------
+// El wifi del taller es flojo y una subida se cae sin que nadie se
+// entere: asi los carros 881, 1539 y 1540 quedaron secando sin foto. En
+// vez de intentar una o dos veces EN MEMORIA y rendirse con una alerta
+// que se cierra y se olvida, la foto YA TOMADA se guarda en IndexedDB y
+// una cola la reintenta hasta que el servidor confirme ok:true. Sobrevive
+// recargas y que el telefono mate la pestana.
+//
+// El consumo esta ACOTADO A PROPOSITO (no repetir el "cada 3 segundos"
+// que salia carisimo en datos y en lecturas de Claude). El poll de 3s
+// solo MIRA un reloj; casi siempre no sube nada. Cinco candados:
+//   1. mutex (subiendoFoto): un solo intento en vuelo a la vez.
+//   2. piso global FOTO_GAP_MS: nunca mas de 1 intento cada 4s, junte lo
+//      que junte la cola y disparen lo que disparen los eventos.
+//   3. backoff por foto: 5s, 10s, 20s... con tope de 5 min.
+//   4. si el servidor YA tiene la foto, se descarta sin subir. Asi JAMAS
+//      se re-lee en Claude una foto ya guardada: la lectura corre 1 vez.
+//   5. tope de intentos: tras FOTO_MAX_INTENTOS se rinde y la tarjeta
+//      queda pidiendo foto (re-toma manual). Nunca reintenta para siempre.
+
+var FOTO_DB = null;
+var subiendoFoto = false;        // candado: un solo intento en vuelo
+var ultimoIntentoFoto = 0;       // piso global entre intentos
+var FOTO_GAP_MS = 4000;          // nunca mas de 1 intento cada 4s (toda la cola junta)
+var FOTO_MAX_INTENTOS = 12;      // ~35 min de reintentos con backoff, luego se rinde
+var FOTO_BACKOFF_TOPE = 300000;  // 5 min
+// Los carros cuya foto se rindio. Se pinta un aviso en SU tarjeta; antes esto
+// solo iba a la consola del telefono, o sea a ningun lado.
+var FOTOS_RENDIDAS = {};
+
+function fotoDB() {
+  if (FOTO_DB) return Promise.resolve(FOTO_DB);
+  return new Promise(function (listo, falla) {
+    var req = indexedDB.open("rush_fotos", 1);
+    req.onupgradeneeded = function () { req.result.createObjectStore("pend", { keyPath: "id" }); };
+    req.onsuccess = function () { FOTO_DB = req.result; listo(FOTO_DB); };
+    req.onerror = function () { falla(req.error); };
+  });
+}
+function fotoStore(modo) {
+  return fotoDB().then(function (db) { return db.transaction("pend", modo).objectStore("pend"); });
+}
+function idbReq(r) {
+  return new Promise(function (ok, no) {
+    r.onsuccess = function () { ok(r.result); };
+    r.onerror = function () { no(r.error); };
+  });
+}
+
+// Guarda una foto ya achicada en la cola. Se llama SIEMPRE antes de que la
+// foto dependa de otra cosa: al asignar, antes de mandar /asignar; desde la
+// tarjeta o el visor, de una vez.
+function guardarPendiente(id, imagen) {
+  // Foto nueva, cuenta nueva: se apaga el aviso de "no se pudo subir".
+  delete FOTOS_RENDIDAS[id];
+  return fotoStore("readwrite")
+    // `teniaFoto` = si el carro YA tenia foto en el servidor cuando se
+    // encolo esta. Es lo unico que permite distinguir una PRIMERA foto de
+    // un REEMPLAZO, y de eso depende el candado #4 (ver flushOutbox).
+    .then(function (st) {
+      return idbReq(st.put({ id: id, imagen: imagen, intentos: 0, proximo: 0,
+                             teniaFoto: servidorYaTieneFoto(id) }));
+    })
+    // 🔴 Si IndexedDB falla (modo privado, cuota llena, base corrupta) la foto
+    // NO se puede guardar y el supervisor tiene que enterarse. Antes esto solo
+    // dejaba un `console.error` —o sea nada, en un telefono— y la foto ya
+    // tomada desaparecia sin dejar rastro: la tarjeta seguia pidiendola y el
+    // supervisor la daba por hecha. Se reusa el mismo aviso de "se rindio",
+    // que la tarjeta ya sabe pintar.
+    .catch(function (e) {
+      console.error("No se pudo encolar la foto del carro", id, e);
+      FOTOS_RENDIDAS[id] = true;
+      if (navigator.vibrate) navigator.vibrate([60, 80, 60]);
+      pintar();
+    });
+}
+function quitarPendiente(id) {
+  return fotoStore("readwrite")
+    .then(function (st) { return idbReq(st.delete(id)); })
+    .catch(function () {});
+}
+
+// Si la cola ya trae foto para ese carro. Si el carro ya no esta en la
+// cola (entregado/cancelado) devuelve false: de haber subido, la entrada
+// ya se habria borrado.
+function servidorYaTieneFoto(id) {
+  for (var i = 0; i < carros.length; i++) {
+    if (carros[i].id === id) return !!carros[i].foto;
+  }
+  return false;
+}
+
+// Un solo intento de subir una entrada. El candado (subiendoFoto) ya esta
+// tomado por flushOutbox; aqui se suelta al terminar, pegue o falle.
+function intentarSubir(entry) {
+  ultimoIntentoFoto = Date.now();
+  var boton = document.querySelector('[data-foto="' + entry.id + '"]');
+  if (boton) boton.classList.add("subiendo");
+  function soltar() { if (boton) boton.classList.remove("subiendo"); subiendoFoto = false; }
+  function reprogramar() {
+    entry.intentos = (entry.intentos || 0) + 1;
+    if (entry.intentos >= FOTO_MAX_INTENTOS) {
+      console.error("Foto no subio tras", entry.intentos, "intentos; se rinde. Carro", entry.id);
+      // 🔴 Se rinde, pero LO DICE. Antes solo quedaba este `console.error`
+      // —que en un telefono no lo lee nadie— y la foto se borraba: el
+      // supervisor la habia tomado, la daba por hecha, y el carro se quedaba
+      // sin foto y sin placa para siempre.
+      FOTOS_RENDIDAS[entry.id] = true;
+      if (navigator.vibrate) navigator.vibrate([60, 80, 60]);
+      quitarPendiente(entry.id);   // la tarjeta lo pide de nuevo: re-toma manual
+      pintar();
+      return;
+    }
+    var espera = Math.min(5000 * Math.pow(2, entry.intentos - 1), FOTO_BACKOFF_TOPE);
+    entry.proximo = Date.now() + espera;
+    fotoStore("readwrite").then(function (st) { st.put(entry); }).catch(function () {});
+  }
+
+  pedir("/foto", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ carro: entry.id, imagen: entry.imagen })
+  })
+    .then(function (r) {
+      if (r.status === 401) { soltar(); return; }   // codigo malo: no es falla de la foto
+      return r.json().then(function (d) {
+        // ok:true = la foto SI se guardo (la lectura de placa puede fallar
+        // aparte y aun asi devuelve ok:true; eso no es falla de subida).
+        if (d && d.ok === true) {
+          quitarPendiente(entry.id).then(function () { soltar(); consultar(); });
+        } else {
+          soltar(); reprogramar();
+        }
+      });
+    })
+    .catch(function () { soltar(); reprogramar(); });   // la red trono
+}
+
+// Mira la cola y, si toca, sube UNA foto. Se llama seguido (cada poll, al
+// volver el wifi, al volver la app al frente) pero casi siempre sale sin
+// hacer nada: los candados 1-3 lo cortan antes de tocar la red.
+function flushOutbox() {
+  if (subiendoFoto) return;
+  if (Date.now() - ultimoIntentoFoto < FOTO_GAP_MS) return;
+  subiendoFoto = true;   // se toma el candado YA (sincrono); se suelta si no hay que subir
+  fotoStore("readonly")
+    .then(function (st) { return idbReq(st.getAll()); })
+    .then(function (arr) {
+      var ahora = Date.now(), elegido = null;
+      for (var i = 0; arr && i < arr.length; i++) {
+        var e = arr[i];
+        // Candado #4: la entrada ya subio, asi que se descarta sin gastar
+        // red (y sin pagarle a Claude una segunda lectura de la misma foto).
+        //
+        // 🔴 Antes esto era solo `if (servidorYaTieneFoto(e.id))`, y esa
+        // pregunta NO distingue "el servidor ya tiene ESTA foto" de "el
+        // servidor tiene OTRA, mas vieja". O sea que en un REEMPLAZO —el
+        // boton "Tomar foto otra vez" de la migracion 103, el de las pickups
+        // grandes cuya placa no se dejo leer— el carro ya tenia foto, y la
+        // foto nueva se BORRABA de la cola sin haberse subido ni una vez.
+        // El supervisor la tomaba, el telefono vibraba, y no pasaba nada:
+        // la tarjeta seguia diciendo "no se leyo la placa". Medido en el
+        // navegador: 0 subidas y la cola vacia.
+        //
+        // Con `teniaFoto` la conclusion solo se saca cuando es valida: el
+        // carro no tenia foto, ahora la tiene, luego fue la nuestra. En un
+        // reemplazo el candado no puede concluir nada, asi que no descarta;
+        // lo peor que pasa entonces es una subida de mas si la app se
+        // reinicia justo entre la subida buena y el borrado de la entrada.
+        if (!e.teniaFoto && servidorYaTieneFoto(e.id)) { quitarPendiente(e.id); continue; }
+        if ((e.proximo || 0) > ahora) continue;   // aun en backoff
+        elegido = e; break;
+      }
+      if (elegido) intentarSubir(elegido);   // mantiene el candado, lo suelta al terminar
+      else subiendoFoto = false;
+    })
+    .catch(function () { subiendoFoto = false; });
+}
+
+// El wifi volvio o la app volvio al frente: adelanta el backoff de las
+// fotos que estaban esperando y vacia la cola. El piso global y el mutex
+// evitan que un wifi que parpadea dispare una tormenta de subidas.
+function despertarFotos() {
+  fotoStore("readonly")
+    .then(function (st) { return idbReq(st.getAll()); })
+    .then(function (arr) {
+      var pend = (arr || []).filter(function (e) { return (e.proximo || 0) > Date.now(); });
+      if (!pend.length) { flushOutbox(); return; }
+      fotoStore("readwrite").then(function (st) {
+        pend.forEach(function (e) { e.proximo = 0; st.put(e); });
+      }).then(flushOutbox);
+    })
+    .catch(flushOutbox);
+}
+
+// --- Ver la foto en grande -------------------------------------------
+// Se abre desde la miniatura de una tarjeta (con "Reemplazar foto") o
+// desde el desglose (sin el). Es una pantalla mas, asi que registra su
+// cierre para que el back del telefono la cierre como las demas.
+var visorFotoId = null;
+
+function abrirVisorFoto(url, id, conReemplazo) {
+  if (!url) return;
+  visorFotoId = id || null;
+  document.getElementById("visor-foto-img").src = url;
+  document.getElementById("visor-foto-reemplazar").style.display =
+    conReemplazo ? "block" : "none";
+  document.getElementById("visor-foto").style.display = "flex";
+  window.scrollTo(0, 0);
+  registrarPantalla(cerrarVisorFoto);
+}
+
+function cerrarVisorFoto() {
+  visorFotoId = null;
+  document.getElementById("visor-foto").style.display = "none";
+  // Se suelta la imagen para no dejarla cargada en memoria de fondo.
+  document.getElementById("visor-foto-img").src = "";
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  document.getElementById("camara").addEventListener("change", function (ev) {
+    var archivo = ev.target.files && ev.target.files[0];
+    ev.target.value = "";                  // permite repetir la misma foto
+    if (!archivo) return;
+    // En la pantalla de asignar la foto solo se GUARDA (se sube al asignar);
+    // desde la tarjeta o el visor se sube de una vez, como antes.
+    if (asig && asig.modo === "asignar" && carroDeLaFoto === asig.carro) {
+      tomarFotoAsignar(archivo);
+    } else {
+      subirFoto(archivo, carroDeLaFoto);
+    }
+  });
+
+  document.getElementById("visor-foto-cerrar").addEventListener("click", function () {
+    cerrarPantalla();
+  });
+
+  // Reemplazar: se cierra el visor (por history, para no desincronizar) y
+  // se abre la camara para ESE carro. Se guarda el id antes de cerrar,
+  // porque cerrar lo borra.
+  document.getElementById("visor-foto-reemplazar").addEventListener("click", function () {
+    var id = visorFotoId;
+    cerrarPantalla();
+    if (id) {
+      carroDeLaFoto = id;
+      document.getElementById("camara").click();
+    }
+  });
+});
+
+// --- Los botones -----------------------------------------------------
+// Se escucha en el contenedor y no en cada boton, porque la lista se
+// vuelve a dibujar cada segundo y los botones se recrean.
+var ocupado = false;
+
+document.getElementById("lista").addEventListener("click", function (ev) {
+  // La camara va aparte: no pasa por el bloqueo de "ocupado" porque no
+  // cambia la etapa del carro y no debe estorbarse con los demas toques.
+  var camara = ev.target.closest("button[data-foto]");
+  if (camara) {
+    // Un boton disabled no dispara click, pero por si acaso: sin carril y
+    // secador la foto no se abre.
+    if (camara.disabled) return;
+    var idFoto = Number(camara.dataset.foto);
+    // Si YA hay foto, se abre en grande (con boton para reemplazarla); asi
+    // el supervisor la revisa sin volver a disparar la camara por error. Si
+    // no hay, se abre la camara directo como siempre.
+    var cf = null;
+    for (var jf = 0; jf < carros.length; jf++) {
+      if (carros[jf].id === idFoto) { cf = carros[jf]; break; }
+    }
+    if (cf && cf.foto) {
+      abrirVisorFoto(cf.foto, idFoto, true);
+    } else {
+      carroDeLaFoto = idFoto;
+      document.getElementById("camara").click();
+    }
+    return;
+  }
+
+  // El boton de info abre el desglose de tiempos, en vivo. No pasa por
+  // "ocupado": solo abre una pantalla, no cambia la etapa del carro.
+  var info = ev.target.closest("button[data-info]");
+  if (info) {
+    abrirDetalle(Number(info.dataset.info), true);
+    return;
+  }
+
+  function buscarCarro(id) {
+    for (var j = 0; j < carros.length; j++) {
+      if (carros[j].id === Number(id)) return carros[j];
+    }
+    return null;
+  }
+
+  // Corregir abre la pantalla de captura. No pasa por "ocupado": no
+  // cambia la etapa del carro, solo abre una pantalla.
+  var editar = ev.target.closest("button[data-editar]");
+  if (editar) {
+    var paraEditar = buscarCarro(editar.dataset.editar);
+    if (paraEditar) abrirPantalla(paraEditar, "corregir");
+    return;
+  }
+
+  // Borrar unidad: saca de la cola un carro sin asignar que quedo de basura.
+  // El boton llega apagado antes de los 30 min, pero se confirma igual: es
+  // una accion que quita el carro de la lista, y el CLAUDE.md pide que nunca
+  // haya un paso asi por accidente. Toda la info se conserva (es reversible).
+  var borrar = ev.target.closest("button[data-borrar]");
+  if (borrar) {
+    if (borrar.disabled || ocupado) return;
+    if (!confirm("¿Borrar esta unidad de la cola?\n\nSe usa para carros que ya no se van a lavar. No se contarán sus tiempos. La demás información se conserva.")) return;
+    ocupado = true;
+    // 🔴 Igual que Restaurar: `disabled = true` sin nadie que lo vuelva a
+    // prender dejaba el boton muerto tras un fallo de red, contradiciendo al
+    // aviso que dice "Intenta otra vez". Revivia solo cuando pintar()
+    // reconstruia la lista: mediana 17-34 s, hasta minutos.
+    var listoBorrar = enEnvio(borrar, "Borrando…");
+    if (navigator.vibrate) navigator.vibrate(30);
+    pedir("/borrar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ carro: Number(borrar.dataset.borrar) })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d && d.ok === false) alert(d.error || "No se pudo borrar"); })
+      .catch(function () { alert("Sin conexión. Intenta otra vez."); })
+      .then(function () { listoBorrar(); ocupado = false; consultar(); });
+    return;
+  }
+
+  var boton = ev.target.closest("button[data-accion]");
+  if (!boton || ocupado) return;
+
+  // "Regresar" (data-accion="corregir") deshace el paso anterior y manda
+  // SOLO, sin abrir pantalla. Es facil picarlo por error —esta junto a
+  // Corregir y del mismo tamano— y regresar reinicia el cronometro de
+  // secado, asi que se confirma antes. El CLAUDE.md pide que nunca haya un
+  // paso destructivo por accidente.
+  if (boton.dataset.accion === "corregir") {
+    if (!confirm("¿Seguro que quieres regresar este carro a prelavado?\n\nSe reinicia el cronómetro de secado.")) return;
+  }
+
+  // El boton principal nunca manda solo: siempre abre una pantalla.
+  //   antes de secar -> asignar linea y secadores
+  //   secando        -> confirmar si se entrega o se rechaza
+  if (boton.dataset.accion === "avanzar") {
+    var buscado = buscarCarro(boton.dataset.carro);
+    if (buscado && (buscado.estado === "prelavado" ||
+                    buscado.estado === "tunel" ||
+                    buscado.estado === "por_asignar")) {
+      abrirAsignacion(buscado);
+      return;
+    }
+    if (buscado && buscado.estado === "secando") {
+      abrirEntrega(buscado);
+      return;
+    }
+  }
+
+  // Bloqueo mientras viaja la peticion: el supervisor va a picar dos
+  // veces si no ve respuesta inmediata, y eso saltaria una etapa. Y lo DICE:
+  // un boton que se apaga en silencio se lee como "no sirve" (misma razon
+  // que Entregar y RECHAZAR desde el 19/ago). Antes quedaba ademas muerto
+  // para siempre si la red fallaba, porque nadie lo volvia a prender.
+  ocupado = true;
+  var listoAccion = enEnvio(boton, "Enviando…");
+  if (navigator.vibrate) navigator.vibrate(30);
+
+  pedir("/" + boton.dataset.accion, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ carro: Number(boton.dataset.carro) })
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d && d.ok === false) alert(d.error || "No se pudo");
+    })
+    .catch(function () { alert("Sin conexión. Intenta otra vez."); })
+    .then(function () {
+      listoAccion();
+      ocupado = false;
+      consultar();  // se repinta con lo que diga la base, no con lo que supongamos
+    });
+});
+
+// El reloj corre solo cada segundo; los datos se piden cada 3. Asi el
+// cronometro se ve fluido sin castigar el wifi del taller.
+// El navegador no deja sonar ni encender la pantalla hasta que la
+// persona toca algo. Se aprovecha el primer toque, sea cual sea.
+function primerToque() {
+  despertarAudio();
+  mantenerPantallaEncendida();
+  document.removeEventListener("pointerdown", primerToque);
+}
+document.addEventListener("pointerdown", primerToque);
+
+// El service worker permite instalarla en la pantalla de inicio y que
+// abra aunque el wifi este caido.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("sw.js").catch(function () {});
+  });
+}
+
+cargarCodigo();
+// El reloj corre cada segundo pero SOLO actualiza numeros, no reconstruye
+// (por eso los guiones no se cortan). El HTML se rehace solo cuando
+// consultar() trae datos distintos, y pintar() ademas se salta el rebuild
+// si la firma no cambio.
+setInterval(actualizarRelojes, 1000);
+setInterval(consultar, 3000);
+consultar();
+
+// La cola de fotos se empuja tambien cuando el wifi regresa y cuando la
+// app vuelve al frente — no solo en el poll. Al arrancar, se reintenta lo
+// que haya quedado pendiente de una sesion anterior (una foto atorada por
+// wifi caido sobrevive un cierre de la app). Los candados de flushOutbox
+// mantienen el costo acotado pase lo que pase.
+window.addEventListener("online", despertarFotos);
+document.addEventListener("visibilitychange", function () { if (!document.hidden) despertarFotos(); });
+despertarFotos();
+</script>
+</body>
+</html>

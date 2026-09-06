@@ -1,0 +1,2076 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1117">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="caja.webmanifest">
+<link rel="apple-touch-icon" href="icono-192.png">
+<title>RUSH — Caja</title>
+
+<!--
+  Pagina APARTE (como reporte.html): la CAJERA, no el supervisor. CRM del
+  programa "6to lavado gratis". Mismo codigo de acceso (rush_codigo), otra URL.
+
+  Modelo persona-centrico: la lealtad es de la PERSONA, no del carro. La placa
+  solo FACILITA la busqueda (una placa puede ligar a varias personas). Las
+  visitas van siempre a la persona.
+
+  "A prueba de abuelitos": botones grandes, un paso a la vez, todo en espanol.
+  Funciona SIN camara (escribir placa / buscar por nombre); la camara del
+  tablet y la Reolink se suman despues.
+-->
+
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; }
+  body {
+    padding:16px 14px calc(24px + env(safe-area-inset-bottom));
+    background:#0d1117; color:#e6edf3;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-text-size-adjust:100%; -webkit-tap-highlight-color:transparent;
+    font-size:18px;
+  }
+  #logo { height:24px; width:auto; display:block; margin-bottom:10px; }
+  h1 { font-size:22px; margin:0 0 2px; }
+  .sub { color:#8b949e; font-size:14px; margin-bottom:18px; }
+
+  .pantalla { display:none; }
+  .pantalla.activa { display:block; }
+
+  .seccion { font-size:16px; font-weight:800; color:#adbac7; margin:18px 0 10px; }
+
+  /* Botones grandes de un toque. */
+  button {
+    font-family:inherit; cursor:pointer; border-radius:14px;
+    border:1px solid #30363d; background:#161b22; color:#e6edf3;
+  }
+  button:active { filter:brightness(.85); }
+  .grande {
+    width:100%; min-height:76px; font-size:23px; font-weight:800;
+    display:flex; align-items:center; justify-content:center; gap:12px;
+    margin:8px 0; padding:14px;
+  }
+  .grande.azul  { background:#2f81f7; border-color:#2f81f7; color:#fff; }
+  .grande.verde { background:#238636; border-color:#238636; color:#fff; }
+  /* "No asignar a cliente". Grande porque va hasta arriba y es una de las dos
+     salidas de esa pantalla, pero en gris y no en color: la ruta normal sigue
+     siendo escoger al cliente, y el color se reserva para ella. */
+  .grande.gris  { background:#21262d; border-color:#30363d; color:#c9d1d9; }
+  /* Un boton apagado y MUDO es de las cosas que mas confunden: se ve igual que
+     uno descompuesto y la cajera no sabe si la app fallo o si le falta un paso.
+     En rojo y diciendo QUE falta, se entiende sola. Va DESPUES de .verde a
+     proposito: misma especificidad, gana la ultima. Y sin opacidad: la idea es
+     que se LEA, no que se desvanezca. */
+  .grande.falta {
+    background:#20161a; border-color:#f85149; color:#ff7875;
+    font-size:20px; opacity:1;
+  }
+  .secundario {
+    width:100%; min-height:56px; font-size:17px; font-weight:700;
+    margin:8px 0; padding:10px; background:#21262d;
+  }
+  .volver { min-height:52px; padding:8px 16px; font-size:16px; font-weight:700; margin-bottom:6px; }
+  .peligro { color:#ff7875; border-color:#3d2224; background:#20161a; }
+
+  /* Dos botones lado a lado (Editar datos / Ver Historial). */
+  .fila-botones { display:flex; gap:8px; margin:8px 0; }
+  .fila-botones .secundario { flex:1; margin:0; }
+
+  /* Elegir la camara del feed (Exterior / Tablet), dos botones lado a lado. */
+  .fila-camaras { display:flex; gap:8px; margin:8px 0; }
+  .cam-btn { flex:1; min-height:62px; font-size:18px; font-weight:800; padding:10px 8px; line-height:1.15; }
+  .cam-btn.activa { background:#2f81f7; border-color:#2f81f7; color:#fff; }
+
+  /* Filas del historial del cliente. */
+  .hist-item { background:#161b22; border:1px solid #30363d; border-radius:12px; padding:12px 14px; margin:10px 0; }
+  .hist-item .fecha { font-size:16px; font-weight:800; color:#e6edf3; }
+  .hist-item .linea { color:#8b949e; font-size:14px; margin-top:4px; }
+  .hist-item .linea b { color:#c9d1d9; }
+  .hist-item .gratis-tag { display:inline-block; color:#3fb950; font-weight:800; margin-top:4px; }
+
+  /* Campos + su boton en una fila. */
+  .ofila { display:flex; gap:8px; margin:8px 0; }
+  .ofila input {
+    flex:1; min-width:0; font-size:20px; font-weight:700;
+    background:#161b22; color:#fff; border:2px solid #30363d;
+    border-radius:12px; padding:12px; text-transform:uppercase;
+  }
+  .ofila input::placeholder { text-transform:none; color:#6e7681; font-weight:600; letter-spacing:0; }
+  .ofila button { min-width:96px; font-size:17px; font-weight:800; padding:0 14px; }
+
+  #resultados { margin:6px 0; }
+  .tarjeta-p {
+    background:#161b22; border:1px solid #30363d; border-radius:14px;
+    padding:14px; margin:10px 0;
+  }
+  .tarjeta-p .nom { font-size:21px; font-weight:800; }
+  .tarjeta-p .tel { color:#8b949e; font-size:15px; margin-top:2px; }
+  .tarjeta-p .mini-sello { color:#adbac7; font-size:15px; margin-top:6px; }
+  .tarjeta-p button { width:100%; min-height:60px; font-size:19px; font-weight:800; margin-top:10px; background:#2f81f7; border-color:#2f81f7; color:#fff; }
+
+  .nota { color:#8b949e; font-size:14px; margin:8px 0; line-height:1.4; }
+  .nota.aviso { background:#1c2128; border-left:4px solid #d29922; border-radius:6px; padding:10px 12px; color:#c9d1d9; }
+
+  /* Feed en vivo de la camara. Se toca para prender/apagar. */
+  #feed {
+    position:relative; width:100%; aspect-ratio:16/9; margin:8px 0;
+    border-radius:14px; overflow:hidden; cursor:pointer;
+    background:#0b0f14; border:2px solid #30363d;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #feed-video { width:100%; height:100%; object-fit:cover; display:none; }
+  #feed.feed-vivo { border-color:#3fb950; }
+  #feed.feed-vivo #feed-video { display:block; }
+  #feed-hint {
+    color:#8b949e; font-size:16px; font-weight:800; text-align:center;
+    display:flex; flex-direction:column; align-items:center; gap:8px; pointer-events:none;
+  }
+  #feed-hint .feed-ico { font-size:42px; }
+  /* Vivo: el letrero pasa a una etiqueta chica en una esquina. */
+  #feed.feed-vivo #feed-hint {
+    position:absolute; top:8px; right:8px; flex-direction:row; gap:5px;
+    background:rgba(0,0,0,.6); border-radius:8px; padding:5px 10px;
+    font-size:13px; font-weight:700; color:#e6edf3;
+  }
+  #feed.feed-vivo .feed-ico { display:none; }
+
+  /* Leyendo: se congela el feed y se muestra LA MISMA foto que se subio a
+     Claude, oscurecida, con la leyenda y el spinner encima. */
+  #feed-shot { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:none; }
+  #feed.feed-leyendo #feed-shot { display:block; }
+  #feed.feed-leyendo #feed-video, #feed.feed-leyendo #feed-hint { display:none; }
+  #feed-leyendo {
+    position:absolute; inset:0; display:none;
+    flex-direction:column; align-items:center; justify-content:center; gap:16px;
+    background:rgba(0,0,0,.55); color:#fff;
+    font-size:22px; font-weight:900; letter-spacing:1px; text-align:center;
+  }
+  #feed.feed-leyendo #feed-leyendo { display:flex; }
+  .spin {
+    width:46px; height:46px; border-radius:50%;
+    border:5px solid rgba(255,255,255,.25); border-top-color:#3fb950;
+    animation:girar 1s linear infinite;
+  }
+  @keyframes girar { to { transform:rotate(360deg); } }
+
+  /* La placa capturada, en grande y sin guiones. */
+  .placa-cap {
+    font-size:22px; text-align:center; margin:10px 0;
+    background:#161b22; border:2px solid #2f81f7; border-radius:12px; padding:14px;
+    letter-spacing:2px;
+  }
+  .placa-cap b { font-size:28px; font-weight:900; }
+
+  /* Banner de lealtad — lo primero que ve la cajera de la persona. */
+  #banner-lealtad { border-radius:16px; padding:18px; margin:8px 0 14px; text-align:center; }
+  #banner-lealtad.gratis  { background:#132e1b; border:2px solid #3fb950; }
+  #banner-lealtad.pendiente { background:#161b22; border:1px solid #30363d; }
+  #banner-lealtad .grande-txt { font-size:26px; font-weight:900; line-height:1.15; }
+  #banner-lealtad.gratis .grande-txt { color:#3fb950; }
+  #banner-lealtad .sellos { font-size:30px; letter-spacing:6px; margin:10px 0 4px; }
+  #banner-lealtad .visitas { color:#8b949e; font-size:14px; }
+
+  .nombre-grande { font-size:24px; font-weight:800; margin-bottom:2px; }
+  .datos-linea { color:#8b949e; font-size:15px; margin:2px 0; }
+
+  /* Placas ya asignadas al cliente, como fichas. */
+  .placas-persona { margin:8px 0 2px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .chip-placa {
+    display:inline-block; font-size:17px; font-weight:800; letter-spacing:1px;
+    background:#161b22; color:#f0f6fc; border:1px solid #2f81f7; border-radius:9px;
+    padding:6px 12px;
+  }
+
+  /* Placas por confirmar (de la foto del supervisor). Botones grandes: la
+     cajera decide con el cliente enfrente. Ámbar punteado = aún no es segura. */
+  .sugeridas-caja { margin:10px 0 2px; }
+  .sug-rot-caja { font-size:15px; color:#8b949e; font-weight:700; margin-bottom:8px; }
+  .sug-fila-caja { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
+  .sug-placa-caja {
+    font-size:19px; font-weight:800; letter-spacing:1px; color:#f0f6fc;
+    background:#1a1408; border:1px dashed #d29922; border-radius:9px; padding:6px 12px;
+  }
+  .sug-ok-caja, .sug-no-caja {
+    font-size:17px; font-weight:800; border:none; border-radius:10px;
+    padding:10px 18px; cursor:pointer; font-family:inherit;
+  }
+  .sug-ok-caja { background:#238636; color:#fff; }
+  .sug-no-caja { background:#161b22; color:#8b949e; border:1px solid #30363d; }
+  .sug-ok-caja:active, .sug-no-caja:active { filter:brightness(.85); }
+
+  .toggle {
+    display:flex; align-items:center; gap:12px; font-size:19px; font-weight:700;
+    background:#161b22; border:1px solid #30363d; border-radius:12px;
+    padding:14px; margin:12px 0; cursor:pointer;
+  }
+  .toggle input { width:26px; height:26px; }
+  .toggle.on { border-color:#3fb950; background:#132e1b; }
+
+  .campo { margin:10px 0; }
+  .campo label { display:block; font-size:14px; color:#8b949e; margin-bottom:4px; }
+  .campo input, .campo textarea {
+    width:100%; font-size:19px; background:#161b22; color:#fff;
+    border:2px solid #30363d; border-radius:12px; padding:12px; font-family:inherit;
+  }
+
+  .ok { background:#132e1b; border:1px solid #3fb950; color:#3fb950; border-radius:12px; padding:14px; font-size:18px; font-weight:800; margin:8px 0 14px; }
+
+  /* ---- Buscador de cliente, hasta arriba de la primera pantalla -------
+     Al escribir 2+ letras los resultados CAEN debajo de la barra, encima de
+     lo demas, sin cambiar de pantalla (lo que se llama "autocompletado").
+     Se cierra al elegir, al vaciar, o al tocar fuera. */
+  .buscador-caja { position:relative; margin:0 0 10px; }
+  #in-top {
+    width:100%; font-size:20px; font-weight:700; font-family:inherit;
+    background:#161b22; color:#fff; border:2px solid #30363d;
+    border-radius:14px; padding:18px 52px 18px 16px;
+  }
+  #in-top:focus { border-color:#2f81f7; outline:none; }
+  #in-top::placeholder { color:#6e7681; font-weight:600; }
+  #top-limpiar {
+    position:absolute; right:8px; top:50%; transform:translateY(-50%);
+    width:40px; height:40px; min-height:0; padding:0; font-size:20px; font-weight:800;
+    border-radius:50%; background:#21262d; color:#8b949e; display:none;
+  }
+  #top-limpiar.on { display:block; }
+  #top-caja {
+    position:absolute; left:0; right:0; top:calc(100% + 6px); z-index:30;
+    background:#161b22; border:1px solid #30363d; border-radius:14px;
+    max-height:56vh; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    display:none; box-shadow:0 14px 34px rgba(0,0,0,.65);
+  }
+  #top-caja.abierto { display:block; }
+  .top-op {
+    display:block; width:100%; text-align:left; min-height:66px;
+    border:none; border-bottom:1px solid #21262d; border-radius:0;
+    background:transparent; padding:13px 16px; font-family:inherit;
+  }
+  .top-op:last-child { border-bottom:none; }
+  /* block, no inline: si no, el nombre y su renglon de abajo se pegan. */
+  .top-op .nom { display:block; font-size:19px; font-weight:800; color:#e6edf3; }
+  .top-op .sub2 { display:block; color:#8b949e; font-size:14px; margin-top:3px; }
+  .top-op.nuevo .nom { color:#2f81f7; }
+  .top-vacio { padding:14px 16px; color:#8b949e; font-size:15px; }
+  /* El aviso de "la lista esta recortada". Va ARRIBA del boton de dar de alta
+     y en ambar, no en gris: es lo unico que separa a la cajera de crear una
+     ficha duplicada, asi que tiene que verse antes de que llegue al boton. */
+  .top-mas { padding:12px 16px; color:#d29922; font-size:15px; line-height:1.35;
+             border-top:1px solid #21262d; background:#1c1a12; }
+
+  /* La lista de tickets no se pudo actualizar. Nace escondido; lo prende
+     tkAvisarViejo() tras ~9 s de fallas seguidas. La lista vieja se conserva
+     (mas vale vieja que vacia), pero rotulada. */
+  #tk-viejo { display:none; margin:0 0 8px; padding:12px 14px; border-radius:10px;
+              background:#1c1a12; border:1px solid #6b5a1a; color:#d29922;
+              font-size:16px; line-height:1.35; }
+
+  /* ---- Los ultimos tickets de Zettle, en vivo ------------------------- */
+  .tk-op {
+    width:100%; text-align:left; min-height:74px; margin:8px 0; padding:12px 14px;
+    font-size:17px; font-weight:700; background:#161b22;
+  }
+  .tk-op .tk-l1 { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+  .tk-op .tk-num { color:#8b949e; font-size:15px; font-weight:800; }
+  .tk-op .tk-monto { font-size:20px; font-weight:900; white-space:nowrap; }
+  .tk-op .tk-l2 { display:block; color:#c9d1d9; font-size:15px; font-weight:600; margin-top:4px; }
+  .tk-op .tk-l3 { display:block; color:#8b949e; font-size:14px; font-weight:600; margin-top:3px; }
+  .tk-op.sel  { background:#132e1b; border-color:#3fb950; border-width:2px; }
+  .tk-op.malo { background:#20161a; border-color:#f85149; border-width:2px; }
+  .tk-op[disabled] { opacity:.4; cursor:default; }
+  .tk-tag { display:inline-block; font-size:13px; font-weight:800; border-radius:7px; padding:2px 8px; margin-left:6px; }
+  .tk-tag.gratis { background:#132e1b; color:#3fb950; border:1px solid #3fb950; }
+  .tk-tag.cort   { background:#1c2128; color:#adbac7; border:1px solid #30363d; }
+  #tk-aviso {
+    display:none; color:#ff7875; font-weight:800; font-size:17px; line-height:1.35;
+    background:#20161a; border:1px solid #f85149; border-radius:12px; padding:13px; margin:10px 0;
+  }
+  #tk-aviso.on { display:block; }
+
+  /* Encabezado del cliente: "Otro cliente" y, a su derecha, quien es. */
+  .persona-top { display:flex; gap:12px; align-items:flex-start; margin-bottom:10px; }
+  .persona-top .volver { flex:0 0 auto; margin:0; }
+  .persona-top .quien { flex:1; min-width:0; }
+  .persona-top .quien .nombre-grande { font-size:22px; line-height:1.15; }
+
+  #acceso {
+    position:fixed; inset:0; background:#0d1117; z-index:50;
+    display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:24px;
+  }
+  #acceso input {
+    font-size:26px; text-align:center; letter-spacing:4px; width:100%; max-width:320px;
+    background:#161b22; color:#fff; border:1px solid #30363d; border-radius:8px; padding:12px;
+  }
+  #malcodigo { color:#ff7875; display:none; }
+
+  /* Boton "Ayuda" fijo arriba a la derecha, alcanzable desde cualquier
+     pantalla. Debajo del acceso (z-50), encima del contenido. */
+  #btn-ayuda {
+    position:fixed; top:calc(8px + env(safe-area-inset-top)); right:12px; z-index:45;
+    width:auto; min-height:auto; padding:8px 15px; font-size:15px; font-weight:800;
+    background:#1c2128; border:1px solid #30363d; color:#adbac7; border-radius:22px;
+  }
+
+  /* Panel de ayuda: overlay (NO una pantalla del flujo), para que abrirlo
+     a media captura no pierda al cliente en curso. Se cierra por el boton
+     atras del telefono o el boton Cerrar. */
+  #ayuda {
+    position:fixed; inset:0; z-index:46; background:#0d1117;
+    display:none; flex-direction:column;
+    padding:calc(10px + env(safe-area-inset-top)) 14px calc(20px + env(safe-area-inset-bottom));
+  }
+  #ayuda.abierto { display:flex; }
+  #ayuda-top { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+  #ayuda-top .seccion { margin:0; font-size:19px; color:#e6edf3; }
+  #ayuda-cuerpo { overflow-y:auto; -webkit-overflow-scrolling:touch; }
+
+  .ayuda-bloque {
+    background:#161b22; border:1px solid #30363d; border-radius:12px;
+    padding:14px 16px; margin:12px 0;
+  }
+  .ayuda-bloque h3 { font-size:18px; margin:0 0 8px; color:#e6edf3; }
+  .ayuda-bloque p { font-size:16px; line-height:1.45; color:#c9d1d9; margin:7px 0; }
+  .ayuda-bloque ol, .ayuda-bloque ul { margin:7px 0; padding-left:22px; }
+  .ayuda-bloque li { font-size:16px; line-height:1.5; color:#c9d1d9; margin:5px 0; }
+  .ayuda-bloque b { color:#f0f6fc; }
+  .ayuda-clave { border-left:4px solid #3fb950; }
+  .ayuda-ojo   { border-left:4px solid #d29922; }
+  .ayuda-nota-formato { font-size:20px; letter-spacing:1px; text-align:center; background:#0d1117; border:1px solid #30363d; border-radius:10px; padding:12px; margin:8px 0; }
+</style>
+
+<button id="btn-ayuda" aria-label="Ayuda">❓ Ayuda</button>
+
+<img id="logo" src="RUSH-Logo.png" alt="RUSH" onerror="this.style.display='none'">
+<h1>Caja</h1>
+<div class="sub">Lealtad · 6to lavado gratis</div>
+
+<!-- ============ Pantalla 1: capturar la placa ============ -->
+<div id="p-placa" class="pantalla activa">
+
+  <!-- Lo PRIMERO: buscar al cliente escribiendo. Con 2+ letras los resultados
+       caen debajo de la barra, sin cambiar de pantalla. La camara queda abajo
+       para cuando la cajera prefiere reconocerlo por la placa. -->
+  <div class="buscador-caja">
+    <input id="in-top" autocomplete="off" autocapitalize="words"
+           placeholder="🔍 Buscar cliente o placa">
+    <button id="top-limpiar" aria-label="Limpiar">✕</button>
+    <div id="top-caja"></div>
+  </div>
+
+  <div class="seccion">O captura la placa</div>
+
+  <!-- Elegir la fuente del feed en vivo: la Reolink fija del carwash (Camara
+       Exterior) o la camara del propio tablet (Camara Tablet). Las DOS se ven
+       DENTRO de la app (WebRTC / getUserMedia en el mismo recuadro), no la
+       camara nativa de Android: asi ambas tienen boton Regresar y no tapan
+       Zettle en split-screen. Se apaga al perder el foco (visibilitychange). -->
+  <div class="fila-camaras">
+    <button id="btn-cam-ext" class="cam-btn">Cámara Exterior</button>
+    <button id="btn-cam-tab" class="cam-btn">Cámara Tablet</button>
+  </div>
+
+  <div id="feed" class="feed-apagado">
+    <video id="feed-video" autoplay playsinline muted></video>
+    <img id="feed-shot" alt="">
+    <div id="feed-hint"><span class="feed-ico">📷</span><span id="feed-hint-txt">Elige una cámara arriba</span></div>
+    <div id="feed-leyendo"><div class="spin"></div><span>LEYENDO FOTOGRAFÍA…</span></div>
+  </div>
+
+  <button id="btn-foto" class="grande azul">📸 Tomar foto</button>
+  <button id="btn-regresar" class="grande" style="display:none">↩ Regresar</button>
+
+  <!-- La captura manual de placa se quito el 15/ago/2026 (pedido del dueno,
+       para simplificar el flujo). Si la placa no se lee, la cajera busca al
+       cliente por nombre arriba y el carro llega sin placa: ahi el SUPERVISOR
+       la toma con su camara, que se habilita en cuanto asigna carril y
+       secador. O sea que el respaldo no desaparecio, se movio a quien tiene
+       el carro enfrente. -->
+
+  <div id="placa-lista" style="display:none">
+    <div class="placa-cap">Placa: <b id="placa-txt"></b></div>
+    <button id="btn-buscar" class="grande verde">Buscar</button>
+    <button id="btn-otra" class="secundario">Cambiar placa</button>
+  </div>
+
+  <div id="estado-captura" class="nota"></div>
+</div>
+
+<!-- ============ Pantalla 2: elegir cliente ============ -->
+<div id="p-cliente" class="pantalla">
+  <button class="volver" data-inicio>&#8592; Volver</button>
+
+  <!-- HASTA ARRIBA, antes de los resultados (pedido del dueno, 24/ago/2026).
+       No todos los clientes se quieren registrar, pero el carro SI entra a la
+       base: el supervisor tiene que fotografiarlo de todos modos para asignar
+       linea y secador. Con esto la foto que ya tomo la camara de la caja se le
+       pega a su ticket y el supervisor se ahorra tomarla otra vez. -->
+  <button id="btn-sin-cliente" class="grande gris">🚗 No asignar a cliente</button>
+
+  <div id="cliente-encabezado"></div>
+  <div id="resultados"></div>
+
+  <div class="seccion" id="cliente-busca-titulo">Buscar por nombre o placa</div>
+  <div class="ofila">
+    <input id="in-nombre" autocomplete="off" placeholder="Nombre del cliente o placa">
+    <button id="btn-nombre">Buscar</button>
+  </div>
+  <div id="resultados-nombre"></div>
+
+  <button id="btn-nueva" class="secundario">+ Registrar cliente nuevo</button>
+</div>
+
+<!-- ============ Pantalla 2: persona + lealtad ============ -->
+<div id="p-persona" class="pantalla">
+
+  <!-- 1. Quien es: el boton de salir y, a su derecha, nombre completo + placas. -->
+  <div class="persona-top">
+    <button class="volver" data-inicio>&#8592; Otro cliente</button>
+    <div class="quien" id="datos-persona"></div>
+  </div>
+
+  <!-- 2. Editar datos / Ver historial. -->
+  <div class="fila-botones">
+    <button id="btn-editar" class="secundario">Editar datos</button>
+    <button id="btn-historial" class="secundario">Ver Historial</button>
+  </div>
+  <div id="form-editar" style="display:none">
+    <div class="campo"><label>Nombre</label><input id="ed-nombre"></div>
+    <div class="campo"><label>Teléfono</label><input id="ed-telefono" inputmode="tel"></div>
+    <div class="campo"><label>Notas</label><textarea id="ed-notas" rows="2"></textarea></div>
+    <button id="btn-guardar-datos" class="secundario">Guardar datos</button>
+  </div>
+
+  <!-- 3. Cuanto le falta para el lavado gratis. -->
+  <div id="banner-lealtad"></div>
+
+  <label class="toggle" id="lbl-gratis" style="display:none"><input type="checkbox" id="chk-gratis"> Utilizar <b>Lavado GRATIS</b></label>
+
+  <!-- Placas que leyo la camara del supervisor y falta confirmar. -->
+  <div id="placas-sugeridas"></div>
+
+  <!-- 4. Los ultimos tickets de Zettle, refrescandose solos cada 2 s. -->
+  <div class="seccion">¿Cuál es su ticket?</div>
+  <div id="tk-aviso">Selecciona un ticket con lavado gratis</div>
+  <!-- Va FUERA de #lista-tickets a proposito: la lista solo se reconstruye
+       cuando cambia su firma, asi que un aviso metido adentro no podria
+       aparecer ni irse cuando hace falta. -->
+  <div id="tk-viejo"></div>
+  <div id="lista-tickets"><div class="nota">Buscando los últimos tickets…</div></div>
+
+  <!-- Nace en rojo diciendo que falta elegir el ticket; pintarTickets() lo pasa
+       a verde "Registrar visita" en cuanto hay uno bueno seleccionado. -->
+  <button id="btn-registrar" class="grande verde falta" disabled>Selecciona un ticket</button>
+</div>
+
+<!-- La pantalla "¿A qué lavado corresponde?" se quito el 15/ago/2026. Ahora el
+     ticket se elige ANTES de registrar, en la pantalla del cliente, y
+     "Registrar visita" registra y enlaza de un solo golpe. De paso desaparece
+     la fuga de lealtad: ya no existe el momento en que hay una visita contando
+     sin lavado al cual pertenecer. -->
+
+<!-- ============ Pantalla: la foto va al ticket, sin cliente ============ -->
+<div id="p-sin-cliente" class="pantalla">
+  <button class="volver" data-inicio>&#8592; Volver</button>
+  <div class="seccion">¿Cuál es su ticket?</div>
+  <div class="nota">La foto se le guarda al lavado. <b>No se registra ningún cliente</b>
+    y no se acumulan lavados.</div>
+  <div id="sc-viejo"></div>
+  <div id="sc-tickets"><div class="nota">Buscando los últimos tickets…</div></div>
+  <!-- Mismo patron que "Registrar visita": se toca el ticket para escogerlo y
+       el boton grande hace la accion. Nace en rojo diciendo QUE falta. -->
+  <button id="btn-sc-guardar" class="grande falta">Elige el ticket</button>
+</div>
+
+<!-- ============ Pantalla: cliente nuevo ============ -->
+<div id="p-nueva" class="pantalla">
+  <button class="volver" data-inicio>&#8592; Cancelar</button>
+  <div class="seccion">Cliente nuevo</div>
+  <div class="campo"><label>Nombre *</label><input id="nv-nombre" autocapitalize="words"></div>
+  <div class="campo"><label>Teléfono</label><input id="nv-telefono" inputmode="tel"></div>
+  <div class="campo"><label>Notas</label><textarea id="nv-notas" rows="2"></textarea></div>
+  <button id="btn-crear" class="grande verde">Crear y continuar</button>
+</div>
+
+<!-- ============ Pantalla: historial del cliente ============ -->
+<div id="p-historial" class="pantalla">
+  <button class="volver" id="btn-volver-persona">&#8592; Volver al cliente</button>
+  <div class="seccion" id="hist-nombre">Historial</div>
+  <div id="hist-lista"><div class="nota">Cargando…</div></div>
+</div>
+
+<input id="camara" type="file" accept="image/*" capture="environment" style="display:none">
+
+<!-- ============ Panel de Ayuda (overlay) ============ -->
+<div id="ayuda">
+  <div id="ayuda-top">
+    <div class="seccion">Ayuda para la caja</div>
+    <button id="btn-cerrar-ayuda" class="volver">✕ Cerrar</button>
+  </div>
+  <div id="ayuda-cuerpo">
+
+    <div class="ayuda-bloque ayuda-clave">
+      <h3>¿Para qué sirve esta app?</h3>
+      <p>Registra las visitas de los clientes para el programa <b>6to lavado gratis</b>.</p>
+      <p>La lealtad es de la <b>PERSONA</b>, no del carro. Aunque el cliente traiga carros distintos, todos sus lavados se le juntan a él.</p>
+    </div>
+
+    <div class="ayuda-bloque">
+      <h3>Los 3 pasos de cada cliente</h3>
+      <ol>
+        <li><b>Escribe su nombre</b> en la barra de hasta arriba. Con dos letras ya empiezan a salir los clientes; toca el suyo. Si no aparece, hasta abajo de esa misma lista está <b>+ Registrar cliente nuevo</b>.</li>
+        <li><b>Cóbralo en Zettle.</b> Su ticket aparece solo en la lista de abajo, sin que toques nada. Tócalo para elegirlo.</li>
+        <li>Toca <b>Registrar visita</b>.</li>
+      </ol>
+      <p>Si va a usar un lavado gratis, prende <b>Utilizar Lavado GRATIS</b> antes de elegir el ticket.</p>
+    </div>
+
+    <div class="ayuda-bloque ayuda-ojo">
+      <h3>🎫 La lista de tickets</h3>
+      <p>Salen los <b>últimos 5 tickets</b> de Zettle y <b>se actualiza sola cada 2 segundos</b>: cóbralo y en un momento aparece, sin que toques nada.</p>
+      <p>De cada uno ves el <b>número, el monto, qué se vendió y la hora exacta</b>. Un ticket que <b>ya se registró</b> con otro cliente desaparece de la lista.</p>
+      <p>Un ticket <b>apagado</b> es uno que no trae lavado (por ejemplo puro Pinito o tapetes) y por eso no se puede elegir. Debajo te dice la razón.</p>
+      <p>Si tocas el que ya elegiste, lo <b>sueltas</b>. Así se corrige antes de registrar.</p>
+    </div>
+
+    <div class="ayuda-bloque ayuda-ojo">
+      <h3>🚗 La placa es solo para buscar</h3>
+      <p>Una misma placa puede ser de <b>varias personas</b> (por ejemplo el carro que comparten esposo e hijo).</p>
+      <p>Por eso, al leer una placa, la app te dice de quién es y <b>tú confirmas</b>, o registras a otra persona. La placa <b>ayuda a buscar</b>; no decide el cliente.</p>
+      <p>La barra de arriba también busca por placa: escribe las letras o los números y sale su dueño.</p>
+      <p>Si en la pantalla del cliente aparece <b>"¿Es su placa?"</b>, es una que leyó la cámara del supervisor y todavía nadie confirma. Con el cliente enfrente es el mejor momento: contesta <b>Sí es suya</b> o <b>No</b>.</p>
+    </div>
+
+    <div class="ayuda-bloque">
+      <h3>El lavado gratis</h3>
+      <p>Cada <b>5 lavados pagados</b> = <b>1 gratis</b>. Se acumulan: un cliente puede traer 2 o 3 guardados.</p>
+      <p>El botón <b>Utilizar Lavado GRATIS</b> <b>no se prende solo</b>. Solo lo prendes cuando el cliente decide usarlo — puede preferir guardarlo y pagar.</p>
+      <p>Con ese botón prendido tienes que cobrarlo en Zettle como <b>6to Lavado</b>. Si eliges un ticket que no lo es, se pone <b>rojo</b> y dice <i>"Selecciona un ticket con lavado gratis"</i>: es que el cobro y el premio no coinciden. Cóbralo bien, o apaga el botón.</p>
+    </div>
+
+    <div class="ayuda-bloque ayuda-ojo">
+      <h3>Cuándo cuenta una visita</h3>
+      <p>Una visita cuenta <b>hasta que tocas Registrar visita</b>, con su ticket ya elegido. Antes de eso no hay nada registrado.</p>
+      <p>Por eso, si al final el cliente no compró, <b>no tienes que cancelar nada</b>: basta con no registrarlo.</p>
+    </div>
+
+    <div class="ayuda-bloque ayuda-ojo">
+      <h3>Los tickets de regalo</h3>
+      <p>Un ticket de <b>6to Lavado</b> es el premio del cliente: la app lo marca <b>LAVADO GRATIS</b> y le descuenta uno.</p>
+      <p>Los regalos del negocio (<b>Cortesía</b>, y los de nombre propio como Mango o Remake) salen marcados <b>CORTESÍA · no suma</b>: quedan en su historial, pero <b>ni le suman ni le quitan</b> para el 6to lavado.</p>
+    </div>
+
+    <div class="ayuda-bloque">
+      <h3>📸 La cámara</h3>
+      <p>Es <b>opcional</b> — sirve para reconocer al cliente por su placa cuando no sabes su nombre. Toca el recuadro para <b>prender o apagar</b>, apunta a la placa y toca <b>Tomar foto</b>.</p>
+      <p><b>La foto se guarda siempre</b> y se le pega a su lavado, aunque no se alcance a leer la placa. Al supervisor le sirve para reconocer el carro en la cola.</p>
+      <p><b>Si no se lee la placa, no pasa nada y NO hay que repetir la foto.</b> Muchas camionetas grandes tapan la placa desde la ventana, y no se le va a pedir al cliente que se recorra. Sigue normal: busca al cliente por su nombre arriba. Si hizo falta, el <b>supervisor</b> le toma otra cuando lo asigna, ya con el carro en el patio.</p>
+    </div>
+
+    <div class="ayuda-bloque">
+      <h3>Si te equivocaste</h3>
+      <ul>
+        <li>Elegiste mal el ticket, antes de registrar → tócalo otra vez para <b>soltarlo</b> y elige el correcto.</li>
+        <li>Nombre o teléfono mal → <b>Editar datos</b>.</li>
+        <li>Ya registraste al cliente equivocado → avísale al dueño; eso se corrige desde el reporte.</li>
+      </ul>
+    </div>
+
+    <div class="ayuda-bloque">
+      <h3>La nota en Zettle</h3>
+      <p>Al cobrar en Zettle, escribe la nota así, para que el supervisor sepa qué carro es:</p>
+      <div class="ayuda-nota-formato"><b>CÓDIGO&nbsp; COLOR&nbsp; -&nbsp; NOMBRE</b></div>
+      <p>Ejemplos: <b>AU BLANCO - JUAN PEREZ</b> &nbsp;·&nbsp; <b>CA NEGRA</b></p>
+      <ul>
+        <li><b>PU</b> = pickup</li>
+        <li><b>CA</b> = camioneta</li>
+        <li><b>AU</b> = automóvil</li>
+        <li><b>PA</b> = pasajeros (combi)</li>
+      </ul>
+      <p>El <b>guion (-)</b> separa el color del nombre. El nombre es opcional; ponlo sobre todo en los <b>6to lavado gratis</b>.</p>
+      <p>Escribe el código <b>completo</b>: <b>AU</b>, nunca solo "A".</p>
+    </div>
+
+  </div>
+</div>
+
+<div id="acceso">
+  <h2 style="color:#e6edf3">Código de acceso</h2>
+  <input id="campo" inputmode="text" autocapitalize="characters" autocomplete="off">
+  <div id="malcodigo">Código incorrecto</div>
+  <button id="entrar" style="font-size:20px; padding:12px 30px">Entrar</button>
+</div>
+
+<script>
+var API = "https://rwoyfvddhlabmmuvkpjx.supabase.co/functions/v1/app";
+
+// --- Codigo de acceso: mismo almacen que el resto (rush_codigo) ------
+var CODIGO = "";
+function cargarCodigo() {
+  var enLiga = new URLSearchParams(location.search).get("c");
+  if (enLiga) {
+    CODIGO = enLiga.trim().toUpperCase();
+    try { localStorage.setItem("rush_codigo", CODIGO); } catch (e) {}
+    history.replaceState({}, "", location.pathname);
+    return;
+  }
+  try { CODIGO = localStorage.getItem("rush_codigo") || ""; } catch (e) { CODIGO = ""; }
+}
+// Toda petición corta a los 20 s. Sin esto, una petición colgada con el wifi
+// del taller deja el botón esperando para siempre: la cajera no ve error, ve
+// una app trabada, y el cliente enfrente. Es el mismo corte que ya tiene la
+// pantalla del supervisor.
+var PEDIR_CORTE_MS = 20000;
+
+// 🔴 Menos la lectura de la placa, que por dentro ya espera hasta 25 s a
+// Anthropic. Con el corte general de 20 s la caja se rendia ANTES que el
+// servidor: decia "Sin conexión", tiraba el `foto_path` que ya se habia
+// subido, y el camino `leida = false` de la migración `104` —el que deja el
+// intento sin marcar para que el obrero de fondo lo relea— nunca llegaba a la
+// pantalla. En una caída como la del 17/ago eso es la diferencia entre
+// recuperar la lectura sola y perderla. La pantalla del supervisor ya tiene
+// esta misma excepción para `/foto` desde el 19/ago; aquí se copia.
+var CORTE_POR_RUTA = { "/leer-placa": 45000 };
+
+function corteDe(ruta) {
+  var base = String(ruta).split("?")[0];
+  return CORTE_POR_RUTA[base] || PEDIR_CORTE_MS;
+}
+
+function pedir(ruta, opciones) {
+  opciones = opciones || {};
+  opciones.headers = opciones.headers || {};
+  opciones.headers["x-codigo"] = CODIGO;
+  opciones.cache = "no-store";
+  var reloj = null;
+  if (typeof AbortController === "function" && !opciones.signal) {
+    var corta = new AbortController();
+    opciones.signal = corta.signal;
+    reloj = setTimeout(function () { corta.abort(); }, corteDe(ruta));
+  }
+  return fetch(API + ruta, opciones).then(function (r) {
+    if (reloj) clearTimeout(reloj);
+    if (r.status === 401) {
+      try { localStorage.removeItem("rush_codigo"); } catch (e) {}
+      CODIGO = ""; pedirCodigo(true); throw new Error("codigo");
+    }
+    return r;
+  }, function (e) {
+    if (reloj) clearTimeout(reloj);
+    throw e;
+  });
+}
+
+// --- Un error del backend se tiene que VER como error -----------------
+//
+// La migración `105` hizo que el servidor marque `ok:false` en TODA respuesta
+// de error, y los consumidores se quedaron leyendo `d.algo || []`. Con eso un
+// 500 se pinta exactamente igual que "no hay resultados": la cajera busca a un
+// cliente que sí existe, no aparece, y da de alta una ficha duplicada.
+//
+// Se arregla AQUÍ y no en cada consumidor a propósito. Como clase son seis
+// líneas y el séptimo consumidor nace igual la semana entrante.
+function pedirJSON(ruta, opciones) {
+  return pedir(ruta, opciones).then(function (r) {
+    if (!r.ok) throw new Error("El servidor respondió " + r.status);
+    return r.json();
+  }).then(function (d) {
+    if (!d || d.ok === false) {
+      throw new Error((d && d.error) || "El servidor respondió con error");
+    }
+    return d;
+  });
+}
+
+// Una LISTA que no llegó no es una lista vacía: es un error. Devolver `[]`
+// aquí es justamente lo que convierte una falla en "no hay nada".
+function lista(d, campo) {
+  var v = d && d[campo];
+  if (!Array.isArray(v)) throw new Error("La respuesta no trae la lista `" + campo + "`");
+  return v;
+}
+
+function postJSON(ruta, cuerpo) {
+  return pedir(ruta, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(cuerpo)
+  }).then(function (r) { return r.json(); });
+}
+function pedirCodigo(fallo) {
+  document.getElementById("acceso").style.display = "flex";
+  document.getElementById("malcodigo").style.display = fallo ? "block" : "none";
+  document.getElementById("campo").focus();
+}
+function escapar(t) {
+  return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) {
+    return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
+  });
+}
+
+// --- Tamano de la foto que se manda a leer -----------------------------
+// 2576 px es el lado largo maximo que aprovecha la vision de alta resolucion
+// de Sonnet 5 (el modelo que lee la placa). Por encima de eso la API reduce la
+// imagen ella sola, asi que mandar mas es pagar tokens de mas sin ganar
+// nitidez. El stream principal de la Reolink mide 2560x1920, o sea que cabe
+// entero y NO se reescala.
+//
+// 🔴 Antes esto era 1280 px con calidad 0.6, heredado de la app del telefono
+// (donde la foto se toma a un metro del carro). Con la camara fija a distancia
+// no alcanzo: la placa quedaba de ~60 px y salia ilegible. Ver 11.60.
+var MAX_LADO = 2576;
+var CALIDAD  = 0.85;
+
+// --- La foto que se LEE no es la foto que se GUARDA (5/sep/2026) ----------
+// La grande (2576 / 0.85, ~800 KB) es la que necesita Sonnet para leer la
+// placa desde la ventanilla. Pero esa misma foto se estaba GUARDANDO en
+// Storage: con la caja en uso real el bucket crecio 54-93 MB al dia y en una
+// semana llego a 850 MB de los 1,024 del plan. Lo guardado solo sirve para la
+// tarjeta del supervisor y la galeria, y ahi 1280 / 0.6 (~100-150 KB, el
+// mismo estandar de la foto del telefono) sobra. Asi que la caja manda las
+// DOS: /leer-placa lee la grande y guarda la chica.
+// ⚠️ El costo: si la lectura falla y el obrero de fondo relee la foto guardada,
+// relee la chica. La lectura de emergencia es peor que la primera. Se acepta:
+// pasa una vez cada semanas (17/ago), y la alternativa era quedarse sin fotos.
+var MAX_LADO_GUARDAR = 1280;
+var CALIDAD_GUARDAR  = 0.6;
+
+// Saca la version chica de una dataURL grande. Si algo falla devuelve null y
+// /leer-placa guarda la grande, como antes: nunca se pierde la foto por esto.
+function versionChica(dataURL) {
+  return new Promise(function (listo) {
+    try {
+      var img = new Image();
+      img.onerror = function () { listo(null); };
+      img.onload = function () {
+        try {
+          var max = MAX_LADO_GUARDAR, an = img.width, al = img.height;
+          if (an > al && an > max) { al = Math.round(al * max / an); an = max; }
+          else if (al > max)       { an = Math.round(an * max / al); al = max; }
+          var c = document.createElement("canvas"); c.width = an; c.height = al;
+          c.getContext("2d").drawImage(img, 0, 0, an, al);
+          listo(c.toDataURL("image/jpeg", CALIDAD_GUARDAR));
+        } catch (e) { listo(null); }
+      };
+      img.src = dataURL;
+    } catch (e) { listo(null); }
+  });
+}
+
+// --- Achicar la foto en el telefono antes de subir (igual que la app) ---
+function achicar(archivo) {
+  return new Promise(function (listo, falla) {
+    var lector = new FileReader();
+    lector.onerror = falla;
+    lector.onload = function () {
+      var img = new Image();
+      img.onerror = falla;
+      img.onload = function () {
+        var max = MAX_LADO, an = img.width, al = img.height;
+        if (an > al && an > max) { al = Math.round(al * max / an); an = max; }
+        else if (al > max)       { an = Math.round(an * max / al); al = max; }
+        var lienzo = document.createElement("canvas");
+        lienzo.width = an; lienzo.height = al;
+        lienzo.getContext("2d").drawImage(img, 0, 0, an, al);
+        listo(lienzo.toDataURL("image/jpeg", CALIDAD));
+      };
+      img.src = lector.result;
+    };
+    lector.readAsDataURL(archivo);
+  });
+}
+
+// --- Navegacion entre pantallas + trampa del boton atras -------------
+// Cada pantalla que se abre empuja un estado; el boton atras del telefono
+// (o "Volver") regresa al inicio en vez de salir de la app.
+var PANTALLAS = ["p-placa", "p-cliente", "p-persona", "p-nueva", "p-historial", "p-sin-cliente"];
+function mostrar(id, empujar) {
+  // Al salir de la pantalla de captura, se apaga el feed (ahorra bateria).
+  if (id !== "p-placa" && feedVivo) apagarFeed();
+  // Los tickets solo se piden mientras se ve al cliente (es lo unico que los
+  // usa). Si no, el tablet estaria consultando cada 2 s todo el dia.
+  // ...y tambien mientras se escoge el ticket sin cliente (136): esa pantalla
+  // vive de la misma lista.
+  if (id === "p-persona" || id === "p-sin-cliente") arrancarTickets(); else pararTickets();
+  PANTALLAS.forEach(function (x) {
+    document.getElementById(x).classList.toggle("activa", x === id);
+  });
+  window.scrollTo(0, 0);
+  if (empujar) { try { history.pushState({ caja: id }, ""); } catch (e) {} }
+}
+window.addEventListener("popstate", function () {
+  // Si la Ayuda esta abierta, el "atras" solo la cierra (no reinicia al
+  // cliente en curso). Si no, regresa al inicio como siempre.
+  if (document.getElementById("ayuda").classList.contains("abierto")) { cerrarAyudaReal(); return; }
+  irInicio(false);
+});
+
+// --- Panel de Ayuda (overlay) ----------------------------------------
+// Se puede abrir desde cualquier pantalla y NO altera al cliente en curso.
+// Mismo patron de "atras" que el resto: abrir empuja un estado, cerrar lo
+// consume con history.back() y el popstate hace el cierre real.
+function abrirAyuda() {
+  if (feedVivo) apagarFeed();                       // se lee la ayuda, no la camara
+  document.getElementById("ayuda").classList.add("abierto");
+  document.getElementById("ayuda-cuerpo").scrollTop = 0;
+  try { history.pushState({ ayuda: true }, ""); } catch (e) {}
+}
+function cerrarAyudaReal() {
+  document.getElementById("ayuda").classList.remove("abierto");
+}
+document.getElementById("btn-ayuda").addEventListener("click", abrirAyuda);
+document.getElementById("btn-cerrar-ayuda").addEventListener("click", function () {
+  try { history.back(); } catch (e) { cerrarAyudaReal(); }
+});
+
+// --- Estado del cliente en curso -------------------------------------
+var personaActual = null;   // {id, nombre, telefono, notas, lealtad}
+var captura = null;         // {placa, marca, submarca, tipo, color, foto_path}
+var ticketsAhora = [];      // ultimos tickets de Zettle sin asignar
+var ticketSel = null;       // el ticket que la cajera eligio (objeto de la lista)
+
+// Candado contra doble-toque: si el wifi tarda, la cajera no ve respuesta y
+// vuelve a picar. Al primer toque se bloquea TODO boton de escritura y se
+// muestra "Guardando…"; los toques siguientes no hacen nada hasta que
+// termina. Sin esto se crean clientes/visitas duplicados (paso el 26/jul).
+var ocupado = false;
+function conCandado(btn, texto, hacer) {
+  if (ocupado) return;
+  ocupado = true;
+  var orig = btn.textContent;
+  btn.disabled = true; btn.textContent = texto;
+  var soltar = function () { ocupado = false; btn.disabled = false; btn.textContent = orig; };
+  var prom;
+  try { prom = hacer(); } catch (e) { soltar(); return; }
+  Promise.resolve(prom).then(soltar, function (e) {
+    soltar(); if (e && e.message !== "codigo") alert("Sin conexión. Intenta otra vez.");
+  });
+}
+
+// La placa se guarda SIEMPRE sin guiones (ni espacios): en la base es el
+// valor de busqueda. Los guiones son puro adorno visual del supervisor; aqui
+// no importan y la busqueda funciona con o sin ellos.
+function normPlaca(s) { return String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+
+function irInicio(empujar) {
+  personaActual = null; captura = null;
+  ticketsAhora = []; ticketSel = null;
+  ticketSC = null; scFirma = null;
+  document.getElementById("in-nombre").value = "";
+  document.getElementById("resultados").innerHTML = "";
+  document.getElementById("resultados-nombre").innerHTML = "";
+  document.getElementById("placa-lista").style.display = "none";
+  document.getElementById("estado-captura").textContent = "";
+  cerrarBuscadorTop();
+  document.getElementById("in-top").value = "";
+  document.getElementById("top-limpiar").classList.remove("on");
+  mostrar("p-placa", empujar);
+}
+
+// Fija la placa capturada (foto o manual), SIEMPRE limpia, y muestra Buscar.
+function fijarPlaca(placaCruda, datosFoto) {
+  var placa = normPlaca(placaCruda);
+  if (!placa) return false;
+  captura = datosFoto || { placa: null, marca: null, submarca: null, tipo: null, color: null, foto_path: null };
+  captura.placa = placa;
+  document.getElementById("placa-txt").textContent = placa;
+  document.getElementById("placa-lista").style.display = "block";
+  return true;
+}
+
+// --- Feed en vivo de la camara ---------------------------------------
+// PRODUCCION: feed WebRTC de la Reolink (via go2rtc), servido por Tailscale con
+// HTTPS para que esta pagina https pueda usar wss (sin choque de contenido
+// mixto). Solo funciona en dispositivos dentro del tailnet (el tablet de la caja
+// lo esta). Si el feed de la Reolink falla —dispositivo fuera del tailnet, o
+// relay/camara caidos— cae al RESPALDO: la camara del propio dispositivo
+// (getUserMedia), que es lo que habia antes. obtenerStream() devuelve un
+// MediaStream en ambos casos, asi que prenderFeed/capturarCuadro/apagarFeed no
+// cambian. go2rtc lleva api.origin:"*" para aceptar el WS cross-origin, y espera
+// la OFERTA como objeto {type,sdp} (no como string).
+var feedStream = null, feedVivo = false, feedPC = null, feedWS = null, feedFuente = "reolink";
+
+var GO2RTC_HOST = "rushserver.tail267016.ts.net";
+// El FEED en vivo va por el stream PRINCIPAL (2560x1920). Primero se puso en el
+// substream (640x480) por ahorrar ancho de banda; el dueño lo corrigio el
+// 17/ago/2026: "se ve un poco mal en el app". Con la camara fija a distancia el
+// substream no da ni para que la cajera vea bien lo que esta encuadrando.
+//
+// ⚠️ La camara solo expone DOS perfiles: main y sub. El intermedio (`ext`) de
+// Reolink esta apagado — se comprobo pidiendole un cuadro y no devolvio nada.
+// Si algun dia el tablet no aguanta los 5 MP, la salida NO es bajarle la
+// resolucion a la foto: es prender el `ext` en la camara y apuntar el feed ahi,
+// dejando la foto en main.
+var GO2RTC_SRC  = "reolink";
+// La FOTO tambien sale del principal. Se deja el nombre aparte porque son
+// decisiones distintas: el feed puede cambiar de perfil sin arrastrar la foto.
+var GO2RTC_SNAP = "reolink";
+// Debajo de este ancho, un cuadro del feed no sirve para leer la placa y hay que
+// pedir el cuadro grande aparte. Ver tomarFoto().
+var ANCHO_MINIMO = 1600;
+
+function obtenerStreamReolink() {
+  return new Promise(function (resolve, reject) {
+    var pc = new RTCPeerConnection({ iceServers: [] });
+    var ms = new MediaStream();
+    var ws = new WebSocket("wss://" + GO2RTC_HOST + "/api/ws?src=" + GO2RTC_SRC);
+    feedPC = pc; feedWS = ws;
+    var listo = false;
+    function fallar(e) {
+      if (listo) return; listo = true;
+      try { ws.close(); } catch (x) {}
+      try { pc.close(); } catch (x) {}
+      reject(e || new Error("feed"));
+    }
+    pc.addTransceiver("video", { direction: "recvonly" });
+    pc.onicecandidate = function (ev) {
+      if (ev.candidate && ws.readyState === 1)
+        ws.send(JSON.stringify({ type: "webrtc/candidate", value: ev.candidate.candidate }));
+    };
+    pc.ontrack = function (ev) {
+      ms.addTrack(ev.track);
+      if (!listo) { listo = true; resolve(ms); }
+    };
+    ws.onopen = function () {
+      pc.createOffer().then(function (o) { return pc.setLocalDescription(o); })
+        .then(function () {
+          ws.send(JSON.stringify({ type: "webrtc", value: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } }));
+        })
+        .catch(fallar);
+    };
+    ws.onmessage = function (ev) {
+      var m; try { m = JSON.parse(ev.data); } catch (x) { return; }
+      if (m.type === "webrtc") pc.setRemoteDescription(m.value).catch(fallar);
+      else if (m.type === "webrtc/candidate" && m.value) pc.addIceCandidate({ candidate: m.value, sdpMid: "0" }).catch(function () {});
+    };
+    ws.onerror = function () { fallar(new Error("ws")); };
+    setTimeout(function () { fallar(new Error("timeout")); }, 12000);
+  });
+}
+
+function obtenerStreamDispositivo() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
+    return Promise.reject(new Error("sin camara"));
+  return navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+}
+
+// Despacha segun la camara elegida. La Exterior (Reolink) NO cae al respaldo
+// sola: el boton dice exactamente que hace, y si falla la cajera toca "Camara
+// Tablet". Asi la eleccion siempre es explicita.
+function obtenerStream() {
+  if (feedFuente === "tablet") return obtenerStreamDispositivo();
+  return obtenerStreamReolink();
+}
+function prenderFeed() {
+  if (feedVivo) return Promise.resolve();
+  return obtenerStream().then(function (s) {
+    feedStream = s;
+    document.getElementById("feed-video").srcObject = s;
+    feedVivo = true;
+    document.getElementById("feed").className = "feed-vivo";
+    document.getElementById("feed-hint-txt").textContent = (feedFuente === "tablet") ? "Cámara Tablet" : "Cámara Exterior";
+    actualizarCamaraUI();
+  }).catch(function (e) {
+    document.getElementById("feed-hint-txt").textContent = (feedFuente === "reolink")
+      ? "No se pudo abrir la Cámara Exterior. Prueba Cámara Tablet."
+      : "No se pudo abrir la cámara del tablet.";
+    actualizarCamaraUI();
+    throw e;
+  });
+}
+function apagarFeed() {
+  if (feedWS) { try { feedWS.close(); } catch (x) {} feedWS = null; }
+  if (feedPC) { try { feedPC.close(); } catch (x) {} feedPC = null; }
+  if (feedStream) { feedStream.getTracks().forEach(function (t) { t.stop(); }); feedStream = null; }
+  var v = document.getElementById("feed-video"); if (v) v.srcObject = null;
+  feedVivo = false;
+  quitarLeyendo();
+  document.getElementById("feed").className = "feed-apagado";
+  document.getElementById("feed-hint-txt").textContent = "Elige una cámara arriba";
+  actualizarCamaraUI();
+}
+
+// Resalta el boton de la camara activa y muestra "Regresar" solo cuando hay
+// una camara encendida.
+function actualizarCamaraUI() {
+  document.getElementById("btn-cam-ext").classList.toggle("activa", feedVivo && feedFuente === "reolink");
+  document.getElementById("btn-cam-tab").classList.toggle("activa", feedVivo && feedFuente === "tablet");
+  document.getElementById("btn-regresar").style.display = feedVivo ? "" : "none";
+}
+
+// Elegir camara: si ya es esa, no hace nada; si hay otra encendida, la cambia.
+function usarCamara(fuente) {
+  if (feedVivo && feedFuente === fuente) return;
+  if (feedVivo) apagarFeed();
+  feedFuente = fuente;
+  prenderFeed().catch(function () {});
+}
+
+document.getElementById("btn-cam-ext").addEventListener("click", function () { usarCamara("reolink"); });
+document.getElementById("btn-cam-tab").addEventListener("click", function () { usarCamara("tablet"); });
+document.getElementById("btn-regresar").addEventListener("click", function () { apagarFeed(); });
+
+// Tocar el recuadro del video lo apaga (otra salida). Prender es SOLO con los
+// botones de arriba, para que la fuente sea siempre una eleccion explicita.
+document.getElementById("feed").addEventListener("click", function () {
+  if (feedVivo) apagarFeed();
+});
+// Al perder el foco (p.ej. tocar Zettle en split) se apaga: ahorra bateria y
+// evita el cuadro congelado. Al volver, la cajera re-elige.
+document.addEventListener("visibilitychange", function () {
+  if (document.hidden && feedVivo) apagarFeed();
+});
+
+function capturarCuadro() {
+  var v = document.getElementById("feed-video");
+  if (!v.videoWidth) return null;
+  var max = MAX_LADO, an = v.videoWidth, al = v.videoHeight;
+  if (an > al && an > max) { al = Math.round(al * max / an); an = max; }
+  else if (al > max)       { an = Math.round(an * max / al); al = max; }
+  var c = document.createElement("canvas"); c.width = an; c.height = al;
+  c.getContext("2d").drawImage(v, 0, 0, an, al);
+  return c.toDataURL("image/jpeg", CALIDAD);
+}
+
+// Pide a go2rtc un cuadro del stream PRINCIPAL y lo devuelve como dataURL.
+// Es una foto aparte del feed: el feed sigue en el stream chico. go2rtc tiene
+// que levantar el stream grande y esperar un cuadro clave, asi que tarda ~2 s
+// —por eso el boton avisa "Tomando foto..." mientras tanto—. Si falla (relay
+// caido, fuera del tailnet), NO se queda sin foto: cae al cuadro del feed, que
+// es exactamente lo que se hacia antes.
+function fotoDeLaReolink() {
+  return new Promise(function (listo, falla) {
+    var corte = setTimeout(function () { falla(new Error("timeout")); }, 20000);
+    fetch("https://" + GO2RTC_HOST + "/api/frame.jpeg?src=" + GO2RTC_SNAP, { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.blob(); })
+      .then(function (b) {
+        var lector = new FileReader();
+        lector.onerror = function () { clearTimeout(corte); falla(new Error("lector")); };
+        lector.onload  = function () { clearTimeout(corte); listo(lector.result); };
+        lector.readAsDataURL(b);
+      })
+      .catch(function (e) { clearTimeout(corte); falla(e); });
+  });
+}
+
+// Devuelve la foto que se va a leer, segun la camara elegida.
+//
+// Con el feed ya en el stream principal, el cuadro del feed sirve tal cual y la
+// foto sale INSTANTANEA — sin los ~2 s que costaba pedirla aparte.
+//
+// El respaldo no es decorativo: WebRTC baja la resolucion solo cuando el ancho
+// de banda se aprieta, y ahi el cuadro del feed volveria a ser chico sin que
+// nadie se entere. Por eso se mide `videoWidth` (lo que DE VERDAD llego
+// decodificado, no lo que se pidio): si viene chico, se pide el cuadro grande a
+// go2rtc. Asi la foto nunca depende de como ande la red en ese momento.
+function tomarFoto() {
+  if (feedFuente !== "reolink") return Promise.resolve(capturarCuadro());
+  var v = document.getElementById("feed-video");
+  if (v.videoWidth >= ANCHO_MINIMO) return Promise.resolve(capturarCuadro());
+  // 🔴 El respaldo se queda —una foto chica es mejor que ninguna, y la caja
+  // nunca se traba— pero LO DICE. Antes caía callado al cuadro del video, que
+  // debajo de 1600 px de ancho no alcanza para leer una placa: la cajera veía
+  // "no se pudo leer la placa" sin ninguna pista de que la foto había salido
+  // degradada porque el relay no contestó. El síntoma no se parece a la causa.
+  return fotoDeLaReolink().catch(function () {
+    var hint = document.getElementById("feed-hint-txt");
+    if (hint) hint.textContent = "⚠ La Cámara Exterior no dio la foto grande: " +
+      "se usó el cuadro del video y la placa puede no leerse.";
+    return capturarCuadro();
+  });
+}
+
+// Congela el feed y muestra LA MISMA foto que se sube a Claude, oscurecida,
+// con la leyenda "LEYENDO FOTOGRAFIA" mientras dura la lectura.
+function mostrarLeyendo(dataURL) {
+  document.getElementById("feed-shot").src = dataURL;
+  document.getElementById("feed").classList.add("feed-leyendo");
+}
+function quitarLeyendo() {
+  var f = document.getElementById("feed");
+  f.classList.remove("feed-leyendo");
+  document.getElementById("feed-shot").removeAttribute("src");
+}
+
+// Arma el resumen legible de lo que devolvio la foto: placa + marca/submarca.
+// Sirve para que la cajera VEA que la lectura trae mas que el numero.
+function resumenLectura(d) {
+  var partes = [];
+  if (d.marca) partes.push(d.submarca ? d.marca + " " + d.submarca : d.marca);
+  return partes.length ? " · " + partes.join(" ") : "";
+}
+
+// Manda una imagen ya lista (dataURL) a leer la placa. La usan el feed y el
+// respaldo del tablet.
+// Deja la captura en cero: sin placa en pantalla y sin datos guardados.
+function limpiarCaptura() {
+  captura = null;
+  var caja = document.getElementById("placa-lista");
+  if (caja) caja.style.display = "none";
+}
+
+function procesarImagen(dataURL) {
+  var est = document.getElementById("estado-captura");
+  // 🔴 Se limpia ANTES de pedir, no después de que salga bien.
+  //
+  // Si la lectura fallaba —`ok:false`, o la red— la función se salía por su
+  // camino de error y `captura` se quedaba con la foto y la placa DEL CARRO
+  // ANTERIOR. La cajera veía "Sin conexión", volvía a intentar, y si el
+  // segundo intento tampoco leía, registraba la visita con el `foto_path` y
+  // la placa del cliente de hace un rato: la foto de otro carro pegada a otro
+  // cliente, que es justo lo que el candado de placa repetida existe para
+  // evitar.
+  //
+  // En cuanto se toma una foto nueva, lo de antes está viejo. Punto.
+  limpiarCaptura();
+  est.textContent = "Leyendo la placa…";
+  mostrarLeyendo(dataURL);
+  // La grande se lee; la chica se guarda (ver versionChica arriba).
+  return versionChica(dataURL).then(function (chica) {
+    return postJSON("/leer-placa", { imagen: dataURL, imagen_chica: chica });
+  }).then(function (d) {
+    quitarLeyendo();
+    // ⚠️ Este mensaje decia "Captura la placa a mano", y ese botón se quitó el
+    // 15/ago: mandaba a la cajera a buscar algo que ya no existe, con el
+    // cliente enfrente. Se deja el MISMO texto neutro del otro camino, porque
+    // para ella los dos casos son lo mismo: sigue por el nombre.
+    if (!d || d.ok === false) {
+      est.textContent = "No se pudo tomar la foto. Busca al cliente por su nombre arriba.";
+      document.getElementById("in-top").focus();
+      return;
+    }
+    // `leida` viaja hasta el registro de la visita. Distingue "la cámara
+    // miró y no vio placa" de "no se alcanzó a mirar" (el servicio de
+    // lectura caído). En el segundo caso el carro NO debe quedar marcado
+    // como intentado, para que el obrero de fondo lo relea solo. La caja no
+    // avisa nada distinto: para la cajera los dos casos se ven igual.
+    // `color` viene de la MISMA lectura desde el 30/ago (141): la foto lo lee
+    // y la foto manda sobre lo que ponga la nota de caja.
+    var datos = { placa: null, marca: d.marca, submarca: d.submarca, tipo: d.tipo,
+                  color: d.color || null, foto_path: d.foto_path, leida: d.leida !== false };
+    if (d.placa && fijarPlaca(d.placa, datos)) {
+      est.textContent = "Placa leída: " + captura.placa + resumenLectura(d);
+    } else {
+      // NO se le pide retomar la foto. En Mexicali entran muchas pickup
+      // grandes (Tundra) donde la placa no se alcanza a ver desde la ventana
+      // de la caja, y pedirle al cliente que se recorra lo dejaría fuera del
+      // alcance para cobrar. Se sigue normal: se busca al cliente por nombre y
+      // la foto se guarda igual. El segundo intento lo hace el SUPERVISOR al
+      // asignar carril y secador, con el carro ya en el patio.
+      captura = datos;
+      est.textContent = "Foto tomada. Busca al cliente por su nombre arriba." + resumenLectura(d);
+      document.getElementById("in-top").focus();
+    }
+  }).catch(function (e) { quitarLeyendo(); if (e && e.message === "codigo") return; est.textContent = "Sin conexión. Intenta otra vez."; });
+}
+
+// "Tomar foto" = del feed en vivo. Si esta apagado, lo prende primero (y la
+// cajera apunta y vuelve a tocar), para no capturar un cuadro negro/borroso.
+document.getElementById("btn-foto").addEventListener("click", function () {
+  if (!feedVivo) {
+    document.getElementById("estado-captura").textContent = "Elige una cámara arriba (Exterior o Tablet) primero.";
+    return;
+  }
+  var est = document.getElementById("estado-captura");
+  var btn = this;
+  est.textContent = "Tomando foto...";
+  btn.disabled = true;
+  tomarFoto().then(function (img) {
+    btn.disabled = false;
+    if (!img) { est.textContent = "La cámara aún no está lista, intenta otra vez."; return; }
+    procesarImagen(img);
+  }).catch(function () {
+    btn.disabled = false;
+    est.textContent = "No se pudo tomar la foto. Intenta otra vez.";
+  });
+});
+
+// El boton "Tomar foto con camara de Tablet" (camara NATIVA de Android) se quito
+// el 4/ago: la camara del tablet ahora se ve DENTRO de la app con "Camara Tablet"
+// (y su boton Regresar), que ademas no tapa Zettle en split-screen. El input
+// #camara y su handler de abajo quedan intactos por si se reactiva el handoff.
+document.getElementById("camara").addEventListener("change", function (ev) {
+  var archivo = ev.target.files && ev.target.files[0];
+  ev.target.value = "";
+  if (!archivo) return;
+  achicar(archivo).then(procesarImagen).catch(function (e) {
+    if (e && e.message !== "codigo") document.getElementById("estado-captura").textContent = "No se pudo procesar la foto.";
+  });
+});
+
+document.getElementById("btn-otra").addEventListener("click", function () {
+  captura = null;
+  document.getElementById("placa-lista").style.display = "none";
+  document.getElementById("estado-captura").textContent = "";
+});
+
+// --- Buscar por placa -> pantalla de cliente ---
+document.getElementById("btn-buscar").addEventListener("click", function () {
+  if (!captura || !captura.placa) return;
+  var placa = captura.placa;
+  pedirJSON("/personas?placa=" + encodeURIComponent(placa))
+    .then(function (d) {
+      var arr = lista(d, "personas");
+      mostrar("p-cliente", true);
+      pintarEncabezado("Placa: " + placa, arr.length);
+      pintarClientes(arr, "resultados");
+      document.getElementById("resultados-nombre").innerHTML = "";
+      document.getElementById("in-nombre").value = "";
+    })
+    .catch(function (e) { if (e && e.message !== "codigo") alert("Sin conexión."); });
+});
+
+// --- Buscador de arriba: autocompletado ------------------------------
+// Al escribir 2+ letras caen los resultados debajo de la barra, SIN cambiar
+// de pantalla. Mismo cuidado que el buscador viejo: se espera 300 ms tras la
+// ultima tecla (asi "MARIA" de corrido = UNA consulta) y se descarta la
+// respuesta si ya llego otra mas nueva, para no pintar resultados viejos.
+var topTimer = null, topToken = 0;
+
+function cerrarBuscadorTop() {
+  document.getElementById("top-caja").classList.remove("abierto");
+}
+function abrirBuscadorTop(html) {
+  var caja = document.getElementById("top-caja");
+  caja.innerHTML = html;
+  caja.classList.add("abierto");
+}
+
+function buscarTop(q) {
+  q = (q || "").trim();
+  document.getElementById("top-limpiar").classList.toggle("on", q.length > 0);
+  if (q.length < 2) { cerrarBuscadorTop(); return; }   // 1 letra no filtra nada util
+  var miToken = ++topToken;
+  pedirJSON("/personas?q=" + encodeURIComponent(q))
+    .then(function (d) {
+      if (miToken !== topToken) return;                 // respuesta vieja
+      var arr = lista(d, "personas");
+      var html = "";
+      arr.forEach(function (p, i) {
+        var l = p.lealtad || {};
+        var placas = (p.placas || []).filter(Boolean).join(" · ");
+        html += '<button class="top-op" data-i="' + i + '">' +
+                  '<span class="nom">' + escapar(p.nombre) + "</span>" +
+                  '<span class="sub2">' + escapar(selloTexto(l)) +
+                    (placas ? "  ·  🚗 " + escapar(placas) : "") + "</span>" +
+                "</button>";
+      });
+      if (!arr.length) html += '<div class="top-vacio">Nadie con ese nombre o placa.</div>';
+
+      // 🔴 La lista viene recortada, y hasta el 24/ago no se decia. Con un
+      // apellido comun eso es una trampa: "lopez" tiene 191 clientes y aqui
+      // salian 25, con el boton de dar de alta justo debajo. La cajera creaba
+      // una ficha DUPLICADA de alguien que si estaba, y sus sellos quedaban
+      // partidos en dos.
+      //
+      // El total lo manda el backend (contado con el MISMO `where` que busca).
+      // Si no viene -- porque ese conteo fallo -- no se inventa nada: no sale
+      // el aviso, igual que antes.
+      var total = (d && typeof d.total === "number") ? d.total : null;
+      if (total !== null && total > arr.length) {
+        html += '<div class="top-mas">Se muestran ' + arr.length + " de " + total +
+                ".<br>Escribe más letras para encontrarlo antes de darlo de alta.</div>";
+      }
+
+      // Registrar cliente nuevo SIEMPRE al final: si no aparece, ahi mismo se
+      // da de alta sin tener que salir a buscar otro boton.
+      html += '<button class="top-op nuevo" data-nuevo="1">' +
+                '<span class="nom">+ Registrar cliente nuevo</span>' +
+                '<span class="sub2">' + escapar(q) + "</span></button>";
+      abrirBuscadorTop(html);
+      var caja = document.getElementById("top-caja");
+      caja.querySelectorAll("button[data-i]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          cerrarBuscadorTop();
+          elegirPersona(arr[Number(b.dataset.i)]);
+        });
+      });
+      var bn = caja.querySelector("button[data-nuevo]");
+      if (bn) bn.addEventListener("click", function () {
+        cerrarBuscadorTop();
+        document.getElementById("nv-nombre").value = q;
+        document.getElementById("nv-telefono").value = "";
+        document.getElementById("nv-notas").value = "";
+        mostrar("p-nueva", true);
+      });
+    })
+    // Falla la búsqueda: se DICE. Antes se tragaba en silencio y el resultado
+    // en pantalla era idéntico a "no existe ese cliente" — con lo que la
+    // cajera daba de alta una ficha duplicada de alguien que sí estaba.
+    // Se comprueba el token también aquí: una falla vieja no puede tapar un
+    // resultado nuevo.
+    .catch(function (e) {
+      if (e && e.message === "codigo") return;
+      if (miToken !== topToken) return;
+      abrirBuscadorTop('<div class="top-vacio">No se pudo buscar. ' +
+        'Revisa la conexión e intenta otra vez.</div>');
+    });
+}
+
+document.getElementById("in-top").addEventListener("input", function () {
+  var v = this.value;
+  clearTimeout(topTimer);
+  topTimer = setTimeout(function () { buscarTop(v); }, 300);
+});
+document.getElementById("in-top").addEventListener("keydown", function (ev) {
+  if (ev.key === "Enter") { clearTimeout(topTimer); buscarTop(this.value); this.blur(); }
+});
+document.getElementById("top-limpiar").addEventListener("click", function () {
+  var caja = document.getElementById("in-top");
+  caja.value = ""; this.classList.remove("on"); cerrarBuscadorTop(); caja.focus();
+});
+// Tocar fuera cierra la lista (si no, tapa la camara de abajo).
+document.addEventListener("click", function (ev) {
+  if (!ev.target.closest || !ev.target.closest(".buscador-caja")) cerrarBuscadorTop();
+});
+
+function pintarEncabezado(titulo, cuantas) {
+  var h = '<div class="placa-cap"><b>' + escapar(titulo) + "</b></div>";
+  if (cuantas === 0) h += '<div class="nota aviso">Esta placa no está registrada con nadie. Busca por nombre o registra un cliente nuevo.</div>';
+  else if (cuantas === 1) h += '<div class="nota aviso">Esta placa es de este cliente. Confírmalo, o busca/registra otro.</div>';
+  else if (cuantas > 1) h += '<div class="nota aviso">Esta placa está ligada a ' + cuantas + ' personas. Elige cuál.</div>';
+  document.getElementById("cliente-encabezado").innerHTML = h;
+}
+
+// --- Buscar por nombre EN VIVO (mientras se escribe) -----------------
+// Barato: NO se consulta por cada tecla. Se espera 300 ms tras la ultima
+// (debounce), asi "MARIA" de corrido = UNA consulta. Minimo 2 letras. Se
+// descarta la respuesta si ya llego otra mas nueva (token), para que no se
+// pinte un resultado viejo encima del actual. La consulta ya esta indexada
+// y trae maximo 25.
+var buscaNombreTimer = null;
+var buscaNombreToken = 0;
+
+function buscarNombre(q) {
+  q = (q || "").trim();
+  var cont = document.getElementById("resultados-nombre");
+  if (q.length < 2) { cont.innerHTML = ""; return; }   // 1 letra no filtra nada util
+  var miToken = ++buscaNombreToken;
+  pedirJSON("/personas?q=" + encodeURIComponent(q))
+    .then(function (d) {
+      if (miToken !== buscaNombreToken) return;   // respuesta vieja: se ignora
+      var arr = lista(d, "personas");
+      if (!arr.length) cont.innerHTML = '<div class="nota">Nadie con ese nombre. Regístralo como cliente nuevo.</div>';
+      else pintarClientes(arr, "resultados-nombre");
+    })
+    // Igual que el buscador de arriba: una falla se DICE, no se disfraza de
+    // "nadie con ese nombre".
+    .catch(function (e) {
+      if (e && e.message === "codigo") return;
+      if (miToken !== buscaNombreToken) return;
+      cont.innerHTML = '<div class="nota aviso">No se pudo buscar. ' +
+        'Revisa la conexión e intenta otra vez.</div>';
+    });
+}
+
+document.getElementById("btn-nombre").addEventListener("click", function () {
+  clearTimeout(buscaNombreTimer);
+  buscarNombre(document.getElementById("in-nombre").value);
+});
+document.getElementById("in-nombre").addEventListener("input", function () {
+  var v = this.value;
+  clearTimeout(buscaNombreTimer);
+  buscaNombreTimer = setTimeout(function () { buscarNombre(v); }, 300);
+});
+document.getElementById("in-nombre").addEventListener("keydown", function (ev) {
+  if (ev.key === "Enter") { clearTimeout(buscaNombreTimer); buscarNombre(this.value); }
+});
+
+function vecesTexto(n) { return n === 1 ? "1 vez" : n + " veces"; }
+function selloTexto(l) {
+  if (!l) return "";
+  var prog = l.sellos || 0, disp = l.disponibles || 0;
+  return "●".repeat(prog) + "○".repeat(Math.max(0, 5 - prog)) +
+         (disp > 0 ? "  · " + disp + " gratis" : "  · faltan " + (5 - prog));
+}
+
+function pintarClientes(personas, destino) {
+  var cont = document.getElementById(destino);
+  var html = "";
+  personas.forEach(function (p) {
+    var l = p.lealtad || {};
+    html += '<div class="tarjeta-p">' +
+              '<div class="nom">' + escapar(p.nombre) + "</div>" +
+              (p.telefono ? '<div class="tel">' + escapar(p.telefono) + "</div>" : "") +
+              '<div class="mini-sello">' + selloTexto(l) + "</div>" +
+              '<button data-elegir="' + p.id + '">Seleccionar cliente</button>' +
+            "</div>";
+  });
+  cont.innerHTML = html;
+  cont.querySelectorAll("button[data-elegir]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var p = personas.filter(function (x) { return String(x.id) === b.dataset.elegir; })[0];
+      if (p) elegirPersona(p);
+    });
+  });
+}
+
+function elegirPersona(p) {
+  personaActual = p;
+  // Un cliente nuevo empieza SIN ticket elegido: heredar el del anterior
+  // registraría la visita contra el lavado de otra persona.
+  ticketSel = null; tkFirma = null;
+  mostrar("p-persona", true);
+  pintarPersona();
+}
+
+// --- Pantalla persona + lealtad --------------------------------------
+// conservarGratis: al REPINTAR la misma persona (confirmar/descartar placa,
+// guardar datos) NO se debe apagar el toggle "Utilizar Lavado GRATIS" que la
+// cajera ya prendió — si se apaga sin que se dé cuenta, cobra un gratis. Solo
+// se reinicia al cargar una persona NUEVA (elegirPersona, sin el flag).
+function pintarPersona(conservarGratis) {
+  var p = personaActual, l = (p && p.lealtad) || {};
+
+  // Los lavados gratis se ACUMULAN: cada 5 pagados suma uno. Si tiene, el
+  // banner lo grita; si no, muestra cuanto le falta al siguiente. Los sellos
+  // (●) son el progreso hacia el proximo (0-4).
+  var disp = l.disponibles || 0;
+  var prog = l.sellos || 0;
+  var banner = document.getElementById("banner-lealtad");
+  var sellos = '<div class="sellos">' + "●".repeat(prog) + "○".repeat(Math.max(0, 5 - prog)) + "</div>";
+  if (disp > 0) {
+    banner.className = "gratis";
+    banner.innerHTML = '<div class="grande-txt">Tiene ' + disp + ' lavado' + (disp === 1 ? "" : "s") + ' GRATIS</div>' +
+                       sellos + '<div class="visitas">y va ' + prog + '/5 para el siguiente</div>';
+  } else {
+    banner.className = "pendiente";
+    banner.innerHTML = '<div class="grande-txt">Faltan ' + (5 - prog) + '</div>' + sellos +
+                       '<div class="visitas">para el lavado gratis</div>';
+  }
+
+  // Las placas que ya tiene asignadas (para confirmar que es el cliente
+  // correcto y ver sus carros). Una placa puede ligar a varias personas, y
+  // una persona a varias placas.
+  var placas = (p.placas || []).filter(Boolean);
+  var placasHtml = placas.length
+    ? '<div class="placas-persona">🚗 ' + placas.map(function (x) {
+        return '<span class="chip-placa">' + escapar(x) + "</span>";
+      }).join("") + "</div>"
+    : '<div class="datos-linea">🚗 Sin placas registradas todavía</div>';
+
+  // Placas POR CONFIRMAR: salieron de la foto del supervisor. Aquí la cajera,
+  // con el cliente enfrente, dice si es suya (queda confirmada) o no (se quita).
+  // Es el mejor momento para volverlas seguras.
+  var porConf = (p.placas_por_confirmar || []).filter(Boolean);
+  var sugeridasHtml = porConf.length
+    ? '<div class="sugeridas-caja"><div class="sug-rot-caja">¿Es su placa? (la leyó la cámara del supervisor)</div>' +
+      porConf.map(function (x) {
+        return '<div class="sug-fila-caja">' +
+                 '<span class="sug-placa-caja">' + escapar(x) + '</span>' +
+                 '<button class="sug-ok-caja" data-confirmar="' + escapar(x) + '">Sí es suya</button>' +
+                 '<button class="sug-no-caja" data-descartar="' + escapar(x) + '">No</button>' +
+               '</div>';
+      }).join("") + "</div>"
+    : "";
+
+  // Nombre completo y sus placas, a la derecha de "Otro cliente".
+  document.getElementById("datos-persona").innerHTML =
+    '<div class="nombre-grande">' + escapar(p.nombre) + "</div>" +
+    placasHtml +
+    (p.telefono ? '<div class="datos-linea">📞 ' + escapar(p.telefono) + "</div>" : "") +
+    (p.notas ? '<div class="datos-linea">📝 ' + escapar(p.notas) + "</div>" : "") +
+    '<div class="datos-linea">Ha venido ' + vecesTexto(l.visitas_totales || 0) + ' o más</div>';
+
+  // Las placas por confirmar van en su propio bloque, no junto al nombre: son
+  // una pregunta ocasional, no parte de quien es el cliente.
+  document.getElementById("placas-sugeridas").innerHTML = sugeridasHtml;
+
+  // Botones de confirmar / quitar de las placas sugeridas.
+  var dp = document.getElementById("placas-sugeridas");
+  dp.querySelectorAll("button[data-confirmar]").forEach(function (b) {
+    b.addEventListener("click", function () { placaAccionCaja("/placa-confirmar", p.id, b.getAttribute("data-confirmar")); });
+  });
+  dp.querySelectorAll("button[data-descartar]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      if (!confirm("¿Quitar la placa " + b.getAttribute("data-descartar") + " de este cliente?")) return;
+      placaAccionCaja("/placa-descartar", p.id, b.getAttribute("data-descartar"));
+    });
+  });
+
+  // "Utilizar Lavado GRATIS" solo aparece si tiene lavados gratis; y NO se
+  // prende solo: la cajera lo prende cuando el cliente decide usarlo (puede
+  // preferir guardarlo y pagar un express).
+  var chk = document.getElementById("chk-gratis");
+  if (!conservarGratis) chk.checked = false;
+  document.getElementById("lbl-gratis").style.display = disp > 0 ? "flex" : "none";
+  pintarToggleGratis();
+
+  document.getElementById("form-editar").style.display = "none";
+  pintarTickets();
+}
+// Confirma o quita una placa sugerida y repinta al cliente con lo que diga
+// la base (el RPC devuelve la persona ya actualizada).
+function placaAccionCaja(ruta, persona, placa) {
+  postJSON(ruta, { persona: persona, placa: placa }).then(function (d) {
+    if (d && d.ok === false) { alert(d.error || "No se pudo"); return; }
+    if (d && d.persona) { personaActual = d.persona; pintarPersona(true); }
+  }).catch(function (e) { if (e && e.message === "codigo") return; alert("No se pudo. Intenta otra vez."); });
+}
+
+function pintarToggleGratis() {
+  document.getElementById("lbl-gratis").classList.toggle("on", document.getElementById("chk-gratis").checked);
+}
+// Al prender/apagar el gratis hay que revalidar el ticket ya elegido: puede
+// pasar de bueno a rojo sin que la cajera vuelva a tocar la lista.
+document.getElementById("chk-gratis").addEventListener("change", function () {
+  pintarToggleGratis(); pintarTickets();
+});
+
+// --- Los ultimos tickets de Zettle, en vivo --------------------------
+// Se refrescan solos cada 2 s mientras se ve al cliente, para que el ticket
+// aparezca en cuanto la cajera cobre en Zettle, sin tocar nada.
+// Ritmo FIJO de 3 s, el mismo que el app del supervisor lleva usando desde
+// julio. Se evaluó Supabase Realtime (un websocket que avisa en vez de estar
+// preguntando) y se DESCARTÓ: obliga a poner una llave pública dentro de la
+// página, y la página vive en un repo público. Decisión del dueño el
+// 15/ago/2026: **ninguna llave se sube, nunca.** Preguntar cada 3 s no depende
+// de ninguna llave, se recupera solo cuando el wifi se cae, y es el camino que
+// ya está probado en la operación — que es justo lo que se pidió: que no se
+// pierda ninguna venta.
+var tkTimer = null;
+var TK_CADA = 3000;
+
+function arrancarTickets() {
+  pararTickets();
+  cargarTickets();
+  tkTimer = setInterval(function () {
+    // Con el tablet en segundo plano no se consulta: nadie está viendo la
+    // lista. Lo cubre casi siempre el visibilitychange de abajo, pero ese
+    // evento sólo avisa de los CAMBIOS — si la pantalla se abre ya estando
+    // oculta, nunca se entera. Preguntar aquí cuesta nada y cierra el caso.
+    if (!document.hidden) cargarTickets();
+  }, TK_CADA);
+}
+function pararTickets() {
+  if (tkTimer) { clearInterval(tkTimer); tkTimer = null; }
+}
+// Si el tablet se va a segundo plano (la cajera se pasa a Zettle), se deja de
+// consultar; al volver, se pide de inmediato.
+document.addEventListener("visibilitychange", function () {
+  if (document.hidden) pararTickets();
+  else if (document.getElementById("p-persona").classList.contains("activa") ||
+           document.getElementById("p-sin-cliente").classList.contains("activa")) arrancarTickets();
+});
+
+// 🔴 Cuantas consultas seguidas han fallado. Antes esto no existia: una
+// respuesta que no fuera la lista se descartaba con un `return` a secas y la
+// cajera seguia viendo los tickets de hace rato, sin una sola senal. Conservar
+// la lista vieja esta BIEN (mas vale vieja que vacia, y el ticket que busca
+// probablemente sigue ahi); lo que no puede ser es que no se note.
+var tkFallos = 0;
+
+function tkAvisarViejo() {
+  // Las DOS pantallas que muestran tickets llevan el mismo aviso: la del
+  // cliente y la de "No asignar a cliente". Se recorren juntas para que no se
+  // desfasen.
+  ["tk-viejo", "sc-viejo"].forEach(function (id) {
+    var e = document.getElementById(id);
+    if (!e) return;
+    // Un parpadeo del wifi se arregla solo en la siguiente vuelta; a los ~9 s ya
+    // no es parpadeo. Mismo criterio que el aviso de la cola del supervisor.
+    if (tkFallos < 3) { e.style.display = "none"; e.textContent = ""; return; }
+    e.style.display = "block";
+    e.textContent = "No se pudo actualizar la lista de tickets. Lo que ves es de hace rato: " +
+                    "si acabas de cobrar, todavía no aparece.";
+  });
+}
+
+// 🔴 La lista se pide cada 3 s sin esperar a la anterior, asi que con el wifi
+// flojo hay varias respuestas en vuelo y llegan en cualquier orden. Una vieja
+// que aterriza despues de la nueva repinta la lista de hace rato: si el ticket
+// que la cajera ya habia escogido no viene en ESA, se suelta (`ticketSel =
+// null`) y "Registrar visita" se apaga sola con el cliente enfrente. Es el
+// gemelo del bug de la cola del supervisor, que ya se arreglo con este mismo
+// contador: solo se pinta la ultima.
+var tkToken = 0;
+var tkOk = 0;
+
+function cargarTickets() {
+  var miToken = ++tkToken;
+  pedir("/tickets-recientes?limite=5")
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (miToken <= tkOk) return;          // llego tarde: ya se pinto una mas nueva
+      var arr = d && d.tickets;
+      // Una respuesta que no trae la lista es una FALLA, no "no hay tickets".
+      if (!Array.isArray(arr)) { tkFallos++; tkAvisarViejo(); return; }
+      tkOk = miToken;
+      tkFallos = 0; tkAvisarViejo();
+      ticketsAhora = arr;
+      // Si el ticket elegido ya no está en la lista (otro lo tomó), se suelta
+      // para que no se registre contra algo que ya no aplica.
+      if (ticketSel && !arr.some(function (t) { return t.carro_id === ticketSel.carro_id; }))
+        ticketSel = null;
+      if (ticketSC && !arr.some(function (t) { return t.carro_id === ticketSC.carro_id; }))
+        ticketSC = null;
+      pintarTickets();
+      pintarSinCliente();
+    })
+    .catch(function (e) {
+      // Con el codigo malo SI se para: seguir preguntando cada 3 s con una
+      // llave que no sirve no arregla nada. Se vuelve a arrancar en cuanto la
+      // cajera teclea el codigo bueno (ver el boton "Entrar") -- antes no, y
+      // por eso la lista se quedaba congelada el resto del turno.
+      if (e && e.message === "codigo") { pararTickets(); return; }
+      // Una falla VIEJA tampoco cuenta: si una consulta de hace rato se corta
+      // despues de que otra ya pinto bien, encender el aviso seria mentir al
+      // reves. Mismo criterio que el .catch de la cola del supervisor.
+      if (miToken <= tkOk) return;
+      // Cualquier otra falla (red caida, corte de 20 s, 500) se cuenta y se
+      // dice. Antes se la tragaba el catch entero.
+      tkFallos++; tkAvisarViejo();
+    });
+}
+
+// --- "No asignar a cliente" (24/ago/2026) -----------------------------
+//
+// Pedido del dueño: no todos los clientes se quieren registrar, pero el carro
+// SÍ forma parte de la base — el supervisor tiene que fotografiarlo de todos
+// modos para asignar línea y secador. Si la foto que ya tomó la cámara de la
+// caja se tira nada más porque el cliente no dio su nombre, el supervisor la
+// vuelve a tomar en el patio. Aquí se le pega a su ticket y NO se registra
+// ningún cliente.
+//
+// Se toca el ticket para escogerlo y el botón grande hace la acción — el MISMO
+// patrón de "Registrar visita", para que el supervisor y la cajera no tengan
+// que aprender dos formas de hacer lo mismo.
+//
+// Y a propósito NO se copia la lógica de `pintarTickets`: aquí no hay lealtad,
+// así que no hay switch de gratis, ni tickets "malos", ni banderita de canje.
+// Copiar esa función habría traído reglas que en esta pantalla no aplican.
+var ticketSC = null;
+var scFirma = null;
+
+function pintarSinCliente() {
+  var cont = document.getElementById("sc-tickets");
+  if (!cont) return;
+
+  // Misma guarda que la otra lista: no se reconstruye si nada cambió. Sin
+  // esto, el refresco de cada 3 s movería los botones justo cuando la cajera
+  // va a tocar uno.
+  var firma = ticketsAhora.map(function (t) { return t.carro_id + "|" + t.ticket; }).join(",") +
+              "#" + (ticketSC ? ticketSC.carro_id : "");
+  if (firma !== scFirma) {
+    scFirma = firma;
+    if (!ticketsAhora.length) {
+      cont.innerHTML = '<div class="nota aviso">Todavía no aparece ningún ticket. ' +
+                       'Cóbralo en Zettle y aquí sale solo.</div>';
+    } else {
+      var html = "";
+      ticketsAhora.forEach(function (t) {
+        var sinLavado = !t.carro_id;
+        var elegido = ticketSC && ticketSC.carro_id === t.carro_id;
+        html += '<button class="tk-op' + (elegido ? " sel" : "") + '"' +
+                  ' data-sc="' + escapar(t.carro_id == null ? "" : t.carro_id) + '"' +
+                  (sinLavado ? " disabled" : "") + ">" +
+                  '<span class="tk-l1">' +
+                    '<span class="tk-num">Ticket ' + escapar(t.ticket || "—") + "</span>" +
+                    '<span class="tk-monto">$' + escapar(t.monto) + "</span>" +
+                  "</span>" +
+                  '<span class="tk-l2">' + escapar(t.contenido || "—") + "</span>" +
+                  '<span class="tk-l3">' + escapar(horaExacta(t.hora)) +
+                    (t.placa ? "  ·  " + escapar(t.placa) : "") +
+                  "</span>" +
+                "</button>";
+      });
+      cont.innerHTML = html;
+    }
+  }
+
+  var btn = document.getElementById("btn-sc-guardar");
+  // 🔴 `ocupado` = hay una petición viajando y `conCandado` ya dejó el botón
+  // apagado y diciendo "Guardando…". El refresco de cada 3 s lo volvía a
+  // prender y le devolvía su texto EN PLENO ENVÍO: la cajera veía un botón
+  // listo para tocar sobre una petición que seguía en camino.
+  if (btn && !ocupado) {
+    var texto = ticketSC ? "Guardar la foto en este ticket" : "Elige el ticket";
+    btn.disabled = !ticketSC;
+    btn.classList.toggle("falta", !ticketSC);
+    btn.classList.toggle("verde", !!ticketSC);
+    if (btn.textContent !== texto) btn.textContent = texto;
+  }
+}
+
+document.getElementById("sc-tickets").addEventListener("click", function (ev) {
+  var b = ev.target.closest("button[data-sc]");
+  if (!b || b.disabled) return;
+  var id = Number(b.dataset.sc);
+  ticketSC = ticketsAhora.filter(function (t) { return t.carro_id === id; })[0] || null;
+  pintarSinCliente();
+});
+
+document.getElementById("btn-sin-cliente").addEventListener("click", function () {
+  ticketSC = null; scFirma = null;
+  document.getElementById("sc-tickets").innerHTML =
+    '<div class="nota">Buscando los últimos tickets…</div>';
+  mostrar("p-sin-cliente", true);
+  pintarSinCliente();
+});
+
+document.getElementById("btn-sc-guardar").addEventListener("click", function () {
+  if (!ticketSC) return;
+  var c = captura || {};
+  // Sin foto no hay nada que pegar. No debería pasar (a esta pantalla se llega
+  // después de capturar), pero si la cajera llegó por otro lado se dice en vez
+  // de mandar una petición que el servidor va a rechazar.
+  if (!c.foto_path) {
+    alert("No hay ninguna foto tomada. Toma la foto primero.");
+    return;
+  }
+  conCandado(this, "Guardando…", function () {
+    return postJSON("/foto-al-ticket", {
+      carro:     ticketSC.carro_id,
+      foto_path: c.foto_path,
+      placa:     c.placa    || null,
+      marca:     c.marca    || null,
+      submarca:  c.submarca || null,
+      tipo:      c.tipo     || null,
+      // El color lo lee la foto desde la migración `141` y manda sobre la nota
+      // de caja. Aquí no se estaba mandando, así que el carro que pasaba por
+      // "No asignar a cliente" se quedaba SIN color — el único dato que el
+      // supervisor usa para encontrarlo en el patio.
+      color:     c.color    || null,
+      // Si la lectura no corrió, el carro se queda con `placa_en` nulo y el
+      // obrero de fondo lo relee. Mismo criterio que el registro de visita.
+      leida:     c.leida !== false
+    }).then(function (d) {
+      if (!d || d.ok === false) {
+        alert((d && d.error) || "No se pudo guardar la foto");
+        cargarTickets();       // quizá el ticket ya no está
+        return;
+      }
+      // Se dice lo que pasó de verdad. Si el carro YA traía foto (la tomó el
+      // supervisor), la de la caja no se pega — y callarlo dejaría a la cajera
+      // creyendo que guardó algo que no guardó.
+      if (d.pego === false) {
+        alert("Ese lavado ya tenía foto, así que se dejó la que ya estaba.");
+      }
+      irInicio(false);         // listo: siguiente cliente
+    });
+  });
+});
+
+// 🔴 El DÍA se dice cuando no es hoy, y en mayúsculas cuando es ayer.
+//
+// La lista muestra los últimos 5 tickets, y al abrir la caja en la mañana los
+// cinco son de AYER: en pantalla se veían idénticos a los de hoy, porque sólo
+// salía la hora. Registrar una visita contra el lavado de ayer le pega el
+// cobro equivocado a un cliente que está enfrente.
+//
+// Los de hoy siguen viéndose igual que siempre — que es el caso normal y no
+// se le agrega ruido.
+function horaExacta(iso) {
+  if (!iso) return "";
+  var d = new Date(iso);
+  var hora = d.toLocaleTimeString("es-MX",
+    { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  var hoy = new Date();
+  if (d.toDateString() === hoy.toDateString()) return hora;
+  var ayer = new Date(hoy.getTime() - 86400000);
+  if (d.toDateString() === ayer.toDateString()) return "AYER · " + hora;
+  return d.toLocaleDateString("es-MX", { day: "2-digit", month: "short" }) + " · " + hora;
+}
+
+// El ticket elegido no cuadra con lo que pidió la cajera: prendió "Utilizar
+// Lavado GRATIS" y el ticket no es un 6to lavado. Se pinta rojo y no deja
+// registrar (el backend lo rechaza igual; esto es para que lo vea antes).
+// Devuelve el MOTIVO por el que este ticket no se puede registrar, o null si
+// si se puede. Devolver el texto y no un si/no es lo que permite que el aviso
+// de arriba y el boton de abajo digan LO MISMO sin repetir la regla en dos
+// lugares — y que cada caso diga lo suyo en vez de un mensaje generico.
+function ticketMalo(t) {
+  if (!t) return null;
+  if (document.getElementById("chk-gratis").checked && t.clase !== "canje") {
+    return "Selecciona un ticket con lavado gratis";
+  }
+  // El otro lado de la misma pregunta, que faltaba: un ticket de 6to cobrado
+  // a quien todavia NO junta sus cinco. Antes pasaba, y el cliente ademas
+  // perdia el gratis que si se iba a ganar. La base tambien lo rechaza
+  // (`sin_saldo`); esto es para que la cajera lo vea ANTES de tocar, con el
+  // cliente enfrente, en vez de recibir un error despues.
+  if (t.clase === "canje" && saldoGratis() <= 0) {
+    return "Este cliente todavía no tiene lavado gratis";
+  }
+  return null;
+}
+
+function saldoGratis() {
+  var l = (personaActual && personaActual.lealtad) || {};
+  return l.disponibles || 0;
+}
+
+// Firma de lo que se está viendo. Si no cambió, NO se vuelve a armar la lista:
+// reconstruirla cada 2 s movería los botones justo cuando la cajera va a tocar
+// uno (es la misma lección del reloj de la cola del supervisor, 20/jul/2026).
+function firmaTickets() {
+  return ticketsAhora.map(function (t) { return t.carro_id + "|" + t.ticket + "|" + t.motivo; }).join(",") +
+         "#" + (ticketSel ? ticketSel.carro_id : "-") +
+         "#" + (document.getElementById("chk-gratis").checked ? 1 : 0) +
+         // El saldo entra en la firma porque ahora decide de que color sale
+         // cada ticket. Sin esto, registrar un canje dejaria los demas en
+         // verde hasta que cambiara otra cosa.
+         "#" + saldoGratis();
+}
+var tkFirma = null;
+
+function pintarTickets() {
+  // El aviso y el estado del botón se actualizan SIEMPRE (son baratos y no
+  // mueven nada que se pueda tocar). Lo que se salta si nada cambió es armar
+  // de nuevo la lista de botones.
+  var malo = ticketSel && ticketMalo(ticketSel);
+  var aviso = document.getElementById("tk-aviso");
+  aviso.classList.toggle("on", !!malo);
+  if (malo && aviso.textContent !== malo) aviso.textContent = malo;
+
+  // El botón DICE por qué no se puede tocar todavía, en vez de sólo apagarse.
+  // La leyenda se repite con el aviso de arriba a propósito: el aviso está
+  // junto a los tickets y el botón hasta abajo, y no siempre se ven los dos.
+  // Repetirlo cuesta un renglón; no repetirlo cuesta una llamada.
+  //
+  // ⚠️ Mientras se está registrando NO se toca el botón. El refresco de cada
+  // 2 s corre igual, y sin este candado le devolvería el "Registrar visita"
+  // encima del "Registrando…" y lo volvería a habilitar en pleno envío — justo
+  // cuando el wifi va lento, que es cuando la cajera vuelve a picarle.
+  if (!ocupado) {
+    var btnReg = document.getElementById("btn-registrar");
+    var texto = !ticketSel ? "Selecciona un ticket"
+              : malo      ? malo
+                          : "Registrar visita";
+    btnReg.disabled = !ticketSel || !!malo;
+    btnReg.classList.toggle("falta", btnReg.disabled);
+    if (btnReg.textContent !== texto) btnReg.textContent = texto;
+  }
+
+  var firma = firmaTickets();
+  if (firma === tkFirma) return;
+  tkFirma = firma;
+
+  var cont = document.getElementById("lista-tickets");
+  if (!ticketsAhora.length) {
+    cont.innerHTML = '<div class="nota aviso">Todavía no aparece ningún ticket. ' +
+                     'Cóbralo en Zettle y aquí sale solo.</div>';
+  } else {
+    var html = "";
+    ticketsAhora.forEach(function (t) {
+      var sinLavado = !t.carro_id;
+      var elegido = ticketSel && ticketSel.carro_id === t.carro_id;
+      // Rojo en CUALQUIER ticket que no se pueda usar, no solo en el elegido:
+      // el punto es que la cajera lo vea antes de tocarlo, con el cliente
+      // enfrente. Si prendio el switch de gratis, los que no son gratis salen
+      // rojos — que es justo lo que quiso decir al prenderlo.
+      var malo = ticketMalo(t);
+      var tag = t.clase === "canje"    ? '<span class="tk-tag gratis">LAVADO GRATIS</span>'
+              : t.clase === "cortesia" ? '<span class="tk-tag cort">CORTESÍA · no suma</span>' : "";
+      html += '<button class="tk-op' + (elegido ? " sel" : "") + (malo ? " malo" : "") + '"' +
+                ' data-carro="' + escapar(t.carro_id == null ? "" : t.carro_id) + '"' +
+                (sinLavado ? " disabled" : "") + ">" +
+                '<span class="tk-l1">' +
+                  '<span class="tk-num">Ticket ' + escapar(t.ticket || "—") + "</span>" +
+                  '<span class="tk-monto">$' + escapar(t.monto) + "</span>" +
+                "</span>" +
+                '<span class="tk-l2">' + escapar(t.contenido || "—") + tag + "</span>" +
+                '<span class="tk-l3">' + escapar(horaExacta(t.hora)) +
+                  (t.placa ? "  ·  " + escapar(t.placa) : "") +
+                  (t.motivo ? "  ·  " + escapar(t.motivo) : "") +
+                "</span>" +
+              "</button>";
+    });
+    cont.innerHTML = html;
+    cont.querySelectorAll("button[data-carro]:not([disabled])").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var id = Number(b.dataset.carro);
+        // Volver a tocar el mismo lo deselecciona (es la forma de corregirse).
+        ticketSel = (ticketSel && ticketSel.carro_id === id) ? null
+                  : ticketsAhora.filter(function (t) { return t.carro_id === id; })[0] || null;
+        pintarTickets();
+      });
+    });
+  }
+}
+
+// --- Registrar la visita (registra Y enlaza de un solo golpe) --------
+document.getElementById("btn-registrar").addEventListener("click", function () {
+  if (!personaActual || !ticketSel) return;
+  var btn = this;
+  var c = captura || {};
+  conCandado(btn, "Registrando…", function () {
+    return postJSON("/visita-con-ticket", {
+      persona: personaActual.id,
+      carro: ticketSel.carro_id,
+      usa_gratis: document.getElementById("chk-gratis").checked,
+      // Lo que alcanzó a sacar la cámara de la caja. Puede ir todo vacío (la
+      // cajera solo buscó por nombre) o la foto sin placa (la Tundra que tapa
+      // la placa): el registro procede igual en los dos casos.
+      foto_path: c.foto_path || null,
+      placa:     c.placa     || null,
+      marca:     c.marca     || null,
+      submarca:  c.submarca  || null,
+      tipo:      c.tipo      || null,
+      color:     c.color     || null,
+      // Si la lectura no corrió, el carro se queda pendiente y el obrero de
+      // fondo lo relee. Sin foto no aplica, así que va `true` por omisión.
+      leida:     c.foto_path ? (c.leida !== false) : true
+    }).then(function (d) {
+      if (!d || d.ok === false) {
+        alert((d && d.error) || "No se pudo registrar");
+        cargarTickets();       // quizá otro cliente se llevó ese ticket
+        return;
+      }
+      irInicio(false);         // listo: siguiente cliente
+    });
+  });
+});
+
+document.getElementById("btn-editar").addEventListener("click", function () {
+  var p = personaActual, f = document.getElementById("form-editar");
+  if (f.style.display === "none") {
+    document.getElementById("ed-nombre").value = p.nombre || "";
+    document.getElementById("ed-telefono").value = p.telefono || "";
+    document.getElementById("ed-notas").value = p.notas || "";
+    f.style.display = "block";
+  } else { f.style.display = "none"; }
+});
+document.getElementById("btn-guardar-datos").addEventListener("click", function () {
+  var nombre = document.getElementById("ed-nombre").value.trim();
+  if (!nombre) { alert("El nombre no puede quedar vacío."); return; }
+  conCandado(this, "Guardando…", function () {
+    return postJSON("/personas", {
+      id: personaActual.id, nombre: nombre,
+      telefono: document.getElementById("ed-telefono").value.trim(),
+      notas: document.getElementById("ed-notas").value.trim()
+    }).then(function (d) {
+      if (d && d.ok === false) { alert(d.error || "No se pudo guardar"); return; }
+      personaActual = d.persona;
+      pintarPersona(true);
+    });
+  });
+});
+
+// --- Ver Historial ---------------------------------------------------
+document.getElementById("btn-historial").addEventListener("click", function () {
+  var p = personaActual;
+  document.getElementById("hist-nombre").textContent = "Historial de " + p.nombre;
+  document.getElementById("hist-lista").innerHTML = '<div class="nota">Cargando…</div>';
+  mostrar("p-historial", true);
+  pedirJSON("/historial?persona=" + p.id)
+    .then(function (d) { pintarHistorial(lista(d, "historial")); })
+    .catch(function (e) {
+      if (e && e.message !== "codigo")
+        document.getElementById("hist-lista").innerHTML = '<div class="nota">Sin conexión.</div>';
+    });
+});
+document.getElementById("btn-volver-persona").addEventListener("click", function () {
+  mostrar("p-persona", false);
+});
+
+function horaMin(iso) {
+  return iso ? new Date(iso).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }) : "—";
+}
+function pintarHistorial(lista) {
+  var cont = document.getElementById("hist-lista");
+  if (!lista.length) {
+    cont.innerHTML = '<div class="nota aviso">Todavía no hay visitas registradas por la caja. ' +
+                     'Las visitas anteriores solo se cuentan en el total, sin detalle.</div>';
+    return;
+  }
+  var html = "";
+  lista.forEach(function (v) {
+    var fecha = v.fecha ? new Date(v.fecha).toLocaleDateString("es-MX", { day: "2-digit", month: "short" }) : "—";
+    // Todo el vehiculo que tengamos: tipo, color, marca, submarca.
+    var vehiculo = [v.tipo, v.color, v.marca, v.submarca].filter(Boolean).join(" ");
+    // Servicio + la linea donde se seco.
+    var servicio = [[v.producto, v.variante].filter(Boolean).join(" "),
+                    (v.linea ? "Línea " + v.linea : null)].filter(Boolean).join("  ·  ");
+    var detalle;
+    if (v.enlazado) {
+      var secs = (v.secadores && v.secadores.length) ? v.secadores.join(", ") : "—";
+      detalle = (servicio ? '<div class="linea">' + escapar(servicio) + "</div>" : "") +
+                '<div class="linea">Entró <b>' + escapar(horaMin(v.entrada)) + '</b> · Salió <b>' + escapar(horaMin(v.salida)) + "</b></div>" +
+                '<div class="linea">Secó: <b>' + escapar(secs) + "</b></div>";
+    } else {
+      detalle = (servicio ? '<div class="linea">' + escapar(servicio) + "</div>" : "") +
+                '<div class="linea">Registro sin lavado ligado</div>';
+    }
+    // 🔴 Una CORTESÍA no es un lavado pagado y tampoco es un canje: ni suma
+    // sello ni consume gratis (§11.70). El historial no lo decía, así que las
+    // 18 cortesías se veían idénticas a un lavado normal y la cuenta de sellos
+    // de la pantalla no cuadraba con lo que la cajera veía en la lista. El
+    // campo lo manda `/historial` desde la migración `148`. Misma etiqueta que
+    // ya usa la lista de tickets, para que signifique lo mismo en las dos.
+    var etiqueta = v.es_cortesia ? ' <span class="tk-tag cort">CORTESÍA · no suma</span>'
+                 : v.es_gratis   ? ' <span class="gratis-tag">GRATIS</span>' : "";
+    html += '<div class="hist-item">' +
+              '<div class="fecha">' + escapar(fecha) + etiqueta + "</div>" +
+              (v.placa ? '<div class="linea">🚗 <b>' + escapar(v.placa) + "</b></div>" : "") +
+              (vehiculo ? '<div class="linea">' + escapar(vehiculo) + "</div>" : "") +
+              detalle +
+            "</div>";
+  });
+  cont.innerHTML = html;
+}
+
+// --- Cliente nuevo ---------------------------------------------------
+document.getElementById("btn-nueva").addEventListener("click", function () {
+  document.getElementById("nv-nombre").value = document.getElementById("in-nombre").value.trim();
+  document.getElementById("nv-telefono").value = "";
+  document.getElementById("nv-notas").value = "";
+  mostrar("p-nueva", true);
+});
+document.getElementById("btn-crear").addEventListener("click", function () {
+  var nombre = document.getElementById("nv-nombre").value.trim();
+  if (!nombre) { alert("Escribe el nombre."); return; }
+  conCandado(this, "Guardando…", function () {
+    return postJSON("/personas", {
+      nombre: nombre,
+      telefono: document.getElementById("nv-telefono").value.trim(),
+      notas: document.getElementById("nv-notas").value.trim()
+    }).then(function (d) {
+      if (d && d.ok === false) { alert(d.error || "No se pudo crear"); return; }
+      // 🔴 Desde la migración `149` un alta con un nombre que ya existe NO crea
+      // una segunda ficha: devuelve la que ya estaba. Sin este aviso la cajera
+      // creía que había registrado a un cliente nuevo y, al ver un historial
+      // que no esperaba, podía pensar que la app se equivocó. Se dice antes de
+      // abrir la ficha, porque lo que sigue es su historial de verdad.
+      if (d && d.ya_existia) {
+        alert("Ya estaba registrado: se abrió su ficha, con su historial y sus sellos.\n\nNo se creó un cliente nuevo.");
+      }
+      elegirPersona(d.persona);   // reemplaza la pantalla nueva por la de persona
+    });
+  });
+});
+
+
+// Los botones "Volver / Otro cliente / Cancelar" regresan al inicio.
+document.querySelectorAll("[data-inicio]").forEach(function (b) {
+  b.addEventListener("click", function () { irInicio(false); });
+});
+
+// --- Codigo de acceso ------------------------------------------------
+document.getElementById("entrar").addEventListener("click", function () {
+  var v = document.getElementById("campo").value.trim().toUpperCase();
+  if (!v) return;
+  CODIGO = v;
+  try { localStorage.setItem("rush_codigo", CODIGO); } catch (e) {}
+  document.getElementById("acceso").style.display = "none";
+  // 🔴 Se vuelve a arrancar el sondeo de tickets. Un 401 lo para a proposito
+  // (no tiene caso preguntar cada 3 s con una llave que no sirve), pero nadie
+  // lo volvia a prender: la cajera tecleaba el codigo bueno, entraba, y la
+  // lista de tickets se quedaba congelada EL RESTO DEL TURNO. Solo si esta
+  // viendo la pantalla del cliente, que es la unica donde la lista se usa.
+  tkFallos = 0;
+  if (document.getElementById("p-persona").classList.contains("activa")) arrancarTickets();
+});
+document.getElementById("campo").addEventListener("keydown", function (ev) {
+  if (ev.key === "Enter") document.getElementById("entrar").click();
+});
+
+// --- Arranque --------------------------------------------------------
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("sw.js").catch(function () {});
+  });
+}
+cargarCodigo();
+if (!CODIGO) pedirCodigo(false);
+irInicio(false);
+</script>
