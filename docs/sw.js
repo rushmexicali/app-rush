@@ -60,10 +60,16 @@
 //                     pantallas: la cola dejaba de pintarse con el wifi lento,
 //                     los botones quedaban muertos tras un fallo de red, la
 //                     caja pinta la cortesia y avisa si la ficha ya existia.
-var CACHE = "rush-v19";
+//  v20 (6/sep/2026)  — las dos pantallas AVISAN cuando hay version nueva
+//                     (actualizacion.js): un aviso rojo que al tocarlo recarga.
+//                     Nada obligaba a la tablet a tomar un arreglo: el del
+//                     Storage estuvo un dia entero desplegado sin llegar.
+//                     ⚠️ Desde aqui, SUBIR ESTA VERSION es lo que avisa: una
+//                     pantalla publicada sin subirla no le llega a nadie.
+var CACHE = "rush-v20";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
-  "./caja.html", "./caja.webmanifest",
+  "./caja.html", "./caja.webmanifest", "./actualizacion.js",
   "./RUSH-Logo.png", "./icono-192.png", "./icono-512.png"
 ];
 

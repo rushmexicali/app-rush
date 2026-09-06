@@ -345,6 +345,10 @@
 <h1>Caja</h1>
 <div class="sub">Lealtad · 6to lavado gratis</div>
 
+<!-- "HAY UNA ACTUALIZACION": lo pinta actualizacion.js cuando sw.js cambio de
+     version. Fuera de las .pantalla a proposito, para que se vea en todas. -->
+<div id="aviso-version"></div>
+
 <!-- ============ Pantalla 1: capturar la placa ============ -->
 <div id="p-placa" class="pantalla activa">
 
@@ -2065,12 +2069,10 @@ document.getElementById("campo").addEventListener("keydown", function (ev) {
 });
 
 // --- Arranque --------------------------------------------------------
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", function () {
-    navigator.serviceWorker.register("sw.js").catch(function () {});
-  });
-}
+// El service worker lo registra actualizacion.js (compartido con la cola del
+// supervisor), que ademas pinta el aviso rojo de "hay version nueva".
 cargarCodigo();
 if (!CODIGO) pedirCodigo(false);
 irInicio(false);
 </script>
+<script src="actualizacion.js"></script>

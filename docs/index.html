@@ -620,6 +620,9 @@
   }
 
   #vacio { text-align:center; color:#6e7681; padding:70px 20px; font-size:22px; }
+  /* El aviso de version nueva se queda pegado arriba al hacer scroll por la
+     cola. z-index por debajo de #asignar (40): no tapa ninguna pantalla. */
+  #aviso-version.visible { position:sticky; top:0; z-index:30; }
   #error {
     display:none; background:#3d1418; color:#ffb3b3;
     padding:12px; border-radius:12px; margin-bottom:12px; font-size:17px;
@@ -684,6 +687,10 @@
   <div id="cuantos"></div>
 </header>
 
+<!-- "HAY UNA ACTUALIZACION": lo pinta actualizacion.js cuando sw.js cambio de
+     version. Pegado arriba (sticky) porque la cola puede ser larga; queda
+     DEBAJO de las pantallas que se abren encima (asignar, finalizados). -->
+<div id="aviso-version"></div>
 <div id="error"></div>
 <div id="lista"></div>
 <div id="vacio" style="display:none">No hay carros en proceso</div>
@@ -3235,13 +3242,9 @@ function primerToque() {
 }
 document.addEventListener("pointerdown", primerToque);
 
-// El service worker permite instalarla en la pantalla de inicio y que
-// abra aunque el wifi este caido.
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", function () {
-    navigator.serviceWorker.register("sw.js").catch(function () {});
-  });
-}
+// El service worker (instalar en la pantalla de inicio, abrir sin wifi) lo
+// registra actualizacion.js, compartido con la caja, que ademas pinta el
+// aviso rojo de "hay version nueva" en #aviso-version.
 
 cargarCodigo();
 // El reloj corre cada segundo pero SOLO actualiza numeros, no reconstruye
@@ -3261,5 +3264,6 @@ window.addEventListener("online", despertarFotos);
 document.addEventListener("visibilitychange", function () { if (!document.hidden) despertarFotos(); });
 despertarFotos();
 </script>
+<script src="actualizacion.js"></script>
 </body>
 </html>
