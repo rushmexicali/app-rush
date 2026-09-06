@@ -369,8 +369,16 @@ function pintarReporte(r) {
   var html = '<div id="avisos"></div><div id="repetidas"></div><div id="dudosas"></div><div id="fotos-pendientes"></div>';
 
   html += '<div class="numeros">';
+  // ⚠️ Desde la migracion 163 este numero INCLUYE los borrados: un carro que
+  // el supervisor sacó de la cola sí se lavó (entró porque hubo un cobro).
+  // Por eso el subtítulo dice el desglose cuando los hay — si no, el número
+  // no cuadraría con "con aspirado + sin aspirado", que sólo cuentan los que
+  // siguen en la operación, y un total que no cuadra con su desglose es
+  // justo lo que este reporte ya tuvo que corregir una vez.
   html +=   tarjeta(r.vehiculos_lavados, "Vehículos lavados",
-              r.vehiculos_sin_terminar ? r.vehiculos_sin_terminar + " entraron y no se han entregado" : "");
+              r.borrados
+                ? r.entregados + " entregados + " + r.borrados + " borrados (sin tiempos)"
+                : (r.vehiculos_sin_terminar ? r.vehiculos_sin_terminar + " entraron y no se han entregado" : ""));
   // Solo aparece si hubo alguno. Un cero permanente en pantalla se vuelve
   // invisible; el numero importa justo el dia que NO es cero.
   if (r.cerrados_automaticamente) {
@@ -392,13 +400,14 @@ function pintarReporte(r) {
     html += tarjeta(r.secados_descartados, "Secados muy cortos",
               "Menos de 3 min de secado (imposible): olvidos entregados tarde. No cuentan en el promedio de secado");
   }
-  // Igual: solo si no es cero. Unidades que el supervisor BORRO de la cola
-  // porque ya no se iban a lavar (se fue el cliente, se olvido). No cuentan
-  // como lavado ni en los promedios. Si un dia salen muchas, vale la pena
-  // preguntar por que se estan quedando carros sin trabajar.
+  // Igual: solo si no es cero. Unidades que el supervisor BORRO de la cola.
+  // ⚠️ Desde la 163 SI cuentan como lavado (el cliente pago y vino; que el
+  // supervisor no alcanzara a capturarlo no deshace el lavado), pero no
+  // tienen hora de entrega ni equipo, asi que no entran a ningun promedio.
+  // Si un dia salen muchas, es que se esta dejando de usar el telefono.
   if (r.borrados) {
     html += tarjeta(r.borrados, "Unidades borradas",
-              "El supervisor las sacó de la cola sin lavar. No cuentan en ningún promedio");
+              "El supervisor las sacó de la cola. Cuentan como lavado, pero sin tiempos ni equipo");
   }
   html +=   tarjeta(duracion(r.espera_promedio_seg), "Espera promedio por carro",
               "De que paga a que se lo entregan");
@@ -422,12 +431,16 @@ function pintarReporte(r) {
               "Mezcla de completos y express");
   }
 
-  // ⚠️ "Vehículos lavados" cuenta sólo los ENTREGADOS; con/sin aspirado
-  // cuentan todos los del día. En un día ya cerrado da igual, pero en el día
-  // en curso el desglose suma más que el total y no había una línea que lo
-  // explicara.
-  var enCurso = r.entregados != null && r.vehiculos_lavados != null &&
-                (asp.con + asp.sin + (asp.sin_clasificar || 0)) > r.vehiculos_lavados;
+  // ⚠️ "Vehículos lavados" y estas dos tarjetas cuentan cosas distintas, y
+  // desde la 163 hay DOS diferencias, no una:
+  //   * el total incluye los BORRADOS, que no están en el desglose (no
+  //     tienen etapa ni tipo que contar);
+  //   * y en el día en curso el desglose incluye los que todavía no se
+  //     entregan, que el total no cuenta.
+  // Por eso la comparación es contra `entregados` y no contra el total: si
+  // fuera contra el total, un día con muchos borrados dejaría de avisar.
+  var enCurso = r.entregados != null &&
+                (asp.con + asp.sin + (asp.sin_clasificar || 0)) > r.entregados;
   var notaCurso = enCurso ? "Incluye los que todavía no se entregan" : "";
   html +=   tarjeta(asp.con, "Con aspirado", notaCurso);
   html +=   tarjeta(asp.sin, "Sin aspirado", notaCurso);
