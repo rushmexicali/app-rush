@@ -69,7 +69,10 @@
 //  v21 (6/sep/2026)  — la cajera puede ESCRIBIR la placa cuando la foto no la
 //                     lee (campo debajo del buscador), y el supervisor sigue
 //                     pidiendo la foto para esos carros (migracion 164).
-var CACHE = "rush-v21";
+//  v22 (6/sep/2026)  — "Tomar foto" sube arriba del feed, junto a los botones de
+//                     camara, y el buscador dice solo "Buscar cliente" (pedido
+//                     del dueno). La Ayuda se alinea con el campo de placa.
+var CACHE = "rush-v22";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest", "./actualizacion.js",

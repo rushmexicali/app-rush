@@ -369,7 +369,7 @@
        para cuando la cajera prefiere reconocerlo por la placa. -->
   <div class="buscador-caja">
     <input id="in-top" autocomplete="off" autocapitalize="words"
-           placeholder="🔍 Buscar cliente o placa">
+           placeholder="🔍 Buscar cliente">
     <button id="top-limpiar" aria-label="Limpiar">✕</button>
     <div id="top-caja"></div>
   </div>
@@ -398,15 +398,19 @@
     <button id="btn-cam-tab" class="cam-btn">Cámara Tablet</button>
   </div>
 
+  <!-- "Tomar foto" va ARRIBA del feed, pegado a los botones de camara (pedido
+       del dueno, 6/sep/2026): con el feed en grande, el boton quedaba hasta
+       abajo y habia que hacer scroll para tocarlo. "Regresar" (apaga el feed)
+       lo acompana; nace escondido y aparece con el feed prendido. -->
+  <button id="btn-foto" class="grande azul">📸 Tomar foto</button>
+  <button id="btn-regresar" class="grande" style="display:none">↩ Regresar</button>
+
   <div id="feed" class="feed-apagado">
     <video id="feed-video" autoplay playsinline muted></video>
     <img id="feed-shot" alt="">
     <div id="feed-hint"><span class="feed-ico">📷</span><span id="feed-hint-txt">Elige una cámara arriba</span></div>
     <div id="feed-leyendo"><div class="spin"></div><span>LEYENDO FOTOGRAFÍA…</span></div>
   </div>
-
-  <button id="btn-foto" class="grande azul">📸 Tomar foto</button>
-  <button id="btn-regresar" class="grande" style="display:none">↩ Regresar</button>
 
   <!-- El recuadro "Placa: XXX / Buscar / Cambiar placa" que salia aqui tras la
        lectura se movio ARRIBA, al campo #in-placa debajo del buscador
@@ -540,7 +544,7 @@
     <div class="ayuda-bloque">
       <h3>Los 3 pasos de cada cliente</h3>
       <ol>
-        <li><b>Escribe su nombre</b> en la barra de hasta arriba. Con dos letras ya empiezan a salir los clientes; toca el suyo. Si no aparece, hasta abajo de esa misma lista está <b>+ Registrar cliente nuevo</b>.</li>
+        <li><b>Escribe su nombre</b> en la barra <b>Buscar cliente</b>, hasta arriba. Con dos letras ya empiezan a salir los clientes; toca el suyo. Si no aparece, hasta abajo de esa misma lista está <b>+ Registrar cliente nuevo</b>. O bien <b>toma la foto</b> del carro: si la cámara lee la placa, se llena sola en <b>Placa del carro</b> y con <b>Buscar</b> sale su dueño.</li>
         <li><b>Cóbralo en Zettle.</b> Su ticket aparece solo en la lista de abajo, sin que toques nada. Tócalo para elegirlo.</li>
         <li>Toca <b>Registrar visita</b>.</li>
       </ol>
@@ -559,8 +563,10 @@
       <h3>🚗 La placa es solo para buscar</h3>
       <p>Una misma placa puede ser de <b>varias personas</b> (por ejemplo el carro que comparten esposo e hijo).</p>
       <p>Por eso, al leer una placa, la app te dice de quién es y <b>tú confirmas</b>, o registras a otra persona. La placa <b>ayuda a buscar</b>; no decide el cliente.</p>
-      <p>La barra de arriba también busca por placa: escribe las letras o los números y sale su dueño.</p>
-      <p><b>Si la cámara no lee la placa y tú sí la ves</b>, escríbela en el campo <b>Placa del carro</b> (debajo del buscador) y toca <b>Buscar</b>. Esa placa se le queda al carro y al cliente. El supervisor le tomará la foto en el patio de todos modos.</p>
+      <p>El campo <b>Placa del carro</b> (debajo de Buscar cliente) es la placa de <b>este</b> carro. La cámara lo llena cuando la lee; si no la lee <b>y tú sí la ves en la cámara, escríbela ahí</b> y toca <b>Buscar</b>. Esa placa se le queda al carro y al cliente. El supervisor le tomará la foto en el patio de todos modos.</p>
+      <p>Si escribiste la placa y después la cámara leyó otra, te la ofrece: <b>Usar la de la cámara</b>. Tú decides cuál es la buena.</p>
+      <p>La barra <b>Buscar cliente</b> también encuentra al dueño si escribes parte de su placa (por ejemplo los últimos números). Pero ahí <b>no</b> se registran clientes con la placa: un cliente nuevo se registra con su <b>nombre</b>.</p>
+      <p>Si al registrar te dice <b>"La placa X NO se guardó"</b>, es que otro carro de hoy ya trae esa placa, o que la foto del patio ya leyó otra distinta. El cliente sí quedó registrado; revisa la placa con él si puedes.</p>
       <p>Si en la pantalla del cliente aparece <b>"¿Es su placa?"</b>, es una que leyó la cámara del supervisor y todavía nadie confirma. Con el cliente enfrente es el mejor momento: contesta <b>Sí es suya</b> o <b>No</b>.</p>
     </div>
 
@@ -585,9 +591,9 @@
 
     <div class="ayuda-bloque">
       <h3>📸 La cámara</h3>
-      <p>Es <b>opcional</b> — sirve para reconocer al cliente por su placa cuando no sabes su nombre. Toca el recuadro para <b>prender o apagar</b>, apunta a la placa y toca <b>Tomar foto</b>.</p>
+      <p>Es <b>opcional</b> — sirve para reconocer al cliente por su placa cuando no sabes su nombre. Elige <b>Cámara Exterior</b> o <b>Cámara Tablet</b>, apunta a la placa y toca <b>Tomar foto</b> (el botón azul, arriba del recuadro de la cámara).</p>
       <p><b>La foto se guarda siempre</b> y se le pega a su lavado, aunque no se alcance a leer la placa. Al supervisor le sirve para reconocer el carro en la cola.</p>
-      <p><b>Si no se lee la placa, no pasa nada y NO hay que repetir la foto.</b> Muchas camionetas grandes tapan la placa desde la ventana, y no se le va a pedir al cliente que se recorra. Sigue normal: busca al cliente por su nombre arriba. Si hizo falta, el <b>supervisor</b> le toma otra cuando lo asigna, ya con el carro en el patio.</p>
+      <p><b>Si no se lee la placa, no pasa nada y NO hay que repetir la foto.</b> Muchas camionetas grandes tapan la placa desde la ventana, y no se le va a pedir al cliente que se recorra. Tienes dos salidas: si tú alcanzas a ver la placa en la cámara, <b>escríbela en Placa del carro</b>; si no, busca al cliente por su nombre arriba. En los dos casos el <b>supervisor</b> le toma otra foto cuando lo asigna, ya con el carro en el patio.</p>
     </div>
 
     <div class="ayuda-bloque">
