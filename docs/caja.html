@@ -398,13 +398,16 @@
     <button id="btn-cam-tab" class="cam-btn">Cámara Tablet</button>
   </div>
 
-  <!-- "Tomar foto" va ARRIBA del feed, pegado a los botones de camara (pedido
-       del dueno, 6/sep/2026): con el feed en grande, el boton quedaba hasta
-       abajo y habia que hacer scroll para tocarlo. "Regresar" (apaga el feed)
-       se queda DEBAJO del feed: arriba, con el feed prendido, empujaba el
-       feed hacia abajo justo cuando la cajera lo necesita ver para copiar la
-       placa (mini auditoria del mismo dia). -->
+  <!-- "Tomar foto" y "Regresar" van ARRIBA del feed, pegados a los botones de
+       camara (pedido del dueno, 6/sep/2026): con el feed en grande quedaban
+       hasta abajo y habia que hacer scroll para tocarlos. "Regresar" (apaga
+       el feed) nace escondido y aparece con el feed prendido.
+       ⚠️ Una auditoria lo bajo de vuelta bajo el feed ("lo empuja hacia abajo
+       cuando la cajera necesita verlo") y el dueno lo volvio a pedir AQUI el
+       mismo dia: el orden de estos botones lo decide el, no un criterio de
+       auditoria. -->
   <button id="btn-foto" class="grande azul">📸 Tomar foto</button>
+  <button id="btn-regresar" class="grande" style="display:none">↩ Regresar</button>
 
   <div id="feed" class="feed-apagado">
     <video id="feed-video" autoplay playsinline muted></video>
@@ -412,8 +415,6 @@
     <div id="feed-hint"><span class="feed-ico">📷</span><span id="feed-hint-txt">Elige una cámara arriba</span></div>
     <div id="feed-leyendo"><div class="spin"></div><span>LEYENDO FOTOGRAFÍA…</span></div>
   </div>
-
-  <button id="btn-regresar" class="grande" style="display:none">↩ Regresar</button>
 
   <!-- El recuadro "Placa: XXX / Buscar / Cambiar placa" que salia aqui tras la
        lectura se movio ARRIBA, al campo #in-placa debajo del buscador

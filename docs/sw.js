@@ -79,7 +79,9 @@
 //                     apaga mientras hay una en vuelo; "atras" a media lectura
 //                     ya no deja el overlay pegado; un solo aviso en "No
 //                     asignar"; Regresar vuelve debajo del feed.
-var CACHE = "rush-v24";
+//  v25 (6/sep/2026)  — "Regresar" vuelve DEBAJO de "Tomar foto", arriba del feed,
+//                     como lo pidio el dueno (la auditoria lo habia bajado).
+var CACHE = "rush-v25";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest", "./actualizacion.js",
