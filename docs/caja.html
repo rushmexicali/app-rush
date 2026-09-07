@@ -544,7 +544,7 @@
     <div class="ayuda-bloque">
       <h3>Los 3 pasos de cada cliente</h3>
       <ol>
-        <li><b>Escribe su nombre</b> en la barra <b>Buscar cliente</b>, hasta arriba. Con dos letras ya empiezan a salir los clientes; toca el suyo. Si no aparece, hasta abajo de esa misma lista está <b>+ Registrar cliente nuevo</b>. O bien <b>toma la foto</b> del carro: si la cámara lee la placa, se llena sola en <b>Placa del carro</b> y con <b>Buscar</b> sale su dueño.</li>
+        <li><b>Escribe su nombre</b> en la barra <b>Buscar cliente</b>, hasta arriba. Con dos letras ya empiezan a salir los clientes; toca el suyo. Si no aparece, hasta abajo de esa misma lista está <b>+ Registrar cliente nuevo</b>. O bien <b>toma la foto</b> del carro: si la cámara lee la placa, se llena sola en <b>Placa del carro</b> y <b>sale su dueño sin tocar nada más</b>.</li>
         <li><b>Cóbralo en Zettle.</b> Su ticket aparece solo en la lista de abajo, sin que toques nada. Tócalo para elegirlo.</li>
         <li>Toca <b>Registrar visita</b>.</li>
       </ol>
@@ -1275,6 +1275,7 @@ function procesarImagen(dataURL) {
                   color: d.color || null, foto_path: d.foto_path, leida: d.leida !== false };
     if (d.placa && fijarPlaca(d.placa, datos)) {
       est.textContent = "Placa leída: " + lecturaPlaca + resumenLectura(d);
+      buscarSolaSiProcede();
     } else {
       // NO se le pide retomar la foto. En Mexicali entran muchas pickup
       // grandes (Tundra) donde la placa no se alcanza a ver desde la ventana
@@ -1343,6 +1344,20 @@ document.getElementById("btn-buscar").addEventListener("click", function () {
   if (!captura || !captura.placa) { document.getElementById("in-placa").focus(); return; }
   buscarPorPlaca(captura.placa);
 });
+// La camara LEYO la placa: la cajera iba a tocar Buscar de todos modos, asi que
+// se toca solo (pedido del dueno, 6/sep/2026). Salvo que ella ya haya escrito
+// OTRA placa (ahi decide ella, ver placa-hint), que este buscando por nombre
+// arriba, o que ya se haya ido a otra pantalla: en esos casos no se le quita
+// el control.
+function buscarSolaSiProcede() {
+  if (!captura || !captura.placa || captura.placa_manual) return;
+  if (document.getElementById("in-top").value.trim()) return;
+  var activa = document.querySelector(".pantalla.activa");
+  if (!activa || activa.id !== "p-placa") return;
+  document.getElementById("estado-captura").textContent += " · Buscando al dueño…";
+  buscarPorPlaca(captura.placa);
+}
+
 function buscarPorPlaca(placa) {
   pedirJSON("/personas?placa=" + encodeURIComponent(placa))
     .then(function (d) {

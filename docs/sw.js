@@ -72,7 +72,9 @@
 //  v22 (6/sep/2026)  — "Tomar foto" sube arriba del feed, junto a los botones de
 //                     camara, y el buscador dice solo "Buscar cliente" (pedido
 //                     del dueno). La Ayuda se alinea con el campo de placa.
-var CACHE = "rush-v22";
+//  v23 (6/sep/2026)  — si la camara lee la placa, Buscar se toca solo (salvo que
+//                     la cajera ya haya escrito otra o este buscando por nombre).
+var CACHE = "rush-v23";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest", "./actualizacion.js",
