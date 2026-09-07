@@ -74,7 +74,12 @@
 //                     del dueno). La Ayuda se alinea con el campo de placa.
 //  v23 (6/sep/2026)  — si la camara lee la placa, Buscar se toca solo (salvo que
 //                     la cajera ya haya escrito otra o este buscando por nombre).
-var CACHE = "rush-v23";
+//  v24 (6/sep/2026)  — mini auditoria de la v22/v23: la busqueda automatica solo
+//                     abre la pantalla si la cajera sigue en la misma; Buscar se
+//                     apaga mientras hay una en vuelo; "atras" a media lectura
+//                     ya no deja el overlay pegado; un solo aviso en "No
+//                     asignar"; Regresar vuelve debajo del feed.
+var CACHE = "rush-v24";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest", "./actualizacion.js",

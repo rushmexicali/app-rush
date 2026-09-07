@@ -401,9 +401,10 @@
   <!-- "Tomar foto" va ARRIBA del feed, pegado a los botones de camara (pedido
        del dueno, 6/sep/2026): con el feed en grande, el boton quedaba hasta
        abajo y habia que hacer scroll para tocarlo. "Regresar" (apaga el feed)
-       lo acompana; nace escondido y aparece con el feed prendido. -->
+       se queda DEBAJO del feed: arriba, con el feed prendido, empujaba el
+       feed hacia abajo justo cuando la cajera lo necesita ver para copiar la
+       placa (mini auditoria del mismo dia). -->
   <button id="btn-foto" class="grande azul">📸 Tomar foto</button>
-  <button id="btn-regresar" class="grande" style="display:none">↩ Regresar</button>
 
   <div id="feed" class="feed-apagado">
     <video id="feed-video" autoplay playsinline muted></video>
@@ -411,6 +412,8 @@
     <div id="feed-hint"><span class="feed-ico">📷</span><span id="feed-hint-txt">Elige una cámara arriba</span></div>
     <div id="feed-leyendo"><div class="spin"></div><span>LEYENDO FOTOGRAFÍA…</span></div>
   </div>
+
+  <button id="btn-regresar" class="grande" style="display:none">↩ Regresar</button>
 
   <!-- El recuadro "Placa: XXX / Buscar / Cambiar placa" que salia aqui tras la
        lectura se movio ARRIBA, al campo #in-placa debajo del buscador
@@ -544,7 +547,7 @@
     <div class="ayuda-bloque">
       <h3>Los 3 pasos de cada cliente</h3>
       <ol>
-        <li><b>Escribe su nombre</b> en la barra <b>Buscar cliente</b>, hasta arriba. Con dos letras ya empiezan a salir los clientes; toca el suyo. Si no aparece, hasta abajo de esa misma lista está <b>+ Registrar cliente nuevo</b>. O bien <b>toma la foto</b> del carro: si la cámara lee la placa, se llena sola en <b>Placa del carro</b> y <b>sale su dueño sin tocar nada más</b>.</li>
+        <li><b>Escribe su nombre</b> en la barra <b>Buscar cliente</b>, hasta arriba. Con dos letras ya empiezan a salir los clientes; toca el suyo. Si no aparece, hasta abajo de esa misma lista está <b>+ Registrar cliente nuevo</b>. O bien <b>toma la foto</b> del carro: si la cámara lee la placa, se llena sola en <b>Placa del carro</b> y la app <b>busca al dueño sola</b>. Si nadie tiene esa placa, te lo dice y lo buscas por nombre o lo registras.</li>
         <li><b>Cóbralo en Zettle.</b> Su ticket aparece solo en la lista de abajo, sin que toques nada. Tócalo para elegirlo.</li>
         <li>Toca <b>Registrar visita</b>.</li>
       </ol>
@@ -894,6 +897,10 @@ function irInicio(empujar) {
   // La placa del carro anterior no puede quedarse para el siguiente cliente,
   // ni una lectura suya que llegue tarde (capturaGen).
   capturaGen++;
+  // Una lectura en vuelo ya no va a apagar el overlay de "LEYENDO" (su guard
+  // la descarta), asi que se apaga aqui: si no, un "atras" a media lectura
+  // dejaba el feed congelado con el spinner girando.
+  quitarLeyendo();
   document.getElementById("in-placa").value = "";
   lecturaPlaca = null; placaEsDeLectura = false;
   sincronizarPlaca();
@@ -953,7 +960,7 @@ function sincronizarPlaca() {
   } else {
     hint.style.display = "none"; hint.innerHTML = "";
   }
-  document.getElementById("btn-buscar").disabled = !(captura && captura.placa);
+  document.getElementById("btn-buscar").disabled = !(captura && captura.placa) || busquedasPlacaEnVuelo > 0;
 }
 
 // La camara leyo una placa. Llena el campo SOLO si esta vacio o si lo que
@@ -975,11 +982,18 @@ function fijarPlaca(placaCruda, datosFoto) {
 // le DICE. El registro del cliente si quedo; lo que no quedo es la placa. Un
 // descarte en silencio es la clase de error que la §11.50 cerro, y aqui el
 // dato lo aporto una persona viendo el carro.
+function textoPlacaNoQuedo(c, d, sinCliente) {
+  if (!c || c.placa_manual !== true || !c.placa || !d || d.placa_vale !== false) return null;
+  var porque;
+  if (d.placa_dudosa) porque = "ya está en otro carro de hoy.";
+  else if (d.placa_actual) porque = "el carro ya trae la placa " + d.placa_actual + " (la leyó la foto).";
+  else porque = "la foto ya había leído otra placa para este carro.";
+  return "La placa " + c.placa + " NO se guardó en este lavado: " + porque +
+         (sinCliente ? "" : "\n\nEl cliente sí quedó registrado.");
+}
 function avisarSiLaPlacaNoQuedo(c, d, sinCliente) {
-  if (!c || c.placa_manual !== true || !c.placa || !d || d.placa_vale !== false) return;
-  alert("La placa " + c.placa + " NO se guardó en este lavado: " +
-        (d.placa_dudosa ? "ya está en otro carro de hoy." : "la foto ya había leído otra placa para este carro.") +
-        (sinCliente ? "" : "\n\nEl cliente sí quedó registrado."));
+  var t = textoPlacaNoQuedo(c, d, sinCliente);
+  if (t) alert(t);
 }
 
 document.getElementById("in-placa").addEventListener("input", function () {
@@ -1354,13 +1368,40 @@ function buscarSolaSiProcede() {
   if (document.getElementById("in-top").value.trim()) return;
   var activa = document.querySelector(".pantalla.activa");
   if (!activa || activa.id !== "p-placa") return;
-  document.getElementById("estado-captura").textContent += " · Buscando al dueño…";
-  buscarPorPlaca(captura.placa);
+  buscarPorPlaca(captura.placa, true);
 }
 
-function buscarPorPlaca(placa) {
+// Busquedas por placa en vuelo (contador, no bandera: dos fotos seguidas
+// pueden lanzar dos automaticas, y la primera que termina no debe reabrir el
+// boton con la segunda todavia en el aire). Mientras haya alguna, Buscar se
+// apaga, para que no haya dos respuestas abriendo la misma pantalla dos veces.
+var busquedasPlacaEnVuelo = 0;
+
+function buscarPorPlaca(placa, automatica) {
+  var est = document.getElementById("estado-captura");
+  // La respuesta solo vale si la cajera sigue en ESTA pantalla, sin la Ayuda
+  // abierta encima, y con ESTE carro. Con el wifi lento tarda segundos, y en
+  // ese hueco ella puede haber elegido al cliente por nombre, tocado "No
+  // asignar" o tomado otra foto: abrirle "Placa: X" encima seria pisarle lo
+  // que ya hizo.
+  var gen = capturaGen;
+  function sigueVigente() {
+    var activa = document.querySelector(".pantalla.activa");
+    var ayuda = document.getElementById("ayuda");
+    return gen === capturaGen && activa && activa.id === "p-placa"
+           && !(ayuda && ayuda.classList.contains("abierto"));
+  }
+  busquedasPlacaEnVuelo++;
+  sincronizarPlaca();
+  if (automatica) est.textContent = est.textContent.replace(" · Buscando al dueño…", "") + " · Buscando al dueño…";
   pedirJSON("/personas?placa=" + encodeURIComponent(placa))
     .then(function (d) {
+      busquedasPlacaEnVuelo = Math.max(0, busquedasPlacaEnVuelo - 1);
+      // El boton se repinta ANTES del guard: si no, una respuesta vieja lo
+      // dejaba apagado con una placa valida en el campo (boton muerto, §11.007).
+      sincronizarPlaca();
+      if (!sigueVigente()) return;
+      est.textContent = est.textContent.replace(" · Buscando al dueño…", "");
       var arr = lista(d, "personas");
       mostrar("p-cliente", true);
       pintarEncabezado("Placa: " + placa, arr.length);
@@ -1368,7 +1409,16 @@ function buscarPorPlaca(placa) {
       document.getElementById("resultados-nombre").innerHTML = "";
       document.getElementById("in-nombre").value = "";
     })
-    .catch(function (e) { if (e && e.message !== "codigo") alert("Sin conexión."); });
+    .catch(function (e) {
+      busquedasPlacaEnVuelo = Math.max(0, busquedasPlacaEnVuelo - 1);
+      sincronizarPlaca();
+      if (!sigueVigente()) return;
+      if (e && e.message === "codigo") return;
+      // La automatica no interrumpe con un alert que nadie pidio: lo dice en el
+      // renglon de estado y deja el boton Buscar para reintentar.
+      if (automatica) est.textContent = est.textContent.replace(" · Buscando al dueño…", "") + " · No se pudo buscar al dueño: toca Buscar.";
+      else alert("Sin conexión.");
+    });
 }
 
 // --- Buscador de arriba: autocompletado ------------------------------
@@ -1947,10 +1997,13 @@ document.getElementById("btn-sc-guardar").addEventListener("click", function () 
       // supervisor), la de la caja no se pega — y callarlo dejaría a la cajera
       // creyendo que guardó algo que no guardó. Sin foto (solo placa tecleada)
       // `pego` es false por definición y no hay nada que avisar.
-      if (d.pego === false && c.foto_path) {
-        alert("Ese lavado ya tenía foto, así que se dejó la que ya estaba.");
-      }
-      avisarSiLaPlacaNoQuedo(c, d, true);
+      // Un solo aviso aunque pasen las dos cosas (foto que no se pego Y placa
+      // que no quedo): dos modales seguidos por un toque confunden.
+      var avisos = [];
+      if (d.pego === false && c.foto_path) avisos.push("Ese lavado ya tenía foto, así que se dejó la que ya estaba.");
+      var tp = textoPlacaNoQuedo(c, d, true);
+      if (tp) avisos.push(tp);
+      if (avisos.length) alert(avisos.join("\n\n"));
       irInicio(false);         // listo: siguiente cliente
     });
   });

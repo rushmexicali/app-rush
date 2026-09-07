@@ -651,9 +651,10 @@ function pintarReporte(r) {
   }
   html += '</div>';
 
-  if (conPlaca < totalCarros) {
+  if (conPlaca + tecleadas < totalCarros) {
     html += '<div class="aviso">La placa sale de la foto, y la foto es <b>opcional</b>. ' +
-            'De ' + totalCarros + ' carros se leyó la placa de ' + conPlaca + '. ' +
+            'De ' + totalCarros + ' carros se leyó la placa de ' + conPlaca +
+            (tecleadas > 0 ? ' y la cajera escribió a mano la de ' + tecleadas : '') + '. ' +
             'Por eso el historial de visitas es un <b>piso, no un total</b>: si dice que una placa vino 3 veces, ' +
             'vino 3 veces <b>o más</b>.</div>';
   }
