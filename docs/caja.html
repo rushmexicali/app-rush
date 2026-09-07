@@ -155,6 +155,18 @@
   }
   @keyframes girar { to { transform:rotate(360deg); } }
 
+  /* El campo de la placa del carro, debajo del buscador. Grande y espaciado
+     para que se lea a un metro; el Buscar en azul porque es la accion. */
+  .placa-fila { margin:0 0 10px; }
+  .placa-fila input { font-size:24px; font-weight:900; letter-spacing:3px; }
+  .placa-fila input::placeholder { letter-spacing:0; font-size:19px; }
+  .placa-fila button.azul { background:#2f81f7; border-color:#2f81f7; color:#fff; }
+  .placa-fila button.azul[disabled] { background:#21262d; border-color:#30363d; color:#6e7681; }
+  #placa-hint { margin-top:-4px; }
+  /* "Usar la de la camara": renglon propio y del tamano de los demas botones
+     (§4), no un botoncito pegado al campo que se esta tecleando. */
+  #placa-hint button { display:block; width:100%; min-height:56px; margin:8px 0 0; padding:10px 12px; font-size:18px; font-weight:800; background:#21262d; }
+
   /* La placa capturada, en grande y sin guiones. */
   .placa-cap {
     font-size:22px; text-align:center; margin:10px 0;
@@ -362,6 +374,18 @@
     <div id="top-caja"></div>
   </div>
 
+  <!-- La PLACA del carro de este cliente, SIEMPRE a la vista (6/sep/2026).
+       La foto la llena si la lee; si no, la cajera la escribe viendo la
+       camara. Antes solo aparecia cuando la foto la leia, y si la tecleaban
+       en el buscador de arriba, "Registrar cliente nuevo" la tomaba como
+       NOMBRE. Ver CLAUDE.md §11.015. -->
+  <div class="ofila placa-fila">
+    <input id="in-placa" autocomplete="off" autocapitalize="characters" spellcheck="false"
+           placeholder="Placa del carro">
+    <button id="btn-buscar" class="azul" disabled>Buscar</button>
+  </div>
+  <div id="placa-hint" class="nota aviso" style="display:none"></div>
+
   <div class="seccion">O captura la placa</div>
 
   <!-- Elegir la fuente del feed en vivo: la Reolink fija del carwash (Camara
@@ -384,18 +408,12 @@
   <button id="btn-foto" class="grande azul">📸 Tomar foto</button>
   <button id="btn-regresar" class="grande" style="display:none">↩ Regresar</button>
 
-  <!-- La captura manual de placa se quito el 15/ago/2026 (pedido del dueno,
-       para simplificar el flujo). Si la placa no se lee, la cajera busca al
-       cliente por nombre arriba y el carro llega sin placa: ahi el SUPERVISOR
-       la toma con su camara, que se habilita en cuanto asigna carril y
-       secador. O sea que el respaldo no desaparecio, se movio a quien tiene
-       el carro enfrente. -->
-
-  <div id="placa-lista" style="display:none">
-    <div class="placa-cap">Placa: <b id="placa-txt"></b></div>
-    <button id="btn-buscar" class="grande verde">Buscar</button>
-    <button id="btn-otra" class="secundario">Cambiar placa</button>
-  </div>
+  <!-- El recuadro "Placa: XXX / Buscar / Cambiar placa" que salia aqui tras la
+       lectura se movio ARRIBA, al campo #in-placa debajo del buscador
+       (6/sep/2026): asi existe aunque la foto no lea, y se puede escribir. La
+       captura manual se habia quitado el 15/ago y este era el hueco. El
+       SUPERVISOR sigue tomando la foto en el patio: una placa tecleada no le
+       cumple el requisito (carros.placa_manual, migracion 164). -->
 
   <div id="estado-captura" class="nota"></div>
 </div>
@@ -542,6 +560,7 @@
       <p>Una misma placa puede ser de <b>varias personas</b> (por ejemplo el carro que comparten esposo e hijo).</p>
       <p>Por eso, al leer una placa, la app te dice de quién es y <b>tú confirmas</b>, o registras a otra persona. La placa <b>ayuda a buscar</b>; no decide el cliente.</p>
       <p>La barra de arriba también busca por placa: escribe las letras o los números y sale su dueño.</p>
+      <p><b>Si la cámara no lee la placa y tú sí la ves</b>, escríbela en el campo <b>Placa del carro</b> (debajo del buscador) y toca <b>Buscar</b>. Esa placa se le queda al carro y al cliente. El supervisor le tomará la foto en el patio de todos modos.</p>
       <p>Si en la pantalla del cliente aparece <b>"¿Es su placa?"</b>, es una que leyó la cámara del supervisor y todavía nadie confirma. Con el cliente enfrente es el mejor momento: contesta <b>Sí es suya</b> o <b>No</b>.</p>
     </div>
 
@@ -862,24 +881,112 @@ function irInicio(empujar) {
   document.getElementById("in-nombre").value = "";
   document.getElementById("resultados").innerHTML = "";
   document.getElementById("resultados-nombre").innerHTML = "";
-  document.getElementById("placa-lista").style.display = "none";
   document.getElementById("estado-captura").textContent = "";
   cerrarBuscadorTop();
   document.getElementById("in-top").value = "";
   document.getElementById("top-limpiar").classList.remove("on");
+  // La placa del carro anterior no puede quedarse para el siguiente cliente,
+  // ni una lectura suya que llegue tarde (capturaGen).
+  capturaGen++;
+  document.getElementById("in-placa").value = "";
+  lecturaPlaca = null; placaEsDeLectura = false;
+  sincronizarPlaca();
   mostrar("p-placa", empujar);
 }
 
-// Fija la placa capturada (foto o manual), SIEMPRE limpia, y muestra Buscar.
+// --- La placa de ESTE carro: la foto la llena, la cajera la corrige --------
+// (6/sep/2026, migracion 164). El campo #in-placa es LA placa del carro: lo
+// que diga ahi es lo que viaja al registro. La camara lo llena cuando lee; si
+// no lee, la cajera la escribe viendo el feed en vivo.
+var lecturaPlaca = null;        // lo ultimo que LEYO la camara (normalizado) o null
+var placaEsDeLectura = false;   // el campo lo llene yo (la lectura), no la cajera
+// 🔴 Generacion de la captura. Una lectura que llega TARDE —despues de que la
+// cajera ya registro y paso al siguiente cliente— no puede pegarle a ese
+// siguiente cliente la foto y la placa del carro anterior. Antes no habia
+// razon para no esperar la lectura; ahora si la hay (teclea la placa y sigue),
+// asi que procesarImagen apunta su generacion y se descarta si ya cambio.
+var capturaGen = 0;
+
+function placaTecleada() { return normPlaca(document.getElementById("in-placa").value); }
+
+// Una placa COMPLETA: letras y digitos con 6+ caracteres (mexicanas y de EE.
+// UU.), o 5-7 digitos pelones (las de asociacion civil, §9). Los ultimos
+// cuatro numeros que la cajera teclea para BUSCAR ("1234") no lo son, y no
+// deben acabar guardados como la placa del carro.
+function esPlacaCompleta(n) {
+  return (/[A-Z]/.test(n) && /\d/.test(n) && n.length >= 6) || /^\d{5,7}$/.test(n);
+}
+
+// Une el campo con la lectura y lo deja en `captura`:
+//   * campo vacio      -> no hay placa (aunque la foto haya leido: si la cajera
+//                         lo borro, es que la leida estaba mal y no ve la buena)
+//   * campo con algo   -> esa es la placa; es MANUAL si difiere de la lectura
+// Se llama en cada tecla y en CADA salida de procesarImagen, para que
+// `captura.placa` nunca se quede vieja respecto a lo que la cajera ve.
+function sincronizarPlaca() {
+  var t = placaTecleada();
+  if (!captura && t) {
+    captura = { placa: null, marca: null, submarca: null, tipo: null, color: null, foto_path: null, leida: true };
+  }
+  if (captura) {
+    captura.placa = t || null;
+    captura.placa_manual = !!t && t !== lecturaPlaca;
+  }
+  // La lectura llego DESPUES de que la cajera ya habia escrito otra cosa: no
+  // se le pisa lo suyo; se le ofrece la de la camara para que ella decida.
+  var hint = document.getElementById("placa-hint");
+  if (lecturaPlaca && t && t !== lecturaPlaca) {
+    hint.innerHTML = 'La cámara leyó <b>' + escapar(lecturaPlaca) + '</b>.' +
+                     '<button type="button" id="usar-leida">Usar la de la cámara</button>';
+    hint.style.display = "block";
+    document.getElementById("usar-leida").addEventListener("click", function () {
+      document.getElementById("in-placa").value = lecturaPlaca;
+      placaEsDeLectura = true;
+      sincronizarPlaca();
+    });
+  } else {
+    hint.style.display = "none"; hint.innerHTML = "";
+  }
+  document.getElementById("btn-buscar").disabled = !(captura && captura.placa);
+}
+
+// La camara leyo una placa. Llena el campo SOLO si esta vacio o si lo que
+// tiene lo puso una lectura anterior: lo que la cajera escribio a mano no se
+// pisa (ver sincronizarPlaca).
 function fijarPlaca(placaCruda, datosFoto) {
   var placa = normPlaca(placaCruda);
   if (!placa) return false;
   captura = datosFoto || { placa: null, marca: null, submarca: null, tipo: null, color: null, foto_path: null };
-  captura.placa = placa;
-  document.getElementById("placa-txt").textContent = placa;
-  document.getElementById("placa-lista").style.display = "block";
+  lecturaPlaca = placa;
+  var campo = document.getElementById("in-placa");
+  if (!campo.value.trim() || placaEsDeLectura) { campo.value = placa; placaEsDeLectura = true; }
+  sincronizarPlaca();
   return true;
 }
+
+// La cajera tecleo una placa a proposito: si la base NO la dejo en el carro
+// (ya esta en otro carro de hoy, o la foto del patio ya habia leido otra), se
+// le DICE. El registro del cliente si quedo; lo que no quedo es la placa. Un
+// descarte en silencio es la clase de error que la §11.50 cerro, y aqui el
+// dato lo aporto una persona viendo el carro.
+function avisarSiLaPlacaNoQuedo(c, d, sinCliente) {
+  if (!c || c.placa_manual !== true || !c.placa || !d || d.placa_vale !== false) return;
+  alert("La placa " + c.placa + " NO se guardó en este lavado: " +
+        (d.placa_dudosa ? "ya está en otro carro de hoy." : "la foto ya había leído otra placa para este carro.") +
+        (sinCliente ? "" : "\n\nEl cliente sí quedó registrado."));
+}
+
+document.getElementById("in-placa").addEventListener("input", function () {
+  // Se sube en el input, no solo con CSS (misma leccion del color manual del
+  // supervisor, 20/jul): si no, se guardaria en minusculas.
+  var v = this.value.toUpperCase();
+  if (v !== this.value) this.value = v;
+  placaEsDeLectura = false;
+  sincronizarPlaca();
+});
+document.getElementById("in-placa").addEventListener("keydown", function (ev) {
+  if (ev.key === "Enter") { this.blur(); document.getElementById("btn-buscar").click(); }
+});
 
 // --- Feed en vivo de la camara ---------------------------------------
 // PRODUCCION: feed WebRTC de la Reolink (via go2rtc), servido por Tailscale con
@@ -1105,11 +1212,15 @@ function resumenLectura(d) {
 
 // Manda una imagen ya lista (dataURL) a leer la placa. La usan el feed y el
 // respaldo del tablet.
-// Deja la captura en cero: sin placa en pantalla y sin datos guardados.
+// Deja la captura en cero: sin datos de foto guardados y sin lectura. Lo que
+// la cajera TECLEO en el campo de placa se queda (sincronizarPlaca lo vuelve a
+// poner en `captura`): una foto nueva no borra lo que ella vio con sus ojos.
 function limpiarCaptura() {
+  capturaGen++;
   captura = null;
-  var caja = document.getElementById("placa-lista");
-  if (caja) caja.style.display = "none";
+  lecturaPlaca = null;
+  if (placaEsDeLectura) { document.getElementById("in-placa").value = ""; placaEsDeLectura = false; }
+  sincronizarPlaca();
 }
 
 function procesarImagen(dataURL) {
@@ -1126,12 +1237,16 @@ function procesarImagen(dataURL) {
   //
   // En cuanto se toma una foto nueva, lo de antes está viejo. Punto.
   limpiarCaptura();
+  var miGen = capturaGen;   // si cambia antes de que llegue la lectura, ya es de otro cliente
   est.textContent = "Leyendo la placa…";
   mostrarLeyendo(dataURL);
   // La grande se lee; la chica se guarda (ver versionChica arriba).
   return versionChica(dataURL).then(function (chica) {
     return postJSON("/leer-placa", { imagen: dataURL, imagen_chica: chica });
   }).then(function (d) {
+    // Lectura tardia: la cajera ya esta con otro cliente (o ya tomo otra foto,
+    // cuyo "leyendo" no hay que apagar). Se descarta entera.
+    if (miGen !== capturaGen) return;
     quitarLeyendo();
     // ⚠️ Este mensaje decia "Captura la placa a mano", y ese botón se quitó el
     // 15/ago: mandaba a la cajera a buscar algo que ya no existe, con el
@@ -1139,6 +1254,7 @@ function procesarImagen(dataURL) {
     // para ella los dos casos son lo mismo: sigue por el nombre.
     if (!d || d.ok === false) {
       est.textContent = "No se pudo tomar la foto. Busca al cliente por su nombre arriba.";
+      sincronizarPlaca();
       document.getElementById("in-top").focus();
       return;
     }
@@ -1152,19 +1268,32 @@ function procesarImagen(dataURL) {
     var datos = { placa: null, marca: d.marca, submarca: d.submarca, tipo: d.tipo,
                   color: d.color || null, foto_path: d.foto_path, leida: d.leida !== false };
     if (d.placa && fijarPlaca(d.placa, datos)) {
-      est.textContent = "Placa leída: " + captura.placa + resumenLectura(d);
+      est.textContent = "Placa leída: " + lecturaPlaca + resumenLectura(d);
     } else {
       // NO se le pide retomar la foto. En Mexicali entran muchas pickup
       // grandes (Tundra) donde la placa no se alcanza a ver desde la ventana
       // de la caja, y pedirle al cliente que se recorra lo dejaría fuera del
-      // alcance para cobrar. Se sigue normal: se busca al cliente por nombre y
-      // la foto se guarda igual. El segundo intento lo hace el SUPERVISOR al
-      // asignar carril y secador, con el carro ya en el patio.
+      // alcance para cobrar. La foto se guarda igual. Desde el 6/sep, si la
+      // cajera SI ve la placa en el feed, la escribe en el campo de arriba; y
+      // el SUPERVISOR vuelve a tomar la foto al asignar, con el carro en el
+      // patio (carros.placa_manual, migracion 164).
       captura = datos;
-      est.textContent = "Foto tomada. Busca al cliente por su nombre arriba." + resumenLectura(d);
-      document.getElementById("in-top").focus();
+      sincronizarPlaca();
+      if (captura.placa) {
+        est.textContent = "Foto tomada. Placa escrita a mano: " + captura.placa + resumenLectura(d);
+      } else {
+        // Sin focus() a proposito: en la tablet el teclado sube y tapa el feed
+        // en vivo, que es justo de donde tiene que copiar la placa.
+        est.textContent = "Foto tomada. No se leyó la placa: si la ves en la cámara, escríbela arriba." + resumenLectura(d);
+      }
     }
-  }).catch(function (e) { quitarLeyendo(); if (e && e.message === "codigo") return; est.textContent = "Sin conexión. Intenta otra vez."; });
+  }).catch(function (e) {
+    if (miGen !== capturaGen) return;   // lectura tardia, ver arriba
+    quitarLeyendo();
+    sincronizarPlaca();
+    if (e && e.message === "codigo") return;
+    est.textContent = "Sin conexión. Intenta otra vez.";
+  });
 }
 
 // "Tomar foto" = del feed en vivo. Si esta apagado, lo prende primero (y la
@@ -1201,16 +1330,14 @@ document.getElementById("camara").addEventListener("change", function (ev) {
   });
 });
 
-document.getElementById("btn-otra").addEventListener("click", function () {
-  captura = null;
-  document.getElementById("placa-lista").style.display = "none";
-  document.getElementById("estado-captura").textContent = "";
-});
-
 // --- Buscar por placa -> pantalla de cliente ---
+// La placa es la del campo #in-placa (leida o tecleada, ver sincronizarPlaca).
 document.getElementById("btn-buscar").addEventListener("click", function () {
-  if (!captura || !captura.placa) return;
-  var placa = captura.placa;
+  sincronizarPlaca();
+  if (!captura || !captura.placa) { document.getElementById("in-placa").focus(); return; }
+  buscarPorPlaca(captura.placa);
+});
+function buscarPorPlaca(placa) {
   pedirJSON("/personas?placa=" + encodeURIComponent(placa))
     .then(function (d) {
       var arr = lista(d, "personas");
@@ -1221,7 +1348,7 @@ document.getElementById("btn-buscar").addEventListener("click", function () {
       document.getElementById("in-nombre").value = "";
     })
     .catch(function (e) { if (e && e.message !== "codigo") alert("Sin conexión."); });
-});
+}
 
 // --- Buscador de arriba: autocompletado ------------------------------
 // Al escribir 2+ letras caen los resultados debajo de la barra, SIN cambiar
@@ -1275,17 +1402,48 @@ function buscarTop(q) {
                 ".<br>Escribe más letras para encontrarlo antes de darlo de alta.</div>";
       }
 
-      // Registrar cliente nuevo SIEMPRE al final: si no aparece, ahi mismo se
-      // da de alta sin tener que salir a buscar otro boton.
-      html += '<button class="top-op nuevo" data-nuevo="1">' +
-                '<span class="nom">+ Registrar cliente nuevo</span>' +
-                '<span class="sub2">' + escapar(q) + "</span></button>";
+      // 🔴 Lo tecleado trae NUMEROS: es una placa, no un nombre. Antes el boton
+      // de abajo la metia como NOMBRE de un cliente nuevo (asi nacio un
+      // cliente llamado como su placa). Un nombre nunca trae digitos, asi que
+      // la regla no se equivoca hacia el lado que duele; en vez de dar de
+      // alta, se ofrece pasarla al campo de placa del carro (6/sep/2026).
+      // ⚠️ Y solo se ofrece "usar como placa" cuando NO salio ningun dueno y lo
+      // tecleado es una placa COMPLETA. La Ayuda le dice a la cajera que puede
+      // buscar con los ultimos numeros ("1234"): eso encuentra al dueno, pero
+      // no es la placa del carro, y guardarla asi la dejaria confirmada a
+      // medias a nombre del cliente (auditoria del 6/sep).
+      var traeDigitos = /\d/.test(q);
+      if (traeDigitos && arr.length === 0 && esPlacaCompleta(normPlaca(q))) {
+        html += '<button class="top-op nuevo" data-placa="1">' +
+                  '<span class="nom">🚗 Usar ' + escapar(normPlaca(q)) + ' como placa de este carro</span>' +
+                  '<span class="sub2">Si es una placa nueva, después busca o registra al cliente</span></button>';
+      } else if (traeDigitos) {
+        html += '<div class="top-vacio">Eso parece una placa. Si es la de este carro, escríbela ' +
+                'completa en <b>Placa del carro</b>. Un cliente nuevo se registra con su <b>nombre</b>.</div>';
+      } else {
+        // Registrar cliente nuevo SIEMPRE al final: si no aparece, ahi mismo se
+        // da de alta sin tener que salir a buscar otro boton.
+        html += '<button class="top-op nuevo" data-nuevo="1">' +
+                  '<span class="nom">+ Registrar cliente nuevo</span>' +
+                  '<span class="sub2">' + escapar(q) + "</span></button>";
+      }
       abrirBuscadorTop(html);
       var caja = document.getElementById("top-caja");
       caja.querySelectorAll("button[data-i]").forEach(function (b) {
         b.addEventListener("click", function () {
           cerrarBuscadorTop();
-          elegirPersona(arr[Number(b.dataset.i)]);
+          var p = arr[Number(b.dataset.i)];
+          // La cajera busco al dueno por su placa completa y lo encontro: esa
+          // placa es la de este carro, y no se tira solo porque toco a la
+          // persona en vez del boton de abajo.
+          var n = normPlaca(q);
+          if (traeDigitos && esPlacaCompleta(n) && !placaTecleada()
+              && (p.placas || []).some(function (x) { return normPlaca(x) === n; })) {
+            document.getElementById("in-placa").value = n;
+            placaEsDeLectura = false;
+            sincronizarPlaca();
+          }
+          elegirPersona(p);
         });
       });
       var bn = caja.querySelector("button[data-nuevo]");
@@ -1295,6 +1453,16 @@ function buscarTop(q) {
         document.getElementById("nv-telefono").value = "";
         document.getElementById("nv-notas").value = "";
         mostrar("p-nueva", true);
+      });
+      var bp = caja.querySelector("button[data-placa]");
+      if (bp) bp.addEventListener("click", function () {
+        cerrarBuscadorTop();
+        document.getElementById("in-top").value = "";
+        document.getElementById("top-limpiar").classList.remove("on");
+        document.getElementById("in-placa").value = normPlaca(q);   // lo mismo que anuncio el boton
+        placaEsDeLectura = false;
+        sincronizarPlaca();
+        if (captura && captura.placa) buscarPorPlaca(captura.placa);
       });
     })
     // Falla la búsqueda: se DICE. Antes se tragaba en silencio y el resultado
@@ -1353,7 +1521,14 @@ function buscarNombre(q) {
     .then(function (d) {
       if (miToken !== buscaNombreToken) return;   // respuesta vieja: se ignora
       var arr = lista(d, "personas");
-      if (!arr.length) cont.innerHTML = '<div class="nota">Nadie con ese nombre. Regístralo como cliente nuevo.</div>';
+      // Misma guarda que el buscador de arriba: con digitos es una placa, y
+      // "registralo como cliente nuevo" la metia como NOMBRE.
+      if (!arr.length && /\d/.test(q)) {
+        cont.innerHTML = '<div class="nota aviso">Eso parece una placa y no está registrada con nadie. ' +
+          'Si es la de este carro, escríbela en <b>Placa del carro</b> (pantalla anterior). ' +
+          'Un cliente nuevo se registra con su <b>nombre</b>.</div>';
+      }
+      else if (!arr.length) cont.innerHTML = '<div class="nota">Nadie con ese nombre. Regístralo como cliente nuevo.</div>';
       else pintarClientes(arr, "resultados-nombre");
     })
     // Igual que el buscador de arriba: una falla se DICE, no se disfraza de
@@ -1714,18 +1889,22 @@ document.getElementById("btn-sin-cliente").addEventListener("click", function ()
 document.getElementById("btn-sc-guardar").addEventListener("click", function () {
   if (!ticketSC) return;
   var c = captura || {};
-  // Sin foto no hay nada que pegar. No debería pasar (a esta pantalla se llega
-  // después de capturar), pero si la cajera llegó por otro lado se dice en vez
-  // de mandar una petición que el servidor va a rechazar.
-  if (!c.foto_path) {
-    alert("No hay ninguna foto tomada. Toma la foto primero.");
+  // Sin foto y sin placa tecleada no hay nada que pegar. No debería pasar (a
+  // esta pantalla se llega después de capturar), pero si la cajera llegó por
+  // otro lado se dice en vez de mandar una petición que el servidor va a
+  // rechazar. Una placa TECLEADA sin foto sí se pega (164).
+  var placaTecleadaSinFoto = !c.foto_path && !!c.placa && c.placa_manual === true;
+  if (!c.foto_path && !placaTecleadaSinFoto) {
+    alert("No hay ninguna foto tomada ni placa escrita. Toma la foto o escribe la placa primero.");
     return;
   }
   conCandado(this, "Guardando…", function () {
     return postJSON("/foto-al-ticket", {
       carro:     ticketSC.carro_id,
-      foto_path: c.foto_path,
+      foto_path: c.foto_path || null,
       placa:     c.placa    || null,
+      // 164: la placa la tecleo la cajera (no la leyo la foto).
+      placa_manual: c.placa_manual === true,
       marca:     c.marca    || null,
       submarca:  c.submarca || null,
       tipo:      c.tipo     || null,
@@ -1745,10 +1924,12 @@ document.getElementById("btn-sc-guardar").addEventListener("click", function () 
       }
       // Se dice lo que pasó de verdad. Si el carro YA traía foto (la tomó el
       // supervisor), la de la caja no se pega — y callarlo dejaría a la cajera
-      // creyendo que guardó algo que no guardó.
-      if (d.pego === false) {
+      // creyendo que guardó algo que no guardó. Sin foto (solo placa tecleada)
+      // `pego` es false por definición y no hay nada que avisar.
+      if (d.pego === false && c.foto_path) {
         alert("Ese lavado ya tenía foto, así que se dejó la que ya estaba.");
       }
+      avisarSiLaPlacaNoQuedo(c, d, true);
       irInicio(false);         // listo: siguiente cliente
     });
   });
@@ -1907,6 +2088,9 @@ document.getElementById("btn-registrar").addEventListener("click", function () {
       // la placa): el registro procede igual en los dos casos.
       foto_path: c.foto_path || null,
       placa:     c.placa     || null,
+      // 164: la placa la tecleo la cajera (la foto no la leyo). En la base no
+      // se hace pasar por leida, y el supervisor sigue pidiendo la foto.
+      placa_manual: c.placa_manual === true,
       marca:     c.marca     || null,
       submarca:  c.submarca  || null,
       tipo:      c.tipo      || null,
@@ -1920,6 +2104,7 @@ document.getElementById("btn-registrar").addEventListener("click", function () {
         cargarTickets();       // quizá otro cliente se llevó ese ticket
         return;
       }
+      avisarSiLaPlacaNoQuedo(c, d);
       irInicio(false);         // listo: siguiente cliente
     });
   });
@@ -2015,7 +2200,9 @@ function pintarHistorial(lista) {
 
 // --- Cliente nuevo ---------------------------------------------------
 document.getElementById("btn-nueva").addEventListener("click", function () {
-  document.getElementById("nv-nombre").value = document.getElementById("in-nombre").value.trim();
+  // Lo tecleado con digitos es una placa, no un nombre: no se prellena.
+  var q = document.getElementById("in-nombre").value.trim();
+  document.getElementById("nv-nombre").value = /\d/.test(q) ? "" : q;
   document.getElementById("nv-telefono").value = "";
   document.getElementById("nv-notas").value = "";
   mostrar("p-nueva", true);

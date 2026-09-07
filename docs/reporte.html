@@ -638,9 +638,17 @@ function pintarReporte(r) {
   html += "<h2>Placas leídas</h2>";
   var conPlaca = placas.con_placa || 0;
   var totalCarros = placas.carros || 0;
+  // 164: una placa que la cajera ESCRIBIO porque la camara no la leyo va
+  // aparte. Sumarla a las leidas taparia una caida de la lectura (17/ago).
+  // Los reportes congelados antes de la 164 no traen el campo: cae en 0.
+  var tecleadas = placas.tecleadas || 0;
   html += '<div class="numeros">';
   html +=   tarjeta(conPlaca + " de " + totalCarros, "Carros con placa leída",
               (placas.con_foto || 0) + " tuvieron foto");
+  if (tecleadas > 0) {
+    html += tarjeta(String(tecleadas), "Placas escritas a mano en caja",
+              "la cámara no las leyó; la cajera las tecleó");
+  }
   html += '</div>';
 
   if (conPlaca < totalCarros) {

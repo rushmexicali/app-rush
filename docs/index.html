@@ -623,6 +623,8 @@
   /* El aviso de version nueva se queda pegado arriba al hacer scroll por la
      cola. z-index por debajo de #asignar (40): no tapa ninguna pantalla. */
   #aviso-version.visible { position:sticky; top:0; z-index:30; }
+  /* La placa que la cajera escribio a mano (164): se distingue de una leida. */
+  .placa small { font-size:13px; font-weight:700; color:#d29922; margin-left:8px; letter-spacing:0; text-transform:none; }
   #error {
     display:none; background:#3d1418; color:#ffb3b3;
     padding:12px; border-radius:12px; margin-bottom:12px; font-size:17px;
@@ -1111,7 +1113,10 @@ function pintar() {
     // "sin placa" que no le sirve de nada al supervisor).
     // Se muestra con guiones si la lectura los trajo (placa_display); en la
     // base la placa vive SIEMPRE sin guiones (para casar caja<->supervisor).
-    if (c.placa) html += '<div class="placa">' + escapar(c.placa_display || c.placa) + '</div>';
+    // 164: una placa que la cajera ESCRIBIO (la camara no la leyo) se marca:
+    // es un dato por confirmar con la foto del patio, no una lectura.
+    if (c.placa) html += '<div class="placa">' + escapar(c.placa_display || c.placa) +
+                         (c.placa_manual ? '<small>escrita en caja</small>' : '') + '</div>';
     // Columna derecha: el reloj SIEMPRE, y ENCIMA de el el boton de borrar
     // cuando el carro sigue en la cola (prelavado o secando). Va HABILITADO
     // desde el primer segundo (31/ago/2026). Los demas estados no tienen
@@ -1619,7 +1624,11 @@ function abrirPantalla(c, modo) {
     foto: c.foto || null,
     fotoPreview: c.foto || null,
     fotoDataURL: null,
-    fotoLista: !!c.placa,
+    // 164: una placa que la cajera TECLEO (la foto no la leyo) NO cumple el
+    // requisito. El dueno lo pidio textual: "igual en el app del supervisor
+    // tendria que pedirle la foto". La foto del patio la confirma o la corrige.
+    fotoLista: !!c.placa && !c.placa_manual,
+    placaManual: !!c.placa && !!c.placa_manual,
     fotoSinPlaca: !!c.foto && !c.placa,
     fotoProcesando: false
   };
@@ -1894,7 +1903,10 @@ function pintarAsignacion() {
   if (asig.secadores.length === 0) faltan.push("un secador");
   // La foto es obligatoria al asignar: es autoritativa y de ella salen
   // placa, marca, submarca y tipo (24/jul/2026).
-  if (!asig.fotoLista) faltan.push("la foto");
+  // Con placa tecleada en caja puede haber una foto A LA VISTA (la de la
+  // caja) y aun asi faltar la del patio: el boton lo dice para no
+  // contradecir la miniatura que el supervisor tiene enfrente.
+  if (!asig.fotoLista) faltan.push(asig.placaManual ? "la foto del patio" : "la foto");
 
   btn.disabled = faltan.length > 0;
   btn.textContent = faltan.length === 0
@@ -1933,6 +1945,15 @@ function pintarFotoAsignar() {
                       '<span>Cambiar foto</span>';
     estado.className = "listo";
     estado.textContent = "— lista ✓";
+  } else if (asig.placaManual) {
+    // La placa la ESCRIBIO la cajera porque su camara no la leyo (164). No es
+    // una lectura: hace falta la foto del patio, que la confirma o corrige un
+    // dedazo. Si esta tampoco la lee, la tecleada se queda (un nulo no borra).
+    boton.disabled = false;
+    boton.innerHTML = (asig.fotoPreview ? '<img class="mini" src="' + escapar(asig.fotoPreview) + '" alt="">' : CAMARA) +
+                      '<span>Tomar foto</span>';
+    estado.className = "pendiente";
+    estado.textContent = "— la placa se escribió a mano en caja: falta la foto";
   } else if (asig.fotoSinPlaca) {
     // Ya hay foto, pero de ella NO salio la placa. Es el caso de las pickup
     // grandes (Tundra) que desde la ventana de la caja tapan la placa. Aqui el
@@ -2834,6 +2855,7 @@ function tomarFotoAsignar(archivo) {
       // ocurre despues, en segundo plano, y detenerlo aqui lo dejaria atorado
       // con un carro que no se deja fotografiar.
       asig.fotoSinPlaca = false;
+      asig.placaManual = false;
       asig.fotoProcesando = false;
       pintarAsignacion();
     })

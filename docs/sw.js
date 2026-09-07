@@ -66,7 +66,10 @@
 //                     Storage estuvo un dia entero desplegado sin llegar.
 //                     ⚠️ Desde aqui, SUBIR ESTA VERSION es lo que avisa: una
 //                     pantalla publicada sin subirla no le llega a nadie.
-var CACHE = "rush-v20";
+//  v21 (6/sep/2026)  — la cajera puede ESCRIBIR la placa cuando la foto no la
+//                     lee (campo debajo del buscador), y el supervisor sigue
+//                     pidiendo la foto para esos carros (migracion 164).
+var CACHE = "rush-v21";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest", "./actualizacion.js",
