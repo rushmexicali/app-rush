@@ -81,7 +81,11 @@
 //                     asignar"; Regresar vuelve debajo del feed.
 //  v25 (6/sep/2026)  — "Regresar" vuelve DEBAJO de "Tomar foto", arriba del feed,
 //                     como lo pidio el dueno (la auditoria lo habia bajado).
-var CACHE = "rush-v25";
+//  v26 (8/sep/2026)  — La cola avisa cuando la ultima foto que se tomo era de OTRO
+//                     carro (su placa ya era de otro carro de hoy) y la camara
+//                     gira para retomarla; /foto regresa la foto anterior en vez
+//                     de dejar pegada la ajena (migracion 166).
+var CACHE = "rush-v26";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest", "./actualizacion.js",

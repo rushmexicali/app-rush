@@ -187,8 +187,17 @@
   /* Aviso de secador que se poncho con el carro asignado. Va en la
      tarjeta, no en una pantalla aparte: el supervisor tiene que verlo
      sin ir a buscarlo. */
-  .ausente {
+  /* 166: los avisos van DENTRO de un contenedor (.avisos) que ocupa la fila 5.
+     Antes cada .ausente se colocaba solo en `grid-row: 5`, asi que dos avisos
+     a la vez (secador que marco salida + foto que no subio, o + foto de otro
+     carro) caian en la MISMA celda y se pintaban uno encima del otro: solo se
+     leia el ultimo. Lo midio la mini auditoria del 8/sep: tres avisos con el
+     mismo rect y la tarjeta del mismo alto. */
+  .avisos {
     grid-column: 1 / -1; grid-row: 5;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .ausente {
     margin-top: 10px;
     background:#3d1418; color:#ffb3b3;
     border-left: 5px solid #ff4d4f;
@@ -299,6 +308,9 @@
     overflow: hidden;
   }
   .foto:active { background:#30363d; }
+  /* 166: cuando la camara gira (la foto era de otro carro), los guiones siguen
+     el radio de ESTE boton (12), no el de los botones grandes (14). */
+  .foto.girando::before { border-radius: 12px; }
   .foto img { width:100%; height:100%; object-fit:cover; display:block; }
   .foto.subiendo { opacity:.4; }
   /* La foto se habilita solo cuando el carro ya tiene carril y secador.
@@ -1084,7 +1096,13 @@ function pintar() {
   var firma = JSON.stringify(carros.map(function (c) {
     return [c.id, c.estado, c.linea, c.es_express, c.producto, c.variante,
             c.aviso, c.a_mano, c.tipo_unidad, c.color, c.marca, c.submarca, c.placa,
-            c.foto, (c.ausentes || []).join(","), (c.secadores || []).join(","), !!FOTOS_RENDIDAS[c.id]];
+            c.foto, (c.ausentes || []).join(","), (c.secadores || []).join(","), !!FOTOS_RENDIDAS[c.id],
+            // 166: el aviso de "la foto es de otro carro" entra a la firma, si
+            // no la tarjeta no se repintaria cuando la lectura llega (o cuando
+            // el supervisor retoma y el aviso se apaga).
+            c.foto_ajena ? [c.foto_ajena.id, c.foto_ajena.marca, c.foto_ajena.submarca,
+                            c.foto_ajena.color, c.foto_ajena.tipo_unidad, c.foto_ajena.rechazada,
+                            c.foto_ajena.caja_marca, c.foto_ajena.caja_submarca].join("|") : ""];
   }));
   if (firma === firmaRender && document.querySelector("#lista .carro")) {
     return;
@@ -1143,6 +1161,15 @@ function pintar() {
     // le pegaba la foto al carro equivocado (paso el 19/jul). Deshabilitado
     // -> se ve apagado, no desaparece.
     var asignado = !!(c.linea && c.secadores && c.secadores.length);
+    // 166: la ultima foto que se le tomo resulto ser de OTRO carro (su placa
+    // ya era de otro carro de hoy). El boton de la camara lleva los guiones
+    // rojos: es el que hay que tocar. Ver el aviso mas abajo.
+    //
+    // Salvo si un secador marco salida: ahi los guiones son de Corregir, y
+    // dos botones girando en la misma tarjeta dejan de senalar cual se toca
+    // (§4). Reasignar va primero; el aviso de la foto se lee igual.
+    var fotoAjena = !!c.foto_ajena;
+    var secadorSalio = !!(c.ausentes && c.ausentes.length);
     html +=   '<div class="fotos">';
     // Boton de info (la i en un circulo), donde antes estaba la galeria.
     // Abre el desglose de tiempos del carro. Es un boton y no un toque a la
@@ -1155,7 +1182,7 @@ function pintar() {
                   '<circle cx="12" cy="7.6" r="1.05" fill="currentColor" stroke="none"></circle>' +
                   '</svg></button>';
     // La camara. El de galeria se quito el 20/jul/2026 — no se usaba.
-    html +=     '<button class="foto" data-foto="' + c.id + '"' +
+    html +=     '<button class="foto' + (fotoAjena && asignado && !secadorSalio ? ' girando' : '') + '" data-foto="' + c.id + '"' +
                   (asignado ? ' title="Tomar foto del carro"'
                             : ' disabled title="Primero asigna carril y secador"') + '>' +
                   (c.foto ? '<img src="' + escapar(c.foto) + '" alt="">' : '&#128247;') +
@@ -1191,11 +1218,16 @@ function pintar() {
     if (c.linea)      html += '<span class="linea">Línea ' + escapar(c.linea) + '</span>';
     html +=   '</div>';
 
+    // Los avisos de la tarjeta se juntan en un contenedor (fila 5 del grid)
+    // para que, cuando hay dos o tres a la vez, se apilen en vez de
+    // encimarse (ver .avisos).
+    var avisos = "";
+
     // Se poncho quien lo estaba secando. No se reasigna solo: el
     // supervisor decide, porque puede ser que otro ya lo haya tomado.
     if (c.ausentes && c.ausentes.length) {
-      html += '<div class="ausente">&#9888; ' + escapar(c.ausentes.join(", ")) +
-              ' marcó salida.<br>Asigna a otro secador</div>';
+      avisos += '<div class="ausente">&#9888; ' + escapar(c.ausentes.join(", ")) +
+                ' marcó salida.<br>Asigna a otro secador</div>';
     }
 
     // La foto se rindio tras ~35 min de reintentos. Antes esto solo salia en
@@ -1204,9 +1236,47 @@ function pintar() {
     // sin ella para siempre. Ahora se le dice en la tarjeta del carro, que
     // es donde esta el boton para volver a tomarla.
     if (FOTOS_RENDIDAS[c.id]) {
-      html += '<div class="ausente">&#9888; La foto no se pudo subir.' +
-              '<br>Tómala otra vez</div>';
+      avisos += '<div class="ausente">&#9888; La foto no se pudo subir.' +
+                '<br>Tómala otra vez</div>';
     }
+
+    // 166: la lectura de la ultima foto trajo la placa de OTRO carro de hoy,
+    // o sea que la foto era de ese otro carro (caso real del 8/sep/2026: el
+    // supervisor fotografio la CR-V de al lado en vez de la Tacoma). La base
+    // ya atajaba la placa; lo que faltaba era DECIRLO aqui, que es donde esta
+    // el boton para volver a tomarla. Se dice cual era el otro carro para que
+    // el supervisor entienda de inmediato que paso ("ah, la Honda blanca").
+    // Cuando la subio el supervisor, la miniatura que se ve es la ANTERIOR (la
+    // base regreso la vieja al saber que la nueva era ajena, 167); por eso el
+    // texto habla de "la ultima foto que se tomo", no de "la foto". Si el
+    // carro aun no esta asignado (el choque vino de la caja), la camara esta
+    // apagada a proposito (§4) y el texto dice donde se le toma.
+    if (fotoAjena) {
+      // describir() devuelve "" o un <span> de "Sin datos" cuando no hay nada
+      // que decir; entonces no se agrega nada. El numero de carro NO va: la
+      // cola nunca los muestra y al supervisor no le dice nada; el dueno lo
+      // tiene en su reporte ("placas que se atajaron").
+      var otro = describir(c.foto_ajena);
+      var comoEs = (otro && otro.charAt(0) !== "<") ? otro : "";
+      var titulo;
+      if (c.foto_ajena.rechazada) {
+        // 169: el segundo testigo. La foto del patio dice una marca y la
+        // captura de la caja (tomada al cobrar, con el cliente enfrente) dice
+        // otra. Se dicen las dos para que el supervisor vea que paso.
+        var caja = describir({ marca: c.foto_ajena.caja_marca, submarca: c.foto_ajena.caja_submarca });
+        var cajaEs = (caja && caja.charAt(0) !== "<") ? caja : "";
+        titulo = 'La última foto que se tomó parece de OTRO carro' +
+                 (comoEs ? ': dice ' + comoEs : '') +
+                 (cajaEs ? (comoEs ? ' y la caja vio ' : ': la caja vio ') + cajaEs : '') + '.';
+      } else {
+        titulo = 'La última foto que se tomó era de OTRO carro' + (comoEs ? ' (' + comoEs + ')' : '') + '.';
+      }
+      avisos += '<div class="ausente">&#9888; ' + titulo + '<br>' +
+                (asignado ? 'Tómale la foto a este carro otra vez'
+                          : 'Se le toma la foto al asignar') + '</div>';
+    }
+
+    if (avisos) html += '<div class="avisos">' + avisos + '</div>';
 
     html +=   '<div class="acciones">';
     // Los rayos rojos giran solo cuando el boton dice "Asignar unidad"
@@ -1218,7 +1288,6 @@ function pintar() {
     // Corregir abre la pantalla de captura (tipo, color, marca, secadores).
     // Sirve siempre, incluso antes de asignar. Si un secador ya marco
     // salida, lleva los guiones rojos: es aqui donde se reasigna.
-    var secadorSalio = c.ausentes && c.ausentes.length;
     html +=     '<button class="corregir' + (secadorSalio ? " girando" : "") +
                   '" data-editar="' + c.id + '">Corregir</button>';
     // Regresar deshace el paso anterior. En prelavado no hay a donde.
@@ -1370,7 +1439,14 @@ function sonar() {
 function avisarCarrosNuevos(nuevos) {
   var ids = nuevos.map(function (c) { return c.id; });
 
-  if (conocidos === null) { conocidos = ids; return; }   // primera carga
+  if (conocidos === null) {   // primera carga: no se avisa de nada
+    conocidos = ids;
+    // 166: tampoco de las fotos ajenas que YA estaban pintadas. Sin esto, cada
+    // recarga de la app (incluida la que pide el aviso rojo de "hay una
+    // actualizacion") vibraba a los 3 s por un aviso viejo.
+    for (var k = 0; k < nuevos.length; k++) if (nuevos[k].foto_ajena) ajenasAvisadas[nuevos[k].id] = true;
+    return;
+  }
 
   var entraron = ids.filter(function (id) { return conocidos.indexOf(id) < 0; });
   conocidos = ids;
@@ -1381,7 +1457,27 @@ function avisarCarrosNuevos(nuevos) {
     // cualquiera del telefono.
     if (navigator.vibrate) navigator.vibrate([250, 120, 250]);
   }
+
+  // 166: una tarjeta ACABA de decir "la foto es de otro carro". El supervisor
+  // ya cerro Asignar y no esta mirando la pantalla (la lectura tarda unos
+  // segundos), asi que se le avisa al bolsillo. Solo la primera vez por
+  // carro: el aviso sigue pintado en la tarjeta hasta que retome. Sin sonido:
+  // el sonido es "entro un carro" y no hay que mezclarlo.
+  // Un carro que sale de la cola y vuelve (Entregado -> Restaurar) conserva su
+  // marca aqui: ya se le aviso. Solo se borra la marca cuando el carro sigue
+  // en la cola y el aviso ya se apago (retomo la foto), para que un choque
+  // NUEVO del mismo carro si vuelva a avisar.
+  var hayNueva = false;
+  for (var i = 0; i < nuevos.length; i++) {
+    if (nuevos[i].foto_ajena) {
+      if (!ajenasAvisadas[nuevos[i].id]) { hayNueva = true; ajenasAvisadas[nuevos[i].id] = true; }
+    } else {
+      delete ajenasAvisadas[nuevos[i].id];
+    }
+  }
+  if (hayNueva && navigator.vibrate) navigator.vibrate([60, 80, 60, 80, 60]);
 }
+var ajenasAvisadas = {};
 
 // La pantalla no se debe apagar sola mientras el supervisor trabaja.
 var candado = null;
@@ -1630,6 +1726,14 @@ function abrirPantalla(c, modo) {
     fotoLista: !!c.placa && !c.placa_manual,
     placaManual: !!c.placa && !!c.placa_manual,
     fotoSinPlaca: !!c.foto && !c.placa,
+    // 166: la ultima foto que se le tomo era de OTRO carro. En Asignar se dice
+    // igual que en la tarjeta: aqui es donde se va a volver a tomar, y decir
+    // solo "no se leyo la placa" sobre una foto que puede ser del carro de al
+    // lado contradice a la tarjeta (refutador, N5).
+    fotoAjena: !!c.foto_ajena,
+    // 169: "parece" (el segundo testigo: la marca contradice a la caja) o
+    // "era" (la placa ya era de otro carro). El matiz se eligio a proposito.
+    fotoAjenaParece: !!(c.foto_ajena && c.foto_ajena.rechazada),
     fotoProcesando: false
   };
   var idsPrev = c.secador_ids || [], nomsPrev = c.secadores || [];
@@ -1964,7 +2068,9 @@ function pintarFotoAsignar() {
     boton.innerHTML = (asig.fotoPreview ? '<img class="mini" src="' + escapar(asig.fotoPreview) + '" alt="">' : CAMARA) +
                       '<span>Tomar foto otra vez</span>';
     estado.className = "pendiente";
-    estado.textContent = "— no se leyó la placa";
+    estado.textContent = asig.fotoAjena
+      ? (asig.fotoAjenaParece ? "— la última foto parece de OTRO carro" : "— la última foto era de OTRO carro")
+      : "— no se leyó la placa";
   } else {
     boton.disabled = false;
     boton.innerHTML = CAMARA + '<span>Tomar foto</span>';
@@ -2855,6 +2961,7 @@ function tomarFotoAsignar(archivo) {
       // ocurre despues, en segundo plano, y detenerlo aqui lo dejaria atorado
       // con un carro que no se deja fotografiar.
       asig.fotoSinPlaca = false;
+      asig.fotoAjena = false;
       asig.placaManual = false;
       asig.fotoProcesando = false;
       pintarAsignacion();
@@ -3138,7 +3245,11 @@ document.getElementById("lista").addEventListener("click", function (ev) {
     for (var jf = 0; jf < carros.length; jf++) {
       if (carros[jf].id === idFoto) { cf = carros[jf]; break; }
     }
-    if (cf && cf.foto) {
+    // 166: si la tarjeta esta pidiendo RETOMAR la foto (la ultima era de otro
+    // carro), el boton que gira abre la camara directo. Abrir el visor con la
+    // foto anterior —que es del carro correcto— le diria al supervisor que
+    // todo esta bien y lo mandaria a "Volver". Lo midio la mini auditoria.
+    if (cf && cf.foto && !cf.foto_ajena) {
       abrirVisorFoto(cf.foto, idFoto, true);
     } else {
       carroDeLaFoto = idFoto;
