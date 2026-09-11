@@ -52,6 +52,14 @@
   }
   .barra.rango button:active { background:#30363d; }
 
+  /* Los filtros de Tickets: misma fila que el rango de Operacion, mas los
+     tres menus. En un telefono se envuelven en varias lineas; en escritorio
+     caben en una. Un menu con filtro puesto se pinta distinto para que se
+     vea de un vistazo por que la lista salio corta. */
+  .barra.filtros { margin-top:-6px; }
+  .barra.filtros select { font-size:15px; padding:8px 10px; max-width:100%; }
+  .barra.filtros select.puesto, .barra.filtros input.puesto { border-color:#58a6ff; color:#e6edf3; }
+
   /* Los seis numeros. Tarjetas grandes: es lo primero que se busca. */
   .numeros { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:10px; margin-bottom:22px; }
   .n {
@@ -267,6 +275,20 @@
   <div class="barra">
     <input id="tik-q" autocomplete="off" autocapitalize="off"
            placeholder="Buscar ticket: número, cajera o producto…" style="flex:1; min-width:200px">
+  </div>
+  <!-- Filtros (11/sep/2026): rango de dias como en Operacion, y tres menus
+       cuyas opciones vienen de la base (/tickets-filtros), no de una lista
+       escrita aqui: un producto nuevo en Zettle aparece solo. Todo lo que
+       se deja en blanco no filtra. -->
+  <div class="barra rango filtros" id="tik-filtros">
+    <label for="tik-desde">Del</label>
+    <input type="date" id="tik-desde">
+    <label for="tik-hasta">al</label>
+    <input type="date" id="tik-hasta">
+    <select id="tik-cat"><option value="">Todas las categorías</option></select>
+    <select id="tik-prod"><option value="">Todos los productos</option></select>
+    <select id="tik-caj"><option value="">Todas las cajeras</option></select>
+    <button id="tik-limpiar" type="button">Limpiar</button>
   </div>
   <div id="tik-res"><div class="vacio">Busca por número de ticket, cajera o producto (ej. “manual”, “danithza”, “pinito”).</div></div>
 </div>
@@ -1317,6 +1339,7 @@ document.getElementById("tab-trab").addEventListener("click", function () {
 });
 document.getElementById("tab-tik").addEventListener("click", function () {
   mostrarVista("tik");
+  tikCargarFiltros();
   // Al entrar sin búsqueda escrita, mostrar TODOS los tickets (más nuevos
   // primero, con infinite scroll). Con una búsqueda de 2+ ya escrita, se
   // conserva; con 1 carácter, el aviso.
@@ -1327,13 +1350,119 @@ document.getElementById("tab-tik").addEventListener("click", function () {
 // Tickets: buscador EN VIVO por CONTENIDO (número, cajera, producto) con
 // infinite scroll. Los más nuevos arriba; al bajar se cargan más viejos, por
 // páginas de 30. Cada renglón abre el modal (delegación -> abrirTicket).
-var tik = { q: "", offset: 0, cargando: false, hay: false, timer: null, PAG: 30 };
+//
+// Desde el 11/sep/2026 lleva además cuatro filtros (fecha, categoría,
+// producto, cajera). Viven en `tik.filtros` y viajan en la URL de /tickets;
+// quien decide qué casa es la base (buscar_tickets, migración 176). `gen`
+// sube con cada búsqueda nueva: una respuesta de una búsqueda anterior que
+// llegue tarde se descarta, sea por el texto o por un filtro (el mismo
+// patrón del token de la cola del supervisor).
+var tik = { q: "", offset: 0, cargando: false, hay: false, timer: null, PAG: 30,
+            gen: 0, filtros: { desde: "", hasta: "", categoria: "", producto: "", cajera: "" },
+            opciones: null, cargandoOpciones: false };
 
 document.getElementById("tik-q").addEventListener("input", function () {
   var q = this.value.trim();
   clearTimeout(tik.timer);
   tik.timer = setTimeout(function () { tikNueva(q); }, 250);
 });
+
+// Los cinco controles de filtro: cualquier cambio relanza la búsqueda con el
+// texto que ya esté escrito. El de categoría además acorta el menú de
+// productos a los de esa categoría.
+["tik-desde", "tik-hasta", "tik-cat", "tik-prod", "tik-caj"].forEach(function (id) {
+  document.getElementById(id).addEventListener("change", function () {
+    if (id === "tik-cat") tikPoblarProductos();
+    tikNueva(document.getElementById("tik-q").value.trim());
+  });
+});
+document.getElementById("tik-limpiar").addEventListener("click", function () {
+  ["tik-desde", "tik-hasta", "tik-cat", "tik-prod", "tik-caj"].forEach(function (id) {
+    document.getElementById(id).value = "";
+  });
+  tikPoblarProductos();
+  tikNueva(document.getElementById("tik-q").value.trim());
+});
+
+// Lee los controles a `tik.filtros` y pinta de azul los que traen algo.
+function tikLeerFiltros() {
+  var f = tik.filtros;
+  f.desde     = document.getElementById("tik-desde").value || "";
+  f.hasta     = document.getElementById("tik-hasta").value || "";
+  f.categoria = document.getElementById("tik-cat").value || "";
+  f.producto  = document.getElementById("tik-prod").value || "";
+  f.cajera    = document.getElementById("tik-caj").value || "";
+  [["tik-desde", f.desde], ["tik-hasta", f.hasta], ["tik-cat", f.categoria],
+   ["tik-prod", f.producto], ["tik-caj", f.cajera]].forEach(function (par) {
+    document.getElementById(par[0]).classList.toggle("puesto", !!par[1]);
+  });
+  return f;
+}
+function tikHayFiltros() {
+  var f = tik.filtros;
+  return !!(f.desde || f.hasta || f.categoria || f.producto || f.cajera);
+}
+// La parte de la URL con los filtros. Sólo viaja lo que trae algo.
+function tikParamsFiltros() {
+  var f = tik.filtros, s = "";
+  if (f.desde)     s += "&desde=" + encodeURIComponent(f.desde);
+  if (f.hasta)     s += "&hasta=" + encodeURIComponent(f.hasta);
+  if (f.categoria) s += "&categoria=" + encodeURIComponent(f.categoria);
+  if (f.producto)  s += "&producto=" + encodeURIComponent(f.producto);
+  if (f.cajera)    s += "&cajera=" + encodeURIComponent(f.cajera);
+  return s;
+}
+
+// Las opciones de los tres menús vienen de la base (/tickets-filtros), una
+// sola vez por visita. Si la consulta falla, los menús se quedan con su
+// única opción ("Todas…") y el buscador sigue sirviendo: un filtro que no se
+// pudo cargar no puede dejar la pestaña muerta.
+function tikCargarFiltros() {
+  if (tik.opciones || tik.cargandoOpciones) return;
+  tik.cargandoOpciones = true;
+  pedirJSON("/tickets-filtros").then(function (d) {
+    var o = d && d.filtros;
+    if (!o || !Array.isArray(o.cajeras) || !Array.isArray(o.categorias) || !Array.isArray(o.productos)) {
+      throw new Error("La respuesta no trae los filtros");
+    }
+    tik.opciones = o;
+    tik.cargandoOpciones = false;
+    var cat = document.getElementById("tik-cat");
+    o.categorias.forEach(function (c) {
+      var op = document.createElement("option"); op.value = c; op.textContent = c; cat.appendChild(op);
+    });
+    var caj = document.getElementById("tik-caj");
+    o.cajeras.forEach(function (c) {
+      var op = document.createElement("option"); op.value = c; op.textContent = titulo(c); caj.appendChild(op);
+    });
+    tikPoblarProductos();
+  }).catch(function (e) {
+    tik.cargandoOpciones = false;
+    if (e && e.message === "codigo") return;
+    var f = document.getElementById("tik-fin");
+    if (f) f.textContent = "No se pudieron cargar los menús de filtros (" + (e && e.message || "error") + "). El buscador sigue funcionando.";
+  });
+}
+
+// El menú de productos: todos, o sólo los de la categoría elegida. Conserva
+// el producto ya elegido si sigue en la lista; si no, lo suelta (y la
+// búsqueda que sigue ya no lo manda).
+function tikPoblarProductos() {
+  var sel = document.getElementById("tik-prod");
+  var antes = sel.value;
+  var categoria = document.getElementById("tik-cat").value || "";
+  sel.innerHTML = '<option value="">Todos los productos</option>';
+  if (!tik.opciones) return;
+  tik.opciones.productos.forEach(function (p) {
+    if (categoria && p.categoria !== categoria) return;
+    var op = document.createElement("option");
+    op.value = p.nombre;
+    op.textContent = p.nombre;
+    sel.appendChild(op);
+  });
+  sel.value = antes;
+  if (sel.value !== antes) sel.value = "";
+}
 
 // Un solo handler por delegación: sirve para todos los renglones, incluidos los
 // que se agreguen despues al bajar (no hay que recablear en cada página).
@@ -1344,9 +1473,17 @@ document.getElementById("tik-res").addEventListener("click", function (ev) {
 
 function tikNueva(q) {
   tik.q = q; tik.offset = 0; tik.hay = false; tik.cargando = false;
+  tik.gen += 1;
+  tikLeerFiltros();
   var cont = document.getElementById("tik-res");
   if (q.length === 1) {
     cont.innerHTML = '<div class="vacio">Escribe al menos 2 letras o dígitos (por número, cajera o producto), o borra para ver todos.</div>';
+    return;
+  }
+  // Un rango al revés no se manda: el servidor lo rechazaría con 400 y aquí
+  // se puede decir mejor.
+  if (tik.filtros.desde && tik.filtros.hasta && tik.filtros.desde > tik.filtros.hasta) {
+    cont.innerHTML = '<div class="vacio">El día inicial es posterior al final. Corrige las fechas.</div>';
     return;
   }
   cont.innerHTML = '<div class="lista" id="tik-lista"></div><div id="tik-fin" class="vacio">Cargando…</div>';
@@ -1356,19 +1493,22 @@ function tikNueva(q) {
 function tikPagina() {
   if (tik.cargando || tik.q.length === 1) return;
   tik.cargando = true;
-  var q = tik.q, off = tik.offset;
+  var q = tik.q, off = tik.offset, gen = tik.gen;
   var fin = document.getElementById("tik-fin");
   if (fin && off) fin.textContent = "Cargando más…";
-  pedirJSON("/tickets?q=" + encodeURIComponent(q) + "&offset=" + off).then(function (d) {
-    if (tik.q !== q) return;                 // el dueño ya cambió la búsqueda
-    var tickets = d.tickets || [];
+  pedirJSON("/tickets?q=" + encodeURIComponent(q) + "&offset=" + off + tikParamsFiltros()).then(function (d) {
+    if (tik.gen !== gen) return;             // el dueño ya cambió la búsqueda o un filtro
+    var tickets = listaDe(d, "tickets");
     tikAgregar(tickets);
     tik.offset += tickets.length;
     tik.hay = tickets.length >= tik.PAG;
     tik.cargando = false;
     var f = document.getElementById("tik-fin");
-    if (f) f.textContent = (tik.offset === 0) ? "Ningún ticket con ese contenido." : "";
+    if (f) f.textContent = (tik.offset === 0)
+      ? (tikHayFiltros() ? "Ningún ticket con esos filtros." : "Ningún ticket con ese contenido.")
+      : "";
   }).catch(function (e) {
+    if (tik.gen !== gen) return;
     tik.cargando = false;
     if (e && e.message === "codigo") return;
     var f = document.getElementById("tik-fin"); if (f) f.textContent = "No se pudo buscar.";
