@@ -274,7 +274,7 @@
 <div id="vista-tik" style="display:none">
   <div class="barra">
     <input id="tik-q" autocomplete="off" autocapitalize="off"
-           placeholder="Buscar ticket: número, cajera o producto…" style="flex:1; min-width:200px">
+           placeholder="Buscar ticket: número, cajera, producto o últimos 4 de la tarjeta…" style="flex:1; min-width:200px">
   </div>
   <!-- Filtros (11/sep/2026): rango de dias como en Operacion, y tres menus
        cuyas opciones vienen de la base (/tickets-filtros), no de una lista
@@ -288,9 +288,19 @@
     <select id="tik-cat"><option value="">Todas las categorías</option></select>
     <select id="tik-prod"><option value="">Todos los productos</option></select>
     <select id="tik-caj"><option value="">Todas las cajeras</option></select>
+    <!-- Forma de pago y marca de tarjeta (23/sep/2026, migracion 179). Las
+         marcas vienen de la base como los demas menus. La marca y los ultimos
+         4 digitos solo existen en las ventas del webhook (desde el 19/jul/2026):
+         el historico solo sabe efectivo o tarjeta. -->
+    <select id="tik-pago">
+      <option value="">Efectivo y tarjeta</option>
+      <option value="efectivo">Solo efectivo</option>
+      <option value="tarjeta">Solo tarjeta</option>
+    </select>
+    <select id="tik-marca" title="Solo ventas desde el 19/jul/2026: el histórico no guarda la marca"><option value="">Todas las tarjetas</option></select>
     <button id="tik-limpiar" type="button">Limpiar</button>
   </div>
-  <div id="tik-res"><div class="vacio">Busca por número de ticket, cajera o producto (ej. “manual”, “danithza”, “pinito”).</div></div>
+  <div id="tik-res"><div class="vacio">Busca por número de ticket, cajera, producto o los últimos 4 dígitos de la tarjeta (ej. “manual”, “danithza”, “1234”).</div></div>
 </div>
 
 <div id="acceso">
@@ -1358,7 +1368,7 @@ document.getElementById("tab-tik").addEventListener("click", function () {
 // llegue tarde se descarta, sea por el texto o por un filtro (el mismo
 // patrón del token de la cola del supervisor).
 var tik = { q: "", offset: 0, cargando: false, hay: false, timer: null, PAG: 30,
-            gen: 0, filtros: { desde: "", hasta: "", categoria: "", producto: "", cajera: "" },
+            gen: 0, filtros: { desde: "", hasta: "", categoria: "", producto: "", cajera: "", pago: "", marca: "" },
             opciones: null, cargandoOpciones: false };
 
 document.getElementById("tik-q").addEventListener("input", function () {
@@ -1367,17 +1377,18 @@ document.getElementById("tik-q").addEventListener("input", function () {
   tik.timer = setTimeout(function () { tikNueva(q); }, 250);
 });
 
-// Los cinco controles de filtro: cualquier cambio relanza la búsqueda con el
+// Los siete controles de filtro: cualquier cambio relanza la búsqueda con el
 // texto que ya esté escrito. El de categoría además acorta el menú de
 // productos a los de esa categoría.
-["tik-desde", "tik-hasta", "tik-cat", "tik-prod", "tik-caj"].forEach(function (id) {
+var TIK_FILTROS = ["tik-desde", "tik-hasta", "tik-cat", "tik-prod", "tik-caj", "tik-pago", "tik-marca"];
+TIK_FILTROS.forEach(function (id) {
   document.getElementById(id).addEventListener("change", function () {
     if (id === "tik-cat") tikPoblarProductos();
     tikNueva(document.getElementById("tik-q").value.trim());
   });
 });
 document.getElementById("tik-limpiar").addEventListener("click", function () {
-  ["tik-desde", "tik-hasta", "tik-cat", "tik-prod", "tik-caj"].forEach(function (id) {
+  TIK_FILTROS.forEach(function (id) {
     document.getElementById(id).value = "";
   });
   tikPoblarProductos();
@@ -1392,15 +1403,18 @@ function tikLeerFiltros() {
   f.categoria = document.getElementById("tik-cat").value || "";
   f.producto  = document.getElementById("tik-prod").value || "";
   f.cajera    = document.getElementById("tik-caj").value || "";
+  f.pago      = document.getElementById("tik-pago").value || "";
+  f.marca     = document.getElementById("tik-marca").value || "";
   [["tik-desde", f.desde], ["tik-hasta", f.hasta], ["tik-cat", f.categoria],
-   ["tik-prod", f.producto], ["tik-caj", f.cajera]].forEach(function (par) {
+   ["tik-prod", f.producto], ["tik-caj", f.cajera], ["tik-pago", f.pago],
+   ["tik-marca", f.marca]].forEach(function (par) {
     document.getElementById(par[0]).classList.toggle("puesto", !!par[1]);
   });
   return f;
 }
 function tikHayFiltros() {
   var f = tik.filtros;
-  return !!(f.desde || f.hasta || f.categoria || f.producto || f.cajera);
+  return !!(f.desde || f.hasta || f.categoria || f.producto || f.cajera || f.pago || f.marca);
 }
 // La parte de la URL con los filtros. Sólo viaja lo que trae algo.
 function tikParamsFiltros() {
@@ -1410,6 +1424,8 @@ function tikParamsFiltros() {
   if (f.categoria) s += "&categoria=" + encodeURIComponent(f.categoria);
   if (f.producto)  s += "&producto=" + encodeURIComponent(f.producto);
   if (f.cajera)    s += "&cajera=" + encodeURIComponent(f.cajera);
+  if (f.pago)      s += "&pago=" + encodeURIComponent(f.pago);
+  if (f.marca)     s += "&marca=" + encodeURIComponent(f.marca);
   return s;
 }
 
@@ -1434,6 +1450,12 @@ function tikCargarFiltros() {
     var caj = document.getElementById("tik-caj");
     o.cajeras.forEach(function (c) {
       var op = document.createElement("option"); op.value = c; op.textContent = titulo(c); caj.appendChild(op);
+    });
+    // Las marcas de tarjeta (179). Si la base es vieja y no las manda, el
+    // menú se queda con "Todas las tarjetas" y nada más se rompe.
+    var mar = document.getElementById("tik-marca");
+    (Array.isArray(o.marcas) ? o.marcas : []).forEach(function (m) {
+      var op = document.createElement("option"); op.value = m; op.textContent = marcaTxt(m); mar.appendChild(op);
     });
     tikPoblarProductos();
   }).catch(function (e) {
@@ -1526,6 +1548,9 @@ function tikAgregar(tickets) {
     if (t.monto != null) sub.push(escapar(pesos(t.monto)));
     if (t.descripcion) sub.push(escapar(titulo(t.descripcion)));
     if (t.cajero) sub.push(escapar(titulo(t.cajero)));
+    // Forma de pago (179): "Efectivo" o "Tarjeta VISA ••1234". El histórico
+    // sólo sabe efectivo/tarjeta, así que ahí sale sin marca ni dígitos.
+    if (t.pago) sub.push(escapar(pagoCorto(t)));
     html += '<button class="item" data-ticket="' + escapar(num) + '">' +
             '<div class="item-nom">Ticket ' + escapar(num) + "</div>" +
             (sub.length ? '<div class="item-sub">' + sub.join(" · ") + "</div>" : "") +
@@ -1978,6 +2003,44 @@ function pagoTxt(p) {
   if (p.indexOf("CARD") >= 0) return "Tarjeta";
   return p;
 }
+// La marca como la manda Zettle (AMERICAN_EXPRESS, VISA_ELECTRON) en algo
+// legible. Lo que no se conoce sale tal cual, con guiones bajos por espacios.
+function marcaTxt(m) {
+  if (!m) return "";
+  var conocidas = { AMERICAN_EXPRESS: "AMEX", MASTERCARD: "Mastercard", VISA: "VISA",
+                    VISA_ELECTRON: "VISA Electron", DINERS: "Diners" };
+  return conocidas[m] || String(m).replace(/_/g, " ");
+}
+// El pago en un renglón de la lista (179): "Efectivo" o "Tarjeta VISA ••1234".
+// `t` trae pago / marca / ultimos4 como columnas sueltas (buscar_tickets).
+function pagoCorto(t) {
+  if (t.pago === "efectivo") return "Efectivo";
+  if (t.pago === "tarjeta") {
+    return ["Tarjeta", marcaTxt(t.marca), t.ultimos4 ? "••" + t.ultimos4 : ""].filter(Boolean).join(" ");
+  }
+  return t.pago || "";
+}
+// El pago en el modal del ticket (179), desde `pago_detalle` (ticket_detalle).
+// Tarjeta: "Tarjeta de crédito AMEX · terminación 1234". Efectivo con
+// recibido y cambio cuando Zettle los trae. Si no hay detalle (base vieja),
+// cae al texto crudo de siempre.
+function pagoLargo(t) {
+  var d = t.pago_detalle;
+  if (!d || !d.tipo) return pagoTxt(t.pago);
+  if (d.tipo === "tarjeta") {
+    var s = d.clase === "credito" ? "Tarjeta de crédito" : d.clase === "debito" ? "Tarjeta de débito" : "Tarjeta";
+    if (d.marca) s += " " + marcaTxt(d.marca);
+    if (d.ultimos4) s += " · terminación " + d.ultimos4;
+    return s;
+  }
+  if (d.tipo === "efectivo") {
+    var e = "Efectivo";
+    if (d.recibido != null) e += " · recibió " + pesos(d.recibido);
+    if (d.cambio != null && Number(d.cambio) > 0) e += ", cambio " + pesos(d.cambio);
+    return e;
+  }
+  return d.tipo;
+}
 function abrirTicket(num) {
   var modal = document.getElementById("ticket-modal");
   var card = document.getElementById("ticket-card");
@@ -2001,7 +2064,8 @@ function ticketCard(num, t) {
   }
   var html = '<h3>Ticket ' + escapar(t.ticket) + "</h3>";
   html += '<div class="sub">' + escapar(fechaCorta(t.hora)) + " · " + escapar(hora(t.hora)) + "</div>";
-  html += '<div class="sub">Cajera: ' + escapar(t.cajero || "—") + " · " + escapar(pagoTxt(t.pago)) + "</div>";
+  html += '<div class="sub">Cajera: ' + escapar(t.cajero || "—") + "</div>";
+  html += '<div class="sub">Pago: ' + escapar(pagoLargo(t)) + "</div>";
   html += "<h2>Productos</h2>";
   if (t.productos && t.productos.length) {
     html += "<table>";
