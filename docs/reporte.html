@@ -1551,6 +1551,9 @@ function tikAgregar(tickets) {
     // Forma de pago (179): "Efectivo" o "Tarjeta VISA ••1234". El histórico
     // sólo sabe efectivo/tarjeta, así que ahí sale sin marca ni dígitos.
     if (t.pago) sub.push(escapar(pagoCorto(t)));
+    // El cliente ligado por su visita (180). Texto y no botón: el renglón
+    // entero ya es el botón que abre el ticket, y ahí el nombre es clicable.
+    if (t.cliente) sub.push("👤 " + escapar(titulo(t.cliente)));
     html += '<button class="item" data-ticket="' + escapar(num) + '">' +
             '<div class="item-nom">Ticket ' + escapar(num) + "</div>" +
             (sub.length ? '<div class="item-sub">' + sub.join(" · ") + "</div>" : "") +
@@ -2049,6 +2052,10 @@ function abrirTicket(num) {
   pedirJSON("/ticket?num=" + encodeURIComponent(num)).then(function (d) {
     card.innerHTML = ticketCard(num, d.ticket);
     document.getElementById("ticket-cerrar").addEventListener("click", cerrarTicket);
+    // El nombre del cliente (180) cierra el modal y abre su perfil en
+    // Clientes; el modal está encima de todas las vistas.
+    var b = card.querySelector("button[data-persona]");
+    if (b) b.addEventListener("click", function () { cerrarTicket(); irACliente(b.getAttribute("data-persona")); });
   }).catch(function (e) {
     if (e && e.message === "codigo") { cerrarTicket(); return; }
     card.innerHTML = ticketCard(num, null);
@@ -2066,6 +2073,14 @@ function ticketCard(num, t) {
   html += '<div class="sub">' + escapar(fechaCorta(t.hora)) + " · " + escapar(hora(t.hora)) + "</div>";
   html += '<div class="sub">Cajera: ' + escapar(t.cajero || "—") + "</div>";
   html += '<div class="sub">Pago: ' + escapar(pagoLargo(t)) + "</div>";
+  // El cliente ligado (180): clicable a su perfil en Clientes. Si el ticket
+  // no tiene visita, se dice, para que "no aparece" no se lea como "falló".
+  if (t.cliente_id != null) {
+    html += '<div class="sub">Cliente: <button class="enlace" data-persona="' + escapar(t.cliente_id) + '">' +
+            escapar(titulo(t.cliente)) + "</button></div>";
+  } else {
+    html += '<div class="sub">Cliente: <span style="opacity:.6">sin asignar a ningún cliente</span></div>';
+  }
   html += "<h2>Productos</h2>";
   if (t.productos && t.productos.length) {
     html += "<table>";
