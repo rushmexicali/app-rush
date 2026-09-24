@@ -290,17 +290,17 @@
     <select id="tik-caj"><option value="">Todas las cajeras</option></select>
     <!-- Forma de pago y marca de tarjeta (23/sep/2026, migracion 179). Las
          marcas vienen de la base como los demas menus. La marca y los ultimos
-         4 digitos solo existen en las ventas del webhook (desde el 19/jul/2026):
+         4 digitos solo existen en las ventas del webhook (desde el 28/jul/2026):
          el historico solo sabe efectivo o tarjeta. -->
     <select id="tik-pago">
       <option value="">Efectivo y tarjeta</option>
       <option value="efectivo">Solo efectivo</option>
       <option value="tarjeta">Solo tarjeta</option>
     </select>
-    <select id="tik-marca" title="Solo ventas desde el 19/jul/2026: el histórico no guarda la marca"><option value="">Todas las tarjetas</option></select>
+    <select id="tik-marca" title="Solo ventas desde el 28/jul/2026: el histórico no guarda la marca"><option value="">Todas las tarjetas</option></select>
     <button id="tik-limpiar" type="button">Limpiar</button>
   </div>
-  <div id="tik-res"><div class="vacio">Busca por número de ticket, cajera, producto o los últimos 4 dígitos de la tarjeta (ej. “manual”, “danithza”, “1234”).</div></div>
+  <div id="tik-res"><div class="vacio">Busca por número de ticket, cajera, producto o los últimos 4 dígitos de la tarjeta (ej. “manual”, “completo”, “1234”).</div></div>
 </div>
 
 <div id="acceso">
@@ -1499,7 +1499,7 @@ function tikNueva(q) {
   tikLeerFiltros();
   var cont = document.getElementById("tik-res");
   if (q.length === 1) {
-    cont.innerHTML = '<div class="vacio">Escribe al menos 2 letras o dígitos (por número, cajera o producto), o borra para ver todos.</div>';
+    cont.innerHTML = '<div class="vacio">Escribe al menos 2 letras o dígitos (por número, cajera, producto o los 4 dígitos de la tarjeta), o borra para ver todos.</div>';
     return;
   }
   // Un rango al revés no se manda: el servidor lo rechazaría con 400 y aquí
