@@ -1393,7 +1393,9 @@ function floCargarEmpresas() {
   var sel = document.getElementById("flo-emp");
   var mes = document.getElementById("flo-mes");
   if (!mes.value) mes.value = floMesHoy();
-  if (flo.empresas || flo.cargando) return;
+  // Una lista VACIA no se cachea: la primera empresa tiene que aparecer al
+  // volver a la pestaña, sin recargar la página.
+  if ((flo.empresas && flo.empresas.length) || flo.cargando) return;
   flo.cargando = true;
   pedirJSON("/flotillas-empresas").then(function (d) {
     flo.cargando = false;
@@ -1447,7 +1449,18 @@ document.getElementById("flo-ver").addEventListener("click", floVer);
 document.getElementById("flo-emp").addEventListener("change", floVer);
 document.getElementById("flo-mes").addEventListener("change", floVer);
 
-// Devuelve el HTML (no lo escribe) para poder ejercitarlo en el arnes.
+// Cuántos prepagos hubo, contando solo los cobros; una devolución (184) se
+// dice aparte y ya viene restada en `prepagado`.
+function floNotaPrepagos(e) {
+  var cobros = 0;
+  for (var i = 0; i < e.prepagos.length; i++) if (!e.prepagos[i].devolucion) cobros++;
+  var s = cobros ? cobros + " ticket" + (cobros === 1 ? "" : "s") + " de Prepago" : "ningún prepago cobrado";
+  if (Number(e.devuelto) > 0) s += " · " + escapar(pesos(e.devuelto)) + " devueltos (ya restados)";
+  return s;
+}
+
+// Devuelve el HTML (no lo escribe) para poder ejercitarlo en el arnes
+// (pruebas/reporte-dueno.js, caso de flotillas).
 function floPintar(e) {
   var html = "";
   var mesTxt = e.mes ? new Date(e.mes + "-01T12:00:00").toLocaleDateString("es-MX", { month: "long", year: "numeric" }) : "";
@@ -1456,7 +1469,7 @@ function floPintar(e) {
   // Los tres numeros que la empresa quiere ver.
   html += '<div class="numeros">' +
     '<div class="n"><div class="valor">' + escapar(pesos(e.prepagado)) + '</div><div class="rotulo">Prepagado este mes</div>' +
-      '<div class="nota">' + (e.prepagos.length ? e.prepagos.length + " ticket" + (e.prepagos.length === 1 ? "" : "s") + " de Prepago" : "ningún prepago cobrado") + "</div></div>" +
+      '<div class="nota">' + floNotaPrepagos(e) + "</div></div>" +
     '<div class="n"><div class="valor">' + escapar(e.usados) + '</div><div class="rotulo">Lavados usados</div>' +
       '<div class="nota">de “Completo Flotilla”; una devolución no cuenta</div></div>' +
     '<div class="n"><div class="valor">' + escapar(e.sin_folio) + '</div><div class="rotulo">Sin folio de vale</div>' +
@@ -1483,7 +1496,8 @@ function floPintar(e) {
   if (e.prepagos.length) {
     html += "<h2>Prepagos</h2><table><thead><tr><th>Día</th><th>Ticket</th><th class=\"num\">Monto</th><th>Cajera</th></tr></thead><tbody>";
     e.prepagos.forEach(function (p) {
-      html += "<tr><td>" + escapar(fechaCorta(p.hora)) + " " + escapar(hora(p.hora)) + "</td>" +
+      html += "<tr><td>" + escapar(fechaCorta(p.hora)) + " " + escapar(hora(p.hora)) +
+              (p.devolucion ? ' <span class="tenue">(devolución)</span>' : "") + "</td>" +
               '<td><button class="enlace" data-ticket="' + escapar(p.ticket) + '">' + escapar(p.ticket) + "</button></td>" +
               '<td class="num">' + escapar(pesos(p.monto)) + "</td><td>" + escapar(titulo(p.cajera || "")) + "</td></tr>";
     });
