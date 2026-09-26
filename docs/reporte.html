@@ -1429,7 +1429,9 @@ function floVer() {
   var mes = document.getElementById("flo-mes").value;
   var cont = document.getElementById("flo-res");
   if (!emp) { cont.innerHTML = '<div class="vacio">Elige una empresa.</div>'; return; }
-  if (!/^\d{4}-\d{2}$/.test(mes)) { cont.innerHTML = '<div class="vacio">Elige un mes.</div>'; return; }
+  // Mismo regex que la ruta: en Firefox/Safari de escritorio el campo es texto
+  // libre, y "2026-13" llegaría al servidor como un 400 con cara de red caída.
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) { cont.innerHTML = '<div class="vacio">Elige un mes con la forma AAAA-MM (ej. 2026-09).</div>'; return; }
   flo.gen += 1;
   var gen = flo.gen;
   cont.innerHTML = '<div class="vacio">Cargando…</div>';
@@ -1498,7 +1500,7 @@ function floPintar(e) {
     e.prepagos.forEach(function (p) {
       html += "<tr><td>" + escapar(fechaCorta(p.hora)) + " " + escapar(hora(p.hora)) +
               (p.devolucion ? ' <span class="tenue">(devolución)</span>' : "") + "</td>" +
-              '<td><button class="enlace" data-ticket="' + escapar(p.ticket) + '">' + escapar(p.ticket) + "</button></td>" +
+              "<td>" + (p.ticket ? '<button class="enlace" data-ticket="' + escapar(p.ticket) + '">' + escapar(p.ticket) + "</button>" : "—") + "</td>" +
               '<td class="num">' + escapar(pesos(p.monto)) + "</td><td>" + escapar(titulo(p.cajera || "")) + "</td></tr>";
     });
     html += "</tbody></table>";
