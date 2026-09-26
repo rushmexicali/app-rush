@@ -230,6 +230,7 @@
   <button id="tab-cli">Clientes</button>
   <button id="tab-trab">Trabajadores</button>
   <button id="tab-tik">Tickets</button>
+  <button id="tab-flo">Flotillas</button>
 </div>
 
 <div id="vista-op">
@@ -301,6 +302,22 @@
     <button id="tik-limpiar" type="button">Limpiar</button>
   </div>
   <div id="tik-res"><div class="vacio">Busca por número de ticket, cajera, producto o los últimos 4 dígitos de la tarjeta (ej. “manual”, “completo”, “1234”).</div></div>
+</div>
+
+<!-- Flotillas (26/sep/2026, migracion 183): el estado de cuenta mensual de
+     una empresa que prepaga lavados para sus empleados. Lo prepagado contra
+     lo usado en el mes calendario, lavado por lavado con ticket, folio del
+     vale, placa, secador y a quien se registro; mas los folios repetidos
+     (vale usado dos veces) y los lavados sin folio (la cajera no lo anoto).
+     El menu de empresas viene de la base: una empresa nueva aparece sola. -->
+<div id="vista-flo" style="display:none">
+  <div class="barra rango filtros" id="flo-barra">
+    <select id="flo-emp"><option value="">Cargando empresas…</option></select>
+    <label for="flo-mes">Mes</label>
+    <input type="month" id="flo-mes">
+    <button id="flo-ver">Ver</button>
+  </div>
+  <div id="flo-res"><div class="vacio">Elige una empresa y un mes.</div></div>
 </div>
 
 <div id="acceso">
@@ -1327,8 +1344,8 @@ function noSePudoComprobar(que) {
 // Solo prende/apaga vistas y tabs. La carga de cada vista (recientes,
 // trabajadores) va en el handler del tab, NO aqui: asi irAPlaca puede
 // cambiar a Clientes y abrir un perfil sin que las recientes lo pisen.
-var VISTAS = { op: "vista-op", cli: "vista-cli", trab: "vista-trab", tik: "vista-tik" };
-var TABS   = { op: "tab-op",   cli: "tab-cli",   trab: "tab-trab",  tik: "tab-tik" };
+var VISTAS = { op: "vista-op", cli: "vista-cli", trab: "vista-trab", tik: "vista-tik", flo: "vista-flo" };
+var TABS   = { op: "tab-op",   cli: "tab-cli",   trab: "tab-trab",  tik: "tab-tik",   flo: "tab-flo" };
 function mostrarVista(cual) {
   Object.keys(VISTAS).forEach(function (k) {
     document.getElementById(VISTAS[k]).style.display = (k === cual) ? "" : "none";
@@ -1356,6 +1373,150 @@ document.getElementById("tab-tik").addEventListener("click", function () {
   if (document.getElementById("tik-q").value.trim().length < 2)
     tikNueva(document.getElementById("tik-q").value.trim());
 });
+document.getElementById("tab-flo").addEventListener("click", function () {
+  mostrarVista("flo");
+  floCargarEmpresas();
+});
+
+// --- Flotillas: el estado de cuenta de una empresa ----------------------
+// Una sola consulta por "Ver" (o al elegir empresa/mes). La respuesta lleva
+// numero de generacion, como Tickets: una respuesta vieja que llegue tarde
+// no pisa la que el dueno pidio despues.
+var flo = { gen: 0, empresas: null, cargando: false };
+
+function floMesHoy() {
+  var d = new Date();
+  return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2);
+}
+
+function floCargarEmpresas() {
+  var sel = document.getElementById("flo-emp");
+  var mes = document.getElementById("flo-mes");
+  if (!mes.value) mes.value = floMesHoy();
+  if (flo.empresas || flo.cargando) return;
+  flo.cargando = true;
+  pedirJSON("/flotillas-empresas").then(function (d) {
+    flo.cargando = false;
+    var lista = listaDe(d, "empresas");
+    flo.empresas = lista;
+    sel.innerHTML = "";
+    if (!lista.length) {
+      sel.innerHTML = '<option value="">Todavía no hay ninguna empresa</option>';
+      document.getElementById("flo-res").innerHTML =
+        '<div class="vacio">Todavía no se ha cobrado ningún “Prepago Flotilla” ni ningún “Completo Flotilla”. ' +
+        'En cuanto entre uno por Zettle, la empresa aparece aquí sola.</div>';
+      return;
+    }
+    lista.forEach(function (e) {
+      var op = document.createElement("option");
+      op.value = e.empresa;
+      op.textContent = e.empresa + " · " + (e.lavados || 0) + " lavados";
+      sel.appendChild(op);
+    });
+    floVer();
+  }).catch(function (e) {
+    flo.cargando = false;
+    if (e && e.message === "codigo") return;
+    sel.innerHTML = '<option value="">No se pudieron cargar las empresas</option>';
+    document.getElementById("flo-res").innerHTML = noSePudoComprobar("las empresas de flotilla");
+  });
+}
+
+function floVer() {
+  var emp = document.getElementById("flo-emp").value;
+  var mes = document.getElementById("flo-mes").value;
+  var cont = document.getElementById("flo-res");
+  if (!emp) { cont.innerHTML = '<div class="vacio">Elige una empresa.</div>'; return; }
+  if (!/^\d{4}-\d{2}$/.test(mes)) { cont.innerHTML = '<div class="vacio">Elige un mes.</div>'; return; }
+  flo.gen += 1;
+  var gen = flo.gen;
+  cont.innerHTML = '<div class="vacio">Cargando…</div>';
+  pedirJSON("/flotillas?empresa=" + encodeURIComponent(emp) + "&mes=" + encodeURIComponent(mes)).then(function (d) {
+    if (flo.gen !== gen) return;
+    var e = d && d.estado;
+    if (!e || e.ok !== true || !Array.isArray(e.lavados)) throw new Error((e && e.error) || "La respuesta no trae el estado de cuenta");
+    cont.innerHTML = floPintar(e);
+    cliCablearBotones(cont);
+  }).catch(function (err) {
+    if (flo.gen !== gen) return;
+    if (err && err.message === "codigo") return;
+    cont.innerHTML = noSePudoComprobar("el estado de cuenta (" + escapar(err && err.message || "error") + ")");
+  });
+}
+document.getElementById("flo-ver").addEventListener("click", floVer);
+document.getElementById("flo-emp").addEventListener("change", floVer);
+document.getElementById("flo-mes").addEventListener("change", floVer);
+
+// Devuelve el HTML (no lo escribe) para poder ejercitarlo en el arnes.
+function floPintar(e) {
+  var html = "";
+  var mesTxt = e.mes ? new Date(e.mes + "-01T12:00:00").toLocaleDateString("es-MX", { month: "long", year: "numeric" }) : "";
+  html += '<div class="sub">' + escapar(e.empresa) + " · " + escapar(mesTxt) + " (mes calendario, hora de Mexicali)</div>";
+
+  // Los tres numeros que la empresa quiere ver.
+  html += '<div class="numeros">' +
+    '<div class="n"><div class="valor">' + escapar(pesos(e.prepagado)) + '</div><div class="rotulo">Prepagado este mes</div>' +
+      '<div class="nota">' + (e.prepagos.length ? e.prepagos.length + " ticket" + (e.prepagos.length === 1 ? "" : "s") + " de Prepago" : "ningún prepago cobrado") + "</div></div>" +
+    '<div class="n"><div class="valor">' + escapar(e.usados) + '</div><div class="rotulo">Lavados usados</div>' +
+      '<div class="nota">de “Completo Flotilla”; una devolución no cuenta</div></div>' +
+    '<div class="n"><div class="valor">' + escapar(e.sin_folio) + '</div><div class="rotulo">Sin folio de vale</div>' +
+      '<div class="nota">' + (e.sin_folio ? "la cajera no anotó el vale en la nota" : "todos traen su vale") + "</div></div>" +
+    "</div>";
+
+  // Vale usado dos veces: es lo unico de aqui que es una alerta de verdad.
+  if (e.folios_repetidos.length) {
+    html += '<div class="aviso alerta"><b>⚠ ' + e.folios_repetidos.length + " vale" + (e.folios_repetidos.length === 1 ? "" : "s") +
+            " usado" + (e.folios_repetidos.length === 1 ? "" : "s") + " más de una vez.</b> El folio es único: dos lavados con el mismo folio son un vale repetido (fotocopiado o anotado mal).";
+    e.folios_repetidos.forEach(function (r) {
+      html += '<div class="rep"><div class="rep-placa">' + escapar(r.folio) + " · " + r.veces + " veces</div>";
+      (r.carros || []).forEach(function (c) {
+        html += '<div class="rep-carro">' + escapar(fechaCorta(c.hora)) + " " + escapar(hora(c.hora)) +
+                " · " + escapar(c.empresa || "") +
+                (c.ticket ? ' · <button class="enlace" data-ticket="' + escapar(c.ticket) + '">ticket ' + escapar(c.ticket) + "</button>" : "") +
+                "</div>";
+      });
+      html += "</div>";
+    });
+    html += "</div>";
+  }
+
+  if (e.prepagos.length) {
+    html += "<h2>Prepagos</h2><table><thead><tr><th>Día</th><th>Ticket</th><th class=\"num\">Monto</th><th>Cajera</th></tr></thead><tbody>";
+    e.prepagos.forEach(function (p) {
+      html += "<tr><td>" + escapar(fechaCorta(p.hora)) + " " + escapar(hora(p.hora)) + "</td>" +
+              '<td><button class="enlace" data-ticket="' + escapar(p.ticket) + '">' + escapar(p.ticket) + "</button></td>" +
+              '<td class="num">' + escapar(pesos(p.monto)) + "</td><td>" + escapar(titulo(p.cajera || "")) + "</td></tr>";
+    });
+    html += "</tbody></table>";
+  }
+
+  html += "<h2>Lavados del mes</h2>";
+  if (!e.lavados.length) {
+    html += '<div class="vacio">Ningún lavado de ' + escapar(e.empresa) + " en este mes.</div>";
+    return html;
+  }
+  html += "<table><thead><tr><th>Día</th><th>Folio</th><th>Ticket</th><th>Carro</th><th>Placa</th><th>Secó</th><th>Registrado a</th></tr></thead><tbody>";
+  e.lavados.forEach(function (l) {
+    var desc = [l.marca, l.submarca].filter(Boolean).join(" ") || (l.tipo_unidad || "");
+    if (l.color) desc += " " + l.color;
+    var secos = (l.secadores || []).map(function (s) {
+      return s.id != null
+        ? '<button class="enlace" data-trab="' + escapar(s.id) + '">' + escapar(titulo(s.nombre || "")) + "</button>"
+        : escapar(titulo(s.nombre || ""));
+    }).join(", ");
+    html += "<tr>" +
+      "<td>" + escapar(fechaCorta(l.hora)) + " " + escapar(hora(l.hora)) + (l.borrado ? ' <span class="tenue">(borrado por el supervisor)</span>' : "") + "</td>" +
+      "<td>" + (l.folio ? "<b>" + escapar(l.folio) + "</b>" : '<span class="tenue">sin folio</span>') + "</td>" +
+      "<td>" + (l.ticket ? '<button class="enlace" data-ticket="' + escapar(l.ticket) + '">' + escapar(l.ticket) + "</button>" : "—") + "</td>" +
+      "<td>" + escapar(titulo(desc.trim()) || "—") + (l.variante && /grande/i.test(l.variante) ? ' <span class="tenue">(grande)</span>' : "") + "</td>" +
+      "<td>" + (l.placa_norm ? '<button class="enlace" data-placa="' + escapar(l.placa_norm) + '">' + escapar(l.placa) + "</button>" : '<span class="tenue">—</span>') + "</td>" +
+      "<td>" + (secos || '<span class="tenue">—</span>') + "</td>" +
+      "<td>" + (l.registrado_a ? escapar(titulo(l.registrado_a)) : '<span class="tenue">no se registró en caja</span>') + "</td>" +
+      "</tr>";
+  });
+  html += "</tbody></table>";
+  return html;
+}
 
 // Tickets: buscador EN VIVO por CONTENIDO (número, cajera, producto) con
 // infinite scroll. Los más nuevos arriba; al bajar se cargan más viejos, por
