@@ -313,11 +313,13 @@
 <div id="vista-flo" style="display:none">
   <div class="barra rango filtros" id="flo-barra">
     <select id="flo-emp"><option value="">Cargando empresas…</option></select>
-    <label for="flo-mes">Mes</label>
-    <input type="month" id="flo-mes">
+    <label for="flo-desde">Del</label>
+    <input type="date" id="flo-desde">
+    <label for="flo-hasta">al</label>
+    <input type="date" id="flo-hasta">
     <button id="flo-ver">Ver</button>
   </div>
-  <div id="flo-res"><div class="vacio">Elige una empresa y un mes.</div></div>
+  <div id="flo-res"><div class="vacio">Elige una empresa y de qué día a qué día.</div></div>
 </div>
 
 <div id="acceso">
@@ -1379,20 +1381,38 @@ document.getElementById("tab-flo").addEventListener("click", function () {
 });
 
 // --- Flotillas: el estado de cuenta de una empresa ----------------------
-// Una sola consulta por "Ver" (o al elegir empresa/mes). La respuesta lleva
-// numero de generacion, como Tickets: una respuesta vieja que llegue tarde
-// no pisa la que el dueno pidio despues.
+// Por RANGO DE DIAS (185), con dos casillas como Operación y Tickets: el
+// dueño dice de qué día a qué día, y el sistema no adivina si el periodo es
+// mes calendario o 30 días. Abre en "del 1 del mes a hoy".
+// Una sola consulta por "Ver" (o al cambiar empresa o fechas). La respuesta
+// lleva numero de generacion, como Tickets: una respuesta vieja que llegue
+// tarde no pisa la que el dueno pidio despues.
 var flo = { gen: 0, empresas: null, cargando: false };
 
-function floMesHoy() {
+function floDosDigitos(n) { return ("0" + n).slice(-2); }
+function floHoy() {
   var d = new Date();
-  return d.getFullYear() + "-" + ("0" + (d.getMonth() + 1)).slice(-2);
+  return d.getFullYear() + "-" + floDosDigitos(d.getMonth() + 1) + "-" + floDosDigitos(d.getDate());
 }
+function floPrimeroDelMes() { return floHoy().slice(0, 8) + "01"; }
+
+// "2026-09-01" -> "1 sep 2026". Se arma a mediodía: `new Date("2026-09-01")`
+// es medianoche UTC, que en Mexicali todavía es el día anterior.
+function floDia(d) {
+  if (!d) return "";
+  var f = new Date(String(d).slice(0, 10) + "T12:00:00");
+  if (isNaN(f.getTime())) return String(d);
+  return f.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" });
+}
+
+var FLO_FECHA = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 function floCargarEmpresas() {
   var sel = document.getElementById("flo-emp");
-  var mes = document.getElementById("flo-mes");
-  if (!mes.value) mes.value = floMesHoy();
+  var desde = document.getElementById("flo-desde");
+  var hasta = document.getElementById("flo-hasta");
+  if (!desde.value) desde.value = floPrimeroDelMes();
+  if (!hasta.value) hasta.value = floHoy();
   // Una lista VACIA no se cachea: la primera empresa tiene que aparecer al
   // volver a la pestaña, sin recargar la página.
   if ((flo.empresas && flo.empresas.length) || flo.cargando) return;
@@ -1426,16 +1446,24 @@ function floCargarEmpresas() {
 
 function floVer() {
   var emp = document.getElementById("flo-emp").value;
-  var mes = document.getElementById("flo-mes").value;
+  var desde = document.getElementById("flo-desde").value;
+  var hasta = document.getElementById("flo-hasta").value;
   var cont = document.getElementById("flo-res");
   if (!emp) { cont.innerHTML = '<div class="vacio">Elige una empresa.</div>'; return; }
-  // Mismo regex que la ruta: en Firefox/Safari de escritorio el campo es texto
-  // libre, y "2026-13" llegaría al servidor como un 400 con cara de red caída.
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) { cont.innerHTML = '<div class="vacio">Elige un mes con la forma AAAA-MM (ej. 2026-09).</div>'; return; }
+  // Misma forma que exige la ruta: en Firefox/Safari de escritorio el campo
+  // puede ser texto libre, y una fecha mal escrita llegaría como un 400 con
+  // cara de red caída.
+  if (!FLO_FECHA.test(desde) || !FLO_FECHA.test(hasta)) {
+    cont.innerHTML = '<div class="vacio">Elige el día inicial y el final (AAAA-MM-DD).</div>'; return;
+  }
+  if (desde > hasta) {
+    cont.innerHTML = '<div class="vacio">El día inicial es posterior al final. Corrige las fechas.</div>'; return;
+  }
   flo.gen += 1;
   var gen = flo.gen;
   cont.innerHTML = '<div class="vacio">Cargando…</div>';
-  pedirJSON("/flotillas?empresa=" + encodeURIComponent(emp) + "&mes=" + encodeURIComponent(mes)).then(function (d) {
+  pedirJSON("/flotillas?empresa=" + encodeURIComponent(emp) + "&desde=" + encodeURIComponent(desde) +
+            "&hasta=" + encodeURIComponent(hasta)).then(function (d) {
     if (flo.gen !== gen) return;
     var e = d && d.estado;
     if (!e || e.ok !== true || !Array.isArray(e.lavados)) throw new Error((e && e.error) || "La respuesta no trae el estado de cuenta");
@@ -1449,7 +1477,8 @@ function floVer() {
 }
 document.getElementById("flo-ver").addEventListener("click", floVer);
 document.getElementById("flo-emp").addEventListener("change", floVer);
-document.getElementById("flo-mes").addEventListener("change", floVer);
+document.getElementById("flo-desde").addEventListener("change", floVer);
+document.getElementById("flo-hasta").addEventListener("change", floVer);
 
 // Cuántos prepagos hubo, contando solo los cobros; una devolución (184) se
 // dice aparte y ya viene restada en `prepagado`.
@@ -1465,12 +1494,12 @@ function floNotaPrepagos(e) {
 // (pruebas/reporte-dueno.js, caso de flotillas).
 function floPintar(e) {
   var html = "";
-  var mesTxt = e.mes ? new Date(e.mes + "-01T12:00:00").toLocaleDateString("es-MX", { month: "long", year: "numeric" }) : "";
-  html += '<div class="sub">' + escapar(e.empresa) + " · " + escapar(mesTxt) + " (mes calendario, hora de Mexicali)</div>";
+  var rango = (e.desde === e.hasta) ? floDia(e.desde) : "del " + floDia(e.desde) + " al " + floDia(e.hasta);
+  html += '<div class="sub">' + escapar(e.empresa) + " · " + escapar(rango) + " (días completos, hora de Mexicali)</div>";
 
   // Los tres numeros que la empresa quiere ver.
   html += '<div class="numeros">' +
-    '<div class="n"><div class="valor">' + escapar(pesos(e.prepagado)) + '</div><div class="rotulo">Prepagado este mes</div>' +
+    '<div class="n"><div class="valor">' + escapar(pesos(e.prepagado)) + '</div><div class="rotulo">Prepagado en el periodo</div>' +
       '<div class="nota">' + floNotaPrepagos(e) + "</div></div>" +
     '<div class="n"><div class="valor">' + escapar(e.usados) + '</div><div class="rotulo">Lavados usados</div>' +
       '<div class="nota">de “Completo Flotilla”; una devolución no cuenta</div></div>' +
@@ -1506,9 +1535,9 @@ function floPintar(e) {
     html += "</tbody></table>";
   }
 
-  html += "<h2>Lavados del mes</h2>";
+  html += "<h2>Lavados del periodo</h2>";
   if (!e.lavados.length) {
-    html += '<div class="vacio">Ningún lavado de ' + escapar(e.empresa) + " en este mes.</div>";
+    html += '<div class="vacio">Ningún lavado de ' + escapar(e.empresa) + " en este periodo.</div>";
     return html;
   }
   html += "<table><thead><tr><th>Día</th><th>Folio</th><th>Ticket</th><th>Carro</th><th>Placa</th><th>Secó</th><th>Registrado a</th></tr></thead><tbody>";
