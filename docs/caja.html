@@ -674,7 +674,10 @@ function pedir(ruta, opciones) {
   opciones = opciones || {};
   opciones.headers = opciones.headers || {};
   opciones.headers["x-codigo"] = CODIGO;
-  opciones.cache = "no-store";
+  // Aqui iba `opciones.cache = "no-store"` y se quito el 2/oct/2026: con esa
+  // opcion Chrome no usa su memoria de preflight y manda un OPTIONS antes de
+  // cada llamada. No aportaba nada: la respuesta del servidor ya trae
+  // `Cache-Control: no-store`. Ver la misma nota en index.html.
   var reloj = null;
   if (typeof AbortController === "function" && !opciones.signal) {
     var corta = new AbortController();
@@ -723,11 +726,48 @@ function lista(d, campo) {
   return v;
 }
 
+// 🔴 Un error de la PLATAFORMA no trae `ok` (auditoría del 1/oct).
+//
+// `pedirJSON` (las lecturas) ya revisaba el código HTTP; `postJSON` (las
+// ESCRITURAS) solo hacía `r.json()`. Nuestra función marca `ok:false` en sus
+// errores, pero cuando la que contesta es Supabase —la función no arrancó, o
+// se quedó sin recursos— el cuerpo es `{code, message}`, sin `ok`. Los
+// consumidores preguntan `d.ok === false`, así que eso pasaba como ÉXITO: la
+// caja decía "siguiente cliente" sin haber registrado nada.
+//
+// Se arregla aquí, en el ayudante, y no en cada consumidor. Un error NUESTRO
+// (con `ok:false` y su mensaje) se deja pasar tal cual: cada consumidor ya lo
+// muestra. Lo demás se lanza y cae en el "Sin conexión. Intenta otra vez."
 function postJSON(ruta, cuerpo) {
   return pedir(ruta, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify(cuerpo)
-  }).then(function (r) { return r.json(); });
+  }).then(function (r) {
+    return r.json().then(function (d) {
+      if (!r.ok && !(d && d.ok === false)) {
+        throw new Error("El servidor respondió " + r.status);
+      }
+      return d;
+    });
+  });
+}
+
+// --- Una respuesta que llega tarde no actúa sobre OTRO cliente ----------
+//
+// Con el wifi lento un envío tarda segundos, y en ese hueco la cajera puede
+// haber pasado al cliente siguiente. Ningún envío comprobaba, al volver, que
+// ella siguiera con el mismo: el registro lento del cliente A la sacaba al
+// inicio "como registrado" estando ya con B (y B nunca se mandaba), o le
+// cambiaba la persona en pantalla con el ticket de B elegido (auditoría del
+// 1/oct, reproducido en el arnés). Es el gemelo de `cerrarSiSigue` del
+// supervisor. Quien manda apunta con quién estaba; al volver, solo toca la
+// pantalla si sigue ahí.
+function marcaDeCliente() {
+  return { gen: capturaGen, persona: personaActual ? personaActual.id : null };
+}
+function sigueElMismo(m) {
+  return m.gen === capturaGen &&
+         (personaActual ? personaActual.id : null) === m.persona;
 }
 function pedirCodigo(fallo) {
   document.getElementById("acceso").style.display = "flex";
@@ -1389,8 +1429,14 @@ function buscarPorPlaca(placa, automatica) {
   function sigueVigente() {
     var activa = document.querySelector(".pantalla.activa");
     var ayuda = document.getElementById("ayuda");
+    // ... y con ESTA placa en el campo. Teclear no cambia `capturaGen`, así
+    // que si la cajera corrigió la placa mientras viajaba la búsqueda de la
+    // mal leída, la respuesta abría "Placa: <la mal leída>" con la corregida
+    // ya en el campo.
+    var enCampo = normPlaca(document.getElementById("in-placa").value);
     return gen === capturaGen && activa && activa.id === "p-placa"
-           && !(ayuda && ayuda.classList.contains("abierto"));
+           && !(ayuda && ayuda.classList.contains("abierto"))
+           && enCampo === normPlaca(placa);
   }
   busquedasPlacaEnVuelo++;
   sincronizarPlaca();
@@ -1751,11 +1797,23 @@ function pintarPersona(conservarGratis) {
 }
 // Confirma o quita una placa sugerida y repinta al cliente con lo que diga
 // la base (el RPC devuelve la persona ya actualizada).
+var placaAccionEnVuelo = false;   // un doble toque mandaba dos envíos
 function placaAccionCaja(ruta, persona, placa) {
+  if (placaAccionEnVuelo) return;
+  placaAccionEnVuelo = true;
+  var quien = marcaDeCliente();
   postJSON(ruta, { persona: persona, placa: placa }).then(function (d) {
+    placaAccionEnVuelo = false;
     if (d && d.ok === false) { alert(d.error || "No se pudo"); return; }
-    if (d && d.persona) { personaActual = d.persona; pintarPersona(true); }
-  }).catch(function (e) { if (e && e.message === "codigo") return; alert("No se pudo. Intenta otra vez."); });
+    // Solo se repinta si la cajera sigue con ESE cliente. Antes la respuesta
+    // lenta ponía a la persona anterior sobre la pantalla del cliente
+    // siguiente, con el ticket del siguiente ya elegido.
+    if (d && d.persona && sigueElMismo(quien)) { personaActual = d.persona; pintarPersona(true); }
+  }).catch(function (e) {
+    placaAccionEnVuelo = false;
+    if (e && e.message === "codigo") return;
+    alert("No se pudo. Intenta otra vez.");
+  });
 }
 
 function pintarToggleGratis() {
@@ -1970,6 +2028,7 @@ document.getElementById("btn-sc-guardar").addEventListener("click", function () 
     alert("No hay ninguna foto tomada ni placa escrita. Toma la foto o escribe la placa primero.");
     return;
   }
+  var quien = marcaDeCliente();
   conCandado(this, "Guardando…", function () {
     return postJSON("/foto-al-ticket", {
       carro:     ticketSC.carro_id,
@@ -1989,9 +2048,10 @@ document.getElementById("btn-sc-guardar").addEventListener("click", function () 
       // obrero de fondo lo relee. Mismo criterio que el registro de visita.
       leida:     c.leida !== false
     }).then(function (d) {
+      var sigue = sigueElMismo(quien);
       if (!d || d.ok === false) {
         alert((d && d.error) || "No se pudo guardar la foto");
-        cargarTickets();       // quizá el ticket ya no está
+        if (sigue) cargarTickets();   // quizá el ticket ya no está
         return;
       }
       // Se dice lo que pasó de verdad. Si el carro YA traía foto (la tomó el
@@ -2005,7 +2065,7 @@ document.getElementById("btn-sc-guardar").addEventListener("click", function () 
       var tp = textoPlacaNoQuedo(c, d, true);
       if (tp) avisos.push(tp);
       if (avisos.length) alert(avisos.join("\n\n"));
-      irInicio(false);         // listo: siguiente cliente
+      if (sigue) irInicio(false);     // listo: siguiente cliente
     });
   });
 });
@@ -2153,6 +2213,8 @@ document.getElementById("btn-registrar").addEventListener("click", function () {
   if (!personaActual || !ticketSel) return;
   var btn = this;
   var c = captura || {};
+  var quien = marcaDeCliente();
+  var nombreDeQuien = personaActual.nombre || "ese cliente";
   conCandado(btn, "Registrando…", function () {
     return postJSON("/visita-con-ticket", {
       persona: personaActual.id,
@@ -2174,13 +2236,17 @@ document.getElementById("btn-registrar").addEventListener("click", function () {
       // fondo lo relee. Sin foto no aplica, así que va `true` por omisión.
       leida:     c.foto_path ? (c.leida !== false) : true
     }).then(function (d) {
+      // ¿La cajera sigue con ESTE cliente? Si ya pasó al siguiente, la
+      // respuesta no toca su pantalla; solo le dice lo que tiene que saber.
+      var sigue = sigueElMismo(quien);
       if (!d || d.ok === false) {
-        alert((d && d.error) || "No se pudo registrar");
-        cargarTickets();       // quizá otro cliente se llevó ese ticket
+        alert((sigue ? "" : "La visita de " + nombreDeQuien + " NO se registró.\n\n") +
+              ((d && d.error) || "No se pudo registrar"));
+        if (sigue) cargarTickets();   // quizá otro cliente se llevó ese ticket
         return;
       }
       avisarSiLaPlacaNoQuedo(c, d);
-      irInicio(false);         // listo: siguiente cliente
+      if (sigue) irInicio(false);     // listo: siguiente cliente
     });
   });
 });
@@ -2197,6 +2263,7 @@ document.getElementById("btn-editar").addEventListener("click", function () {
 document.getElementById("btn-guardar-datos").addEventListener("click", function () {
   var nombre = document.getElementById("ed-nombre").value.trim();
   if (!nombre) { alert("El nombre no puede quedar vacío."); return; }
+  var quien = marcaDeCliente();
   conCandado(this, "Guardando…", function () {
     return postJSON("/personas", {
       id: personaActual.id, nombre: nombre,
@@ -2204,6 +2271,7 @@ document.getElementById("btn-guardar-datos").addEventListener("click", function 
       notas: document.getElementById("ed-notas").value.trim()
     }).then(function (d) {
       if (d && d.ok === false) { alert(d.error || "No se pudo guardar"); return; }
+      if (!sigueElMismo(quien)) return;   // ya está con otro cliente: no se le cambia la pantalla
       personaActual = d.persona;
       pintarPersona(true);
     });
@@ -2285,6 +2353,7 @@ document.getElementById("btn-nueva").addEventListener("click", function () {
 document.getElementById("btn-crear").addEventListener("click", function () {
   var nombre = document.getElementById("nv-nombre").value.trim();
   if (!nombre) { alert("Escribe el nombre."); return; }
+  var quien = marcaDeCliente();
   conCandado(this, "Guardando…", function () {
     return postJSON("/personas", {
       nombre: nombre,
@@ -2292,6 +2361,9 @@ document.getElementById("btn-crear").addEventListener("click", function () {
       notas: document.getElementById("nv-notas").value.trim()
     }).then(function (d) {
       if (d && d.ok === false) { alert(d.error || "No se pudo crear"); return; }
+      // Si la cajera ya se fue a otro cliente, la ficha quedó creada pero no
+      // se le abre encima de lo que está haciendo.
+      if (!sigueElMismo(quien)) return;
       // 🔴 Desde la migración `149` un alta con un nombre que ya existe NO crea
       // una segunda ficha: devuelve la que ya estaba. Sin este aviso la cajera
       // creía que había registrado a un cliente nuevo y, al ver un historial

@@ -85,7 +85,13 @@
 //                     carro (su placa ya era de otro carro de hoy) y la camara
 //                     gira para retomarla; /foto regresa la foto anterior en vez
 //                     de dejar pegada la ajena (migracion 166).
-var CACHE = "rush-v26";
+//  v27 (2/oct/2026)  — Auditoria del 1/oct: una respuesta que llega tarde ya no
+//                     cierra la pantalla de OTRO carro ni actua sobre OTRO
+//                     cliente; reintentar Restaurar/Regresar no retrocede dos
+//                     pasos; retomar la foto mientras la anterior sube ya no
+//                     pierde la nueva; un error de la plataforma se ve como
+//                     error; y se quito el OPTIONS de mas en cada llamada.
+var CACHE = "rush-v27";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest", "./actualizacion.js",

@@ -948,7 +948,14 @@ var firmaRender = null;
 var cerradores = [];
 
 function registrarPantalla(cerrar) {
-  cerradores.push(cerrar);
+  // 🔑 Cada APERTURA entra con una funcion propia, no con `cerrar` tal cual.
+  // Asi `pantallaActual()` identifica ESTA apertura y no "alguna pantalla de
+  // este tipo". Asignar y Corregir registran el mismo `cerrarAsignacion`:
+  // con la funcion cruda, la respuesta lenta de Asignar del carro A pasaba
+  // `cerrarSiSigue` aunque encima ya estuviera Corregir del carro B, y la
+  // cerraba (auditoria del 1/oct; el arreglo del 5/sep solo cubria pares de
+  // pantallas distintas).
+  cerradores.push(function () { cerrar(); });
   // pushState puede fallar en file:// (preview); en https (la app real)
   // funciona. Si falla, la app sigue igual, solo sin atrapar el back.
   try { history.pushState({ rush: cerradores.length }, ""); } catch (e) {}
@@ -1381,7 +1388,13 @@ function pedir(ruta, opciones) {
   opciones = opciones || {};
   opciones.headers = opciones.headers || {};
   opciones.headers["x-codigo"] = CODIGO;
-  opciones.cache = "no-store";
+  // ⚠️ Aqui iba `opciones.cache = "no-store"` y se QUITO el 2/oct/2026. Con esa
+  // opcion Chrome no usa su memoria de preflight, asi que el telefono mandaba
+  // un OPTIONS antes de CADA llamada: 3,113 OPTIONS por 3,349 consultas de la
+  // cola en un dia, un tercio de todas las invocaciones del proyecto. No
+  // aportaba nada: la respuesta del servidor ya trae `Cache-Control: no-store`
+  // y el service worker solo guarda lo del mismo origen. Sin ella, el
+  // `Access-Control-Max-Age` del 19/ago por fin surte efecto.
   if (typeof AbortController === "function" && !opciones.signal) {
     var corta = new AbortController();
     opciones.signal = corta.signal;
@@ -1393,6 +1406,24 @@ function pedir(ruta, opciones) {
     );
   }
   return fetch(API + ruta, opciones);
+}
+
+// Lee la respuesta de un ENVIO (asignar, entregar, borrar...).
+//
+// 🔴 Un error de la PLATAFORMA no trae `ok`. Cuando el que contesta es
+// Supabase y no nuestra funcion (la funcion no arranco, limite de recursos),
+// el cuerpo es `{code, message}`: sin `ok: false`. Los envios preguntaban solo
+// `d.ok === false`, asi que eso pasaba como EXITO: la pantalla de Asignar se
+// cerraba como si hubiera asignado. Aqui se convierte en error, y cae en el
+// "Sin conexión. Intenta otra vez." que cada envio ya tiene.
+//
+// Un error NUESTRO (400/500 con `ok: false` y su mensaje) se deja pasar tal
+// cual: cada envio ya sabe mostrar ese mensaje.
+function leerRespuesta(r) {
+  return r.json().then(function (d) {
+    if (!r.ok && !(d && d.ok === false)) throw new Error("El servidor respondio " + r.status);
+    return d;
+  });
 }
 
 // --- Aviso cuando entra un carro -------------------------------------
@@ -2119,7 +2150,7 @@ document.addEventListener("DOMContentLoaded", function () {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nombre: nom.trim() })
       })
-        .then(function (r) { return r.json(); })
+        .then(leerRespuesta)
         .then(function (d) {
           if (d && d.ok === false) { alert(d.error || "No se pudo agregar"); return; }
           return cargarSecadores().then(function () {
@@ -2254,7 +2285,7 @@ document.addEventListener("DOMContentLoaded", function () {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(cuerpo)
     })
-      .then(function (r) { return r.json(); })
+      .then(leerRespuesta)
       .then(function (d) {
         if (d && d.ok === false) { alert(d.error || "No se pudo"); pintarAsignacion(); return; }
         // La foto ya esta en la cola durable (se encolo antes de mandar). De
@@ -2416,7 +2447,7 @@ document.getElementById("entrega").addEventListener("click", function (ev) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ carro: entrega.id })
     })
-      .then(function (r) { return r.json(); })
+      .then(leerRespuesta)
       .then(function (d) { if (d && d.ok === false) alert(d.error || "No se pudo"); cerrarSiSigue(miPantallaEnt); })
       .catch(function () { alert("Sin conexión. Intenta otra vez."); })
       .then(function () { listoEntregar(); ocupado = false; consultar(); });
@@ -2473,7 +2504,7 @@ document.getElementById("entrega").addEventListener("click", function (ev) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ carro: entrega.id, motivos: motivosElegidos })
     })
-      .then(function (r) { return r.json(); })
+      .then(leerRespuesta)
       .then(function (d) {
         if (d && d.ok === false) { alert(d.error || "No se pudo"); return; }
         cerrarSiSigue(miPantallaRech);
@@ -2908,19 +2939,43 @@ document.getElementById("entregados-lista").addEventListener("click", function (
   var listoRestaurar = enEnvio(b, "Restaurando…");
   if (navigator.vibrate) navigator.vibrate(30);
 
+  // 🔴 La lista SOLO se refresca si Finalizados sigue siendo la pantalla de
+  // encima. Antes se llamaba abrirEntregados(true) a secas: si el supervisor
+  // ya habia tocado "Volver a la cola" mientras viajaba la peticion, la
+  // respuesta volvia a MOSTRAR Finalizados sin registrarla en la pila, y su
+  // boton de Volver ya no cerraba nada (atrapado; auditoria del 1/oct).
+  var miFinalizados = pantallaActual();
+  function refrescarSiSigue() {
+    if (miFinalizados && pantallaActual() === miFinalizados) abrirEntregados(true);
+  }
+
   // Misma ruta que el boton "Regresar": desde entregado, regresar_etapa
   // lo devuelve a secando con su linea y sus secadores.
+  //
+  // 🔑 Se manda DESDE que estado se cree que regresa. La ruta solo recibia el
+  // id y decidia por el estado actual: si la primera peticion SI llegaba pero
+  // su respuesta se perdia (corte de 20 s), el reintento encontraba el carro
+  // ya secando y lo mandaba un paso MAS atras, a prelavado, borrando la etapa
+  // de secado. Con `desde`, la base contesta "ya se habia regresado".
   pedir("/corregir", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ carro: Number(b.dataset.restaurar) })
+    body: JSON.stringify({ carro: Number(b.dataset.restaurar), desde: "entregado" })
   })
-    .then(function (r) { return r.json(); })
+    .then(leerRespuesta)
     .then(function (d) {
-      if (d && d.ok === false) { alert(d.error || "No se pudo restaurar"); return; }
-      abrirEntregados(true);   // refresca; ya esta abierta, no re-registra
+      // `ya` = el carro ya no estaba entregado: un intento anterior si llego.
+      // Es lo que el supervisor queria; no se le regana, solo se refresca.
+      if (d && d.ok === false && !d.ya) { alert(d.error || "No se pudo restaurar"); return; }
+      refrescarSiSigue();
     })
-    .catch(function () { alert("Sin conexión. Intenta otra vez."); })
+    .catch(function () {
+      alert("Sin conexión. Intenta otra vez.");
+      // La peticion pudo haber llegado aunque la respuesta no: se recarga la
+      // lista para que, si el carro ya salio de Finalizados, el boton
+      // Restaurar no quede vivo sobre un carro que ya esta secando.
+      refrescarSiSigue();
+    })
     .then(function () { listoRestaurar(); ocupado = false; consultar(); });
 });
 
@@ -3033,9 +3088,29 @@ function guardarPendiente(id, imagen) {
     // `teniaFoto` = si el carro YA tenia foto en el servidor cuando se
     // encolo esta. Es lo unico que permite distinguir una PRIMERA foto de
     // un REEMPLAZO, y de eso depende el candado #4 (ver flushOutbox).
+    //
+    // 🔑 `sello` identifica ESTA foto. La cola guarda una sola entrada por
+    // carro, asi que una re-toma reemplaza a la anterior; sin sello, cuando la
+    // subida anterior terminaba BIEN se borraba "la entrada del carro" —que ya
+    // era la foto nueva, sin subir— y cuando terminaba MAL se reescribia la
+    // vieja encima de la nueva. En los dos casos la re-toma desaparecia sin
+    // aviso (auditoria del 1/oct, reproducido en el navegador).
+    //
+    // Y si ya habia una entrada en la cola, esta es un REEMPLAZO aunque el
+    // servidor todavia no tenga foto: se marca `teniaFoto` para que el candado
+    // #4 no la descarte en cuanto la cola muestre la foto de la primera subida.
     .then(function (st) {
-      return idbReq(st.put({ id: id, imagen: imagen, intentos: 0, proximo: 0,
-                             teniaFoto: servidorYaTieneFoto(id) }));
+      return new Promise(function (ok, no) {
+        var previa = st.get(id);
+        previa.onsuccess = function () {
+          var pone = st.put({ id: id, imagen: imagen, intentos: 0, proximo: 0,
+                              sello: Date.now() + "-" + Math.random().toString(36).slice(2),
+                              teniaFoto: servidorYaTieneFoto(id) || !!previa.result });
+          pone.onsuccess = function () { ok(); };
+          pone.onerror = function () { no(pone.error); };
+        };
+        previa.onerror = function () { no(previa.error); };
+      });
     })
     // 🔴 Si IndexedDB falla (modo privado, cuota llena, base corrupta) la foto
     // NO se puede guardar y el supervisor tiene que enterarse. Antes esto solo
@@ -3050,10 +3125,33 @@ function guardarPendiente(id, imagen) {
       pintar();
     });
 }
-function quitarPendiente(id) {
+// Con `sello`, solo borra si la entrada guardada sigue siendo ESA foto. Si el
+// supervisor ya tomo otra mientras la primera subia, la nueva se queda en la
+// cola para el siguiente intento. Sin `sello` borra la del carro, como antes.
+function quitarPendiente(id, sello) {
   return fotoStore("readwrite")
-    .then(function (st) { return idbReq(st.delete(id)); })
+    .then(function (st) {
+      if (!sello) return idbReq(st.delete(id));
+      return new Promise(function (ok) {
+        var lee = st.get(id);
+        lee.onsuccess = function () {
+          var guardada = lee.result;
+          if (guardada && guardada.sello && guardada.sello !== sello) { ok(); return; }
+          var borra = st.delete(id);
+          borra.onsuccess = function () { ok(); };
+          borra.onerror = function () { ok(); };
+        };
+        lee.onerror = function () { ok(); };
+      });
+    })
     .catch(function () {});
+}
+
+// La entrada que hay AHORA en la cola para ese carro (o undefined).
+function leerPendiente(id) {
+  return fotoStore("readonly")
+    .then(function (st) { return idbReq(st.get(id)); })
+    .catch(function () { return undefined; });
 }
 
 // Si la cola ya trae foto para ese carro. Si el carro ya no esta en la
@@ -3074,22 +3172,30 @@ function intentarSubir(entry) {
   if (boton) boton.classList.add("subiendo");
   function soltar() { if (boton) boton.classList.remove("subiendo"); subiendoFoto = false; }
   function reprogramar() {
-    entry.intentos = (entry.intentos || 0) + 1;
-    if (entry.intentos >= FOTO_MAX_INTENTOS) {
-      console.error("Foto no subio tras", entry.intentos, "intentos; se rinde. Carro", entry.id);
-      // 🔴 Se rinde, pero LO DICE. Antes solo quedaba este `console.error`
-      // —que en un telefono no lo lee nadie— y la foto se borraba: el
-      // supervisor la habia tomado, la daba por hecha, y el carro se quedaba
-      // sin foto y sin placa para siempre.
-      FOTOS_RENDIDAS[entry.id] = true;
-      if (navigator.vibrate) navigator.vibrate([60, 80, 60]);
-      quitarPendiente(entry.id);   // la tarjeta lo pide de nuevo: re-toma manual
-      pintar();
-      return;
-    }
-    var espera = Math.min(5000 * Math.pow(2, entry.intentos - 1), FOTO_BACKOFF_TOPE);
-    entry.proximo = Date.now() + espera;
-    fotoStore("readwrite").then(function (st) { st.put(entry); }).catch(function () {});
+    // 🔑 Primero se mira que hay en la cola. Si el supervisor tomo OTRA foto
+    // mientras esta subia, la entrada guardada ya es la nueva (otro sello):
+    // esta se abandona y la nueva sigue su propia vida. Antes se reescribia
+    // la vieja encima y la re-toma se perdia.
+    leerPendiente(entry.id).then(function (guardada) {
+      if (guardada && guardada.sello !== entry.sello) return;
+
+      entry.intentos = (entry.intentos || 0) + 1;
+      if (entry.intentos >= FOTO_MAX_INTENTOS) {
+        console.error("Foto no subio tras", entry.intentos, "intentos; se rinde. Carro", entry.id);
+        // 🔴 Se rinde, pero LO DICE. Antes solo quedaba este `console.error`
+        // —que en un telefono no lo lee nadie— y la foto se borraba: el
+        // supervisor la habia tomado, la daba por hecha, y el carro se quedaba
+        // sin foto y sin placa para siempre.
+        FOTOS_RENDIDAS[entry.id] = true;
+        if (navigator.vibrate) navigator.vibrate([60, 80, 60]);
+        quitarPendiente(entry.id, entry.sello);   // la tarjeta lo pide de nuevo: re-toma manual
+        pintar();
+        return;
+      }
+      var espera = Math.min(5000 * Math.pow(2, entry.intentos - 1), FOTO_BACKOFF_TOPE);
+      entry.proximo = Date.now() + espera;
+      fotoStore("readwrite").then(function (st) { st.put(entry); }).catch(function () {});
+    });
   }
 
   pedir("/foto", {
@@ -3103,7 +3209,9 @@ function intentarSubir(entry) {
         // ok:true = la foto SI se guardo (la lectura de placa puede fallar
         // aparte y aun asi devuelve ok:true; eso no es falla de subida).
         if (d && d.ok === true) {
-          quitarPendiente(entry.id).then(function () { soltar(); consultar(); });
+          // Solo se borra ESTA foto (por su sello). Si hay una re-toma
+          // esperando, se queda y sube en el siguiente intento.
+          quitarPendiente(entry.id, entry.sello).then(function () { soltar(); consultar(); });
         } else {
           soltar(); reprogramar();
         }
@@ -3302,7 +3410,7 @@ document.getElementById("lista").addEventListener("click", function (ev) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ carro: Number(borrar.dataset.borrar) })
     })
-      .then(function (r) { return r.json(); })
+      .then(leerRespuesta)
       .then(function (d) { if (d && d.ok === false) alert(d.error || "No se pudo borrar"); })
       .catch(function () { alert("Sin conexión. Intenta otra vez."); })
       .then(function () { listoBorrar(); ocupado = false; consultar(); });
@@ -3347,14 +3455,23 @@ document.getElementById("lista").addEventListener("click", function (ev) {
   var listoAccion = enEnvio(boton, "Enviando…");
   if (navigator.vibrate) navigator.vibrate(30);
 
+  // "Regresar" dice DESDE que estado cree que regresa (el que pinta la
+  // tarjeta). Si un intento anterior ya llego y esta es la repeticion, la base
+  // contesta `ya` en vez de mandar el carro otro paso atras. Ver Restaurar.
+  var cuerpoAccion = { carro: Number(boton.dataset.carro) };
+  if (boton.dataset.accion === "corregir") {
+    var paraRegresar = buscarCarro(boton.dataset.carro);
+    if (paraRegresar && paraRegresar.estado) cuerpoAccion.desde = paraRegresar.estado;
+  }
+
   pedir("/" + boton.dataset.accion, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ carro: Number(boton.dataset.carro) })
+    body: JSON.stringify(cuerpoAccion)
   })
-    .then(function (r) { return r.json(); })
+    .then(leerRespuesta)
     .then(function (d) {
-      if (d && d.ok === false) alert(d.error || "No se pudo");
+      if (d && d.ok === false && !d.ya) alert(d.error || "No se pudo");
     })
     .catch(function () { alert("Sin conexión. Intenta otra vez."); })
     .then(function () {
