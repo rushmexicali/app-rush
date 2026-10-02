@@ -945,7 +945,7 @@ function pedirAvisos() {
       if (!arr.length) { cont.innerHTML = ""; return; }
       var html = '<div class="aviso alerta"><b>⚠ ' + arr.length +
                  (arr.length === 1 ? " aviso del sistema" : " avisos del sistema") +
-                 "</b> — de los últimos 7 días. Esto no lo ve nadie más.";
+                 "</b> — sin atender. Se quedan aquí hasta que los marques. Esto no lo ve nadie más.";
       arr.forEach(function (a) {
         html += '<div class="rep-carro">' +
                 escapar(fechaCorta(a.hasta)) + " " + escapar(hora(a.hasta)) +
