@@ -359,8 +359,10 @@ document.getElementById("salir").addEventListener("click", function () {
   // F-11: salir es salir: tambien se olvida el codigo (antes reaparecia en claro al recargar)
   try { localStorage.removeItem("rush_admin_quien"); localStorage.removeItem("rush_codigo_admin"); } catch (e) {}
   QUIEN = ""; CODIGO = ""; $("#campo").value = "";
-  var todos = document.querySelectorAll("#quienes button");
-  for (var i = 0; i < todos.length; i++) todos[i].classList.remove("sel");
+  // P-3 (mini auditoria 11/oct): los botones con los nombres tambien se
+  // quitan; el rotulo dice "escribe el codigo y aparecen los nombres".
+  $("#quienes").innerHTML = "";
+  QUIENES = {};
   pedirCodigo(false);
 });
 

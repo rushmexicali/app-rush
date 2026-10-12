@@ -104,7 +104,12 @@
 //                     dueno tras las 4 visitas cruzadas de la auditoria del
 //                     1/oct). Reporte: el historial por placa marca los carros
 //                     borrados (206).
-var CACHE = "rush-v29";
+//  v30 (11/oct/2026) — Mini auditoria de la noche: el boton de confirmar de
+//                     Asignar/Corregir se queda apagado mientras ESE carro
+//                     tenga un envio en vuelo; "No asignar a cliente" tambien
+//                     marca el ticket viejo y pide confirmar; "Salir" del
+//                     panel quita los botones con los nombres.
+var CACHE = "rush-v30";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest", "./actualizacion.js",

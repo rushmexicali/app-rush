@@ -2048,6 +2048,18 @@ function pintarAsignacion() {
 
   var btn = document.getElementById("confirmar");
 
+  // Si ESTE carro tiene un envio en vuelo, el boton lo dice y se queda
+  // apagado, aunque una respuesta tardia de OTRO carro repinte la pantalla
+  // (mini auditoria 11/oct, P-2: la de Asignar del 102 volvia a prender
+  // "Guardar" con el Corregir del 101 todavia viajando, y el toque se lo
+  // tragaba carroOcupado en silencio). Misma fuente que las tarjetas.
+  var env = envioDe(asig.carro);
+  if (env) {
+    btn.disabled = true;
+    btn.textContent = env.texto;
+    return;
+  }
+
   // Al corregir casi nada es obligatorio: el supervisor entra a poner una
   // cosa y se sale. La unica regla: un carro que ya seca no puede quedarse
   // sin ningun secador (se borrarian todas sus asignaciones).

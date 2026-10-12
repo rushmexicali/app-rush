@@ -1961,7 +1961,10 @@ function pintarSinCliente() {
   // Misma guarda que la otra lista: no se reconstruye si nada cambió. Sin
   // esto, el refresco de cada 3 s movería los botones justo cuando la cajera
   // va a tocar uno.
-  var firma = ticketsAhora.map(function (t) { return t.carro_id + "|" + t.ticket; }).join(",") +
+  // La edad entra en la firma como texto: el ticket viejo tambien se marca aqui
+  // (11/oct/2026, decision delegada: la regla de los 30 min es una sola funcion
+  // y pegar la FOTO al carro equivocado es el mismo error humano).
+  var firma = ticketsAhora.map(function (t) { return t.carro_id + "|" + t.ticket + "|" + (ticketViejo(t) || ""); }).join(",") +
               "#" + (ticketSC ? ticketSC.carro_id : "");
   if (firma !== scFirma) {
     scFirma = firma;
@@ -1973,14 +1976,17 @@ function pintarSinCliente() {
       ticketsAhora.forEach(function (t) {
         var sinLavado = !t.carro_id;
         var elegido = ticketSC && ticketSC.carro_id === t.carro_id;
-        html += '<button class="tk-op' + (elegido ? " sel" : "") + '"' +
+        var viejo = ticketViejo(t);
+        html += '<button class="tk-op' + (elegido ? " sel" : "") + (viejo ? " viejo" : "") + '"' +
                   ' data-sc="' + escapar(t.carro_id == null ? "" : t.carro_id) + '"' +
                   (sinLavado ? " disabled" : "") + ">" +
                   '<span class="tk-l1">' +
                     '<span class="tk-num">Ticket ' + escapar(t.ticket || "—") + "</span>" +
                     '<span class="tk-monto">$' + escapar(t.monto) + "</span>" +
                   "</span>" +
-                  '<span class="tk-l2">' + escapar(t.contenido || "—") + "</span>" +
+                  '<span class="tk-l2">' + escapar(t.contenido || "—") +
+                    (viejo ? '<span class="tk-tag viejo">&#9888; TICKET VIEJO · ' + escapar(viejo) + '</span>' : "") +
+                  "</span>" +
                   '<span class="tk-l3">' + escapar(horaExacta(t.hora)) +
                     (t.placa ? "  ·  " + escapar(t.placa) : "") +
                   "</span>" +
@@ -2033,6 +2039,13 @@ document.getElementById("btn-sc-guardar").addEventListener("click", function () 
     return;
   }
   var quien = marcaDeCliente();
+  // Un ticket viejo se confirma antes de pegarle la foto (misma regla que
+  // "Registrar visita", ver ticketViejo).
+  var edadSC = ticketViejo(ticketSC);
+  if (edadSC && !confirm("El ticket " + (ticketSC.ticket || "") + " es de " + edadSC + ".\n\n" +
+                         "¿Seguro que es el cobro de este carro? Si acaba de pagar, espera unos segundos a que aparezca su ticket.")) {
+    return;
+  }
   conCandado(this, "Guardando…", function () {
     return postJSON("/foto-al-ticket", {
       carro:     ticketSC.carro_id,
