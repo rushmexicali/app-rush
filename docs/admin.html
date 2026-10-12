@@ -1,0 +1,915 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RUSH — Panel de administración</title>
+
+<!--
+  Cuarta app del proyecto (10/oct/2026). La usa el ADMINISTRADOR, sentado,
+  para corregir el CRM: fusionar fichas duplicadas, borrar fichas vacias, quitar
+  y agregar visitas, mover placas. No la usan ni el supervisor ni la cajera.
+
+  Habla con la Edge Function `admin` (NO con `app`): codigo propio del panel
+  (CODIGO_ADMIN) y cabecera x-quien, porque toda accion queda en bitacora con
+  nombre. Toda la logica vive en la base (migraciones 192-195): aqui no hay
+  copia de ninguna regla (ni lealtad, ni fonetica, ni tipos): lo que se pinta
+  lo calculo el servidor. La VISTA PREVIA de cada accion es la misma funcion
+  con `ensayo: true`, que calcula sin escribir.
+
+  Los botones van por `data-act` + un solo despacho (ver abajo), no por
+  onclick="..." en el HTML: asi lo exige la pagina del prototipo y asi queda
+  todo en un lugar.
+
+  JavaScript clasico (var, function, concatenacion): pruebas/sintaxis-front.sh
+  lo parsea con el interprete de Windows, que no entiende ES6.
+-->
+
+<style>
+  :root {
+    --bg:#0d1117; --card:#161b22; --card2:#21262d; --borde:#30363d; --fg:#e6edf3;
+    --muted:#8b949e; --muted2:#6e7681; --accent:#58a6ff; --rojo:#f85149; --rojo-f:#2b1113;
+    --verde:#3fb950; --verde-f:#0f2a17; --ambar:#d29922; --ambar-f:#2a2210; --morado:#a371f7;
+    --cian:#39c5cf; --sombra:0 8px 30px rgba(0,0,0,.5);
+    color-scheme: dark;
+  }
+  * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
+  body { background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; font-size:15px; line-height:1.45; margin:0; min-height:100%; }
+  button, input, select, textarea { font:inherit; color:inherit; }
+  button { background:var(--card2); border:1px solid var(--borde); border-radius:8px; padding:8px 14px; cursor:pointer; font-weight:600; }
+  button:hover { border-color:var(--muted); }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  button.primario { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.peligro { background:var(--rojo); border-color:var(--rojo); color:#fff; }
+  button.peligro.suave { background:transparent; color:var(--rojo); }
+  button.liso { background:transparent; border-color:transparent; color:var(--accent); padding:4px 8px; }
+  button.chico { padding:4px 10px; font-size:13px; }
+  input[type=text], input[type=search], select, textarea { background:var(--card); border:1px solid var(--borde); border-radius:8px; padding:9px 11px; width:100%; }
+  a { color:var(--accent); cursor:pointer; text-decoration:none; }
+  h1 { font-size:22px; margin:0; }
+  h2 { font-size:17px; margin:0 0 10px; color:var(--fg); }
+  .muted { color:var(--muted); }
+  .chico-t { font-size:13px; }
+  .mono { font-variant-numeric:tabular-nums; }
+
+  #acceso { min-height:100vh; display:grid; place-items:center; padding:24px 16px; }
+  #acceso .caja { background:var(--card); border:1px solid var(--borde); border-radius:14px; padding:28px; width:100%; max-width:420px; display:grid; gap:16px; }
+  #acceso input { font-size:24px; text-align:center; letter-spacing:4px; }
+  .quien { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .quien button { padding:14px; font-size:16px; }
+  .quien button.sel { border-color:var(--accent); background:var(--card2); box-shadow:inset 0 0 0 1px var(--accent); }
+
+  header.barra { position:sticky; top:env(safe-area-inset-top,0px); z-index:5; background:var(--card); border-bottom:1px solid var(--borde); padding:10px 16px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .marca { font-weight:800; letter-spacing:.02em; }
+  nav.tabs { display:flex; gap:4px; flex:1; flex-wrap:wrap; }
+  nav.tabs button { background:transparent; border-color:transparent; color:var(--muted); padding:8px 12px; }
+  nav.tabs button.on { color:var(--fg); background:var(--card2); border-color:var(--borde); }
+  nav.tabs .cuenta { display:inline-block; min-width:20px; padding:0 6px; border-radius:999px; background:var(--rojo); color:#fff; font-size:12px; margin-left:6px; }
+  .yo { color:var(--muted); font-size:14px; }
+  main { max-width:1180px; margin:0 auto; padding-block:20px; padding-inline:16px; display:grid; gap:18px; }
+  .fila { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .fila.entre { justify-content:space-between; }
+  .card { background:var(--card); border:1px solid var(--borde); border-radius:12px; padding:16px; min-width:0; }
+  .grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+  .tile { background:var(--card2); border:1px solid var(--borde); border-radius:10px; padding:12px; }
+  .tile .v { font-size:26px; font-weight:800; line-height:1.1; font-variant-numeric:tabular-nums; }
+  .tile .r { color:var(--muted); font-size:12px; margin-top:4px; }
+  .tile.ok { border-color:var(--verde); } .tile.ojo { border-color:var(--ambar); }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:8px 8px; border-bottom:1px solid var(--borde); vertical-align:top; }
+  th { color:var(--muted); font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  tr.apagada td { color:var(--muted2); text-decoration:line-through; }
+  tr.apagada td.acc { text-decoration:none; }
+  tr.click { cursor:pointer; } tr.click:hover td { background:var(--card2); }
+  .tabla-wrap { overflow-x:auto; }
+  .chip { display:inline-block; font-size:12px; font-weight:700; padding:2px 8px; border-radius:999px; border:1px solid var(--borde); color:var(--muted); white-space:nowrap; }
+  .chip.verde { color:var(--verde); border-color:var(--verde); background:var(--verde-f); }
+  .chip.ambar { color:var(--ambar); border-color:var(--ambar); background:var(--ambar-f); }
+  .chip.rojo { color:var(--rojo); border-color:var(--rojo); background:var(--rojo-f); }
+  .chip.morado { color:var(--morado); border-color:var(--morado); }
+  .chip.cian { color:var(--cian); border-color:var(--cian); }
+  .aviso { background:var(--card2); border-left:4px solid var(--ambar); border-radius:6px; padding:10px 12px; font-size:14px; }
+  .aviso.rojo { border-left-color:var(--rojo); }
+  .aviso.verde { border-left-color:var(--verde); }
+  .vacio { color:var(--muted2); font-style:italic; padding:12px 0; }
+  .item { display:flex; gap:12px; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--borde); flex-wrap:wrap; }
+  .item:last-child { border-bottom:none; }
+  .item .q { min-width:0; flex:1; }
+  .item .q b { display:block; }
+  .acciones { display:flex; gap:8px; flex-wrap:wrap; }
+  .lado { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:720px) { .lado { grid-template-columns:1fr; } }
+  .col { background:var(--card2); border:2px solid var(--borde); border-radius:12px; padding:14px; }
+  .col.queda { border-color:var(--verde); }
+  .col.vase { border-color:var(--rojo); opacity:.9; }
+  .col .enc { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+  .kv { display:grid; grid-template-columns:120px 1fr; gap:4px 10px; font-size:14px; }
+  .kv dt { color:var(--muted); } .kv dd { margin:0; }
+  .prev { display:grid; grid-template-columns:1fr auto 1fr; gap:10px; align-items:center; background:var(--card2); border-radius:10px; padding:12px; }
+  .prev .ant, .prev .des { text-align:center; }
+  .prev .ant .n, .prev .des .n { font-size:22px; font-weight:800; }
+  .prev .fl { color:var(--muted); font-size:22px; }
+  .prev .des .n { color:var(--verde); }
+  .campo { display:grid; gap:6px; }
+  .campo label { font-size:13px; color:var(--muted); font-weight:600; }
+  .form { display:grid; gap:12px; }
+  .radios { display:flex; gap:8px; flex-wrap:wrap; }
+  .radios label { border:1px solid var(--borde); border-radius:8px; padding:8px 12px; cursor:pointer; display:flex; gap:6px; align-items:center; }
+  .radios label.sel { border-color:var(--accent); background:var(--card2); }
+  .buscar { display:flex; gap:8px; }
+  .buscar input { flex:1; }
+  .pasos { display:flex; gap:6px; align-items:center; color:var(--muted); font-size:13px; flex-wrap:wrap; }
+  .pasos b { color:var(--fg); }
+  .res { border:1px solid var(--borde); border-radius:10px; overflow:hidden; }
+  .res .r { padding:10px 12px; border-bottom:1px solid var(--borde); display:flex; justify-content:space-between; gap:10px; cursor:pointer; flex-wrap:wrap; }
+  .res .r:hover { background:var(--card2); } .res .r:last-child { border-bottom:none; }
+  .venta { background:var(--card2); border-radius:10px; padding:12px; display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; }
+  .venta div b { display:block; font-size:12px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+  .pie { display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; padding-top:6px; }
+  pre.json { background:var(--bg); border:1px solid var(--borde); border-radius:8px; padding:10px; font-size:12px; overflow-x:auto; margin:0; white-space:pre-wrap; }
+  details summary { cursor:pointer; color:var(--accent); font-size:13px; }
+  .cargando { color:var(--muted); padding:20px; text-align:center; }
+  #modal-fondo { position:fixed; inset:0; background:rgba(0,0,0,.6); display:grid; place-items:center; padding:16px; z-index:20; }
+  #modal { background:var(--card); border:1px solid var(--borde); border-radius:14px; padding:20px; width:100%; max-width:640px; max-height:92vh; overflow:auto; box-shadow:var(--sombra); display:grid; gap:14px; }
+  #modal.ancho { max-width:900px; }
+  #toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--fg); color:var(--bg); padding:10px 16px; border-radius:10px; font-weight:600; z-index:30; box-shadow:var(--sombra); max-width:90vw; }
+  .progreso { height:8px; background:var(--borde); border-radius:999px; overflow:hidden; margin-top:6px; }
+  .progreso i { display:block; height:100%; background:var(--verde); }
+</style>
+
+<div id="acceso">
+  <div class="caja">
+    <div class="marca">RUSH · Panel de administración</div>
+    <div class="muted chico-t">Es el código del panel, no el de la app del supervisor.</div>
+    <div class="campo"><label for="campo">Código del panel</label><input id="campo" type="password" inputmode="text" autocapitalize="characters" autocomplete="off"></div>
+    <div class="campo"><label>¿Quién eres?</label>
+      <div class="quien" id="quienes"><div class="muted chico-t" style="grid-column:1/-1">Escribe el código y aparecen los nombres.</div></div>
+      <div class="muted chico-t">Tu nombre queda en la bitácora de cada cambio.</div>
+    </div>
+    <div id="malcodigo" class="aviso rojo" hidden>Código incorrecto</div>
+    <div id="login-err" class="aviso rojo" hidden></div>
+    <button class="primario" id="entrar" type="button" style="padding:14px;font-size:16px">Entrar</button>
+  </div>
+</div>
+
+<div id="app" hidden>
+  <header class="barra">
+    <div class="marca">RUSH · Panel</div>
+    <nav class="tabs" id="tabs"></nav>
+    <span class="yo" id="yo"></span>
+    <button class="chico" id="salir" type="button">Salir</button>
+  </header>
+  <main id="vista"></main>
+</div>
+<div id="modal-fondo" hidden><div id="modal" role="dialog" aria-modal="true"></div></div>
+<div id="toast" hidden></div>
+
+<script>
+var API = "https://rwoyfvddhlabmmuvkpjx.supabase.co/functions/v1/admin";
+var PEDIR_CORTE_MS = 20000;
+
+var CODIGO = "", QUIEN = "", QUIEN_ETIQUETA = "";
+// clave -> nombre. Lo manda el servidor (/quienes, tabla admin_quienes): los
+// nombres de personas no viven en esta pagina, que es publica.
+var QUIENES = {};
+var MOTIVOS = [];
+var VISTA = { n: "bandeja" }, NAV = [], TOKEN = 0, PENDIENTES_N = null;
+var TIPO = { normal: ["Normal", "verde"], canje: ["Canje", "morado"], cortesia: ["Cortesía", "cian"] };
+
+// ---------------------------------------------------------------------
+// Utilidades
+// ---------------------------------------------------------------------
+function $(s) { return document.querySelector(s); }
+function h(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+  });
+}
+function act(fn) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  return 'data-act="' + fn + '" data-args="' + h(JSON.stringify(args)) + '"';
+}
+function on(ev, fn) {
+  var args = Array.prototype.slice.call(arguments, 2);
+  return 'data-on="' + ev + '" data-act="' + fn + '" data-args="' + h(JSON.stringify(args)) + '"';
+}
+var MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+function fmtFecha(iso, conHora) {
+  if (!iso) return "—";
+  // Una fecha sin hora ("2026-10-10") se formatea tal cual: `new Date` la
+  // leeria como medianoche UTC y en Mexicali saldria el dia anterior.
+  var solo = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso));
+  if (solo) return (+solo[3]) + "/" + MESES[+solo[2] - 1] + "/" + solo[1];
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso);
+  var p = {};
+  try {
+    var partes = new Intl.DateTimeFormat("es-MX", { timeZone: "America/Tijuana", year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(d);
+    for (var i = 0; i < partes.length; i++) p[partes[i].type] = partes[i].value;
+  } catch (e) { return d.toLocaleString(); }
+  var s = p.day + "/" + MESES[+p.month - 1] + "/" + p.year;
+  if (conHora !== false) s += " " + p.hour + ":" + p.minute;
+  return s;
+}
+function pesos(n) { return "$" + Number(n || 0).toLocaleString("es-MX"); }
+function pl(n, uno, varios) { return n + " " + (n === 1 ? uno : varios); }
+function chipTipo(t) { var x = TIPO[t] || ["?", ""]; return '<span class="chip ' + x[1] + '">' + x[0] + "</span>"; }
+function lealtadTxt(L) {
+  if (!L) return "—";
+  return (L.sellos || 0) + "/5 · " + pl(L.disponibles || 0, "gratis disponible", "gratis disponibles") + " · " + pl(L.canjes || 0, "canje", "canjes");
+}
+function cargando(t) { return '<div class="cargando">' + h(t || "Cargando…") + "</div>"; }
+function errorHTML(e) {
+  return '<div class="aviso rojo"><b>No se pudo consultar.</b> ' + h(e && e.message ? e.message : e) + ' Esto no quiere decir que no haya nada: quiere decir que la consulta falló. <a ' + act("render") + '>Reintentar</a></div>';
+}
+function retrasar(fn, ms) { var t; return function () { var a = arguments; clearTimeout(t); t = setTimeout(function () { fn.apply(null, a); }, ms); }; }
+
+// ---------------------------------------------------------------------
+// Peticiones. Igual que reporte.html (corte de 20 s, 401 pide el codigo, un
+// `ok:false` es error), mas la cabecera x-quien.
+// ---------------------------------------------------------------------
+function pedir(ruta, opts) {
+  opts = opts || {};
+  opts.headers = Object.assign({ "x-codigo": CODIGO, "x-quien": QUIEN }, opts.headers || {});
+  var reloj = null;
+  if (typeof AbortController === "function" && !opts.signal) {
+    var corta = new AbortController();
+    opts.signal = corta.signal;
+    reloj = setTimeout(function () { corta.abort(); }, opts.corteMs || PEDIR_CORTE_MS);
+  }
+  return fetch(API + ruta, opts).then(function (r) {
+    if (reloj) clearTimeout(reloj);
+    return r;
+  }, function (e) {
+    if (reloj) clearTimeout(reloj);
+    throw new Error("Sin conexión con el servidor");
+  });
+}
+function pedirJSON(ruta, opts) {
+  return pedir(ruta, opts).then(function (r) {
+    if (r.status === 401) { pedirCodigo(true); throw new Error("codigo"); }
+    if (r.status === 403) { pedirCodigo(false, "Falta decir quién eres"); throw new Error("codigo"); }
+    if (r.status === 503) { throw new Error("El servidor no tiene configurado el código del panel"); }
+    return r.json().then(function (d) {
+      if (!r.ok && (!d || d.ok === undefined)) throw new Error("El servidor respondió " + r.status);
+      return d;
+    }, function () { throw new Error("El servidor respondió " + r.status); });
+  }).then(function (d) {
+    if (!d || d.ok === false) {
+      var e = new Error((d && d.error) || "El servidor respondió con error");
+      e.datos = d;
+      throw e;
+    }
+    return d;
+  });
+}
+function listaDe(d, campo) {
+  var v = d && d[campo];
+  if (!Array.isArray(v)) throw new Error("La respuesta no trae la lista `" + campo + "`");
+  return v;
+}
+function postJSON(ruta, cuerpo) {
+  return pedirJSON(ruta, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo || {}) });
+}
+// Una accion devuelve `ok:false` con su razon como respuesta NORMAL (status
+// 200): aqui no es excepcion, es lo que la pantalla tiene que mostrar.
+function accion(ruta, cuerpo) {
+  return postJSON(ruta, cuerpo).then(function (d) { return d; }, function (e) {
+    if (e && e.message === "codigo") throw e;
+    if (e && e.datos && e.datos.ok === false) return e.datos;
+    throw e;
+  });
+}
+
+// ---------------------------------------------------------------------
+// Entrar / salir
+// ---------------------------------------------------------------------
+function pedirCodigo(fallo, texto) {
+  cerrar();   // F-9: un 401/403 con un modal abierto lo dejaba encima del login
+  $("#app").hidden = true;
+  $("#acceso").hidden = false;
+  $("#malcodigo").hidden = !fallo;
+  var le = $("#login-err"); le.hidden = !texto; le.textContent = texto || "";
+  $("#campo").focus();
+}
+function cargarCredenciales() {
+  try {
+    CODIGO = localStorage.getItem("rush_codigo_admin") || "";
+    QUIEN = localStorage.getItem("rush_admin_quien") || "";
+  } catch (e) { CODIGO = ""; QUIEN = ""; }
+  QUIEN_ETIQUETA = "";
+}
+// Los botones de "quien eres" se pintan con lo que diga el servidor, que lo
+// contesta solo con el codigo correcto. Se piden al cargar (si ya hay codigo
+// guardado) y al terminar de teclear el codigo.
+var pedirQuienes = retrasar(function () {
+  var cont = $("#quienes");
+  if (!CODIGO) return;
+  pedirJSON("/quienes").then(function (d) {
+    var lista = listaDe(d, "quienes"), html = "";
+    QUIENES = {};
+    for (var i = 0; i < lista.length; i++) {
+      QUIENES[lista[i].clave] = lista[i].nombre;
+      html += '<button type="button" data-q="' + h(lista[i].clave) + '" class="' + (QUIEN === lista[i].clave ? "sel" : "") + '">' + h(lista[i].nombre) + "</button>";
+    }
+    cont.innerHTML = html;
+    $("#malcodigo").hidden = true;
+  }, function (e) {
+    if (e && e.message === "codigo") return;
+    cont.innerHTML = '<div class="muted chico-t" style="grid-column:1/-1">' + h(e.message) + "</div>";
+  });
+}, 400);
+function arrancar() {
+  return pedirJSON("/motivos").then(function (d) {
+    MOTIVOS = listaDe(d, "motivos");
+    QUIEN_ETIQUETA = d.quien || QUIEN;
+    // F-8: con auto-login nadie habia pedido /quienes; el filtro de la bitacora los necesita
+    var qs = listaDe(d, "quienes"), i, k, ya = {};
+    for (k in QUIENES) if (QUIENES.hasOwnProperty(k)) ya[QUIENES[k]] = true;
+    for (i = 0; i < qs.length; i++) if (!ya[qs[i]]) QUIENES["_" + i] = qs[i];
+    try { localStorage.setItem("rush_codigo_admin", CODIGO); localStorage.setItem("rush_admin_quien", QUIEN); } catch (e) {}
+    $("#acceso").hidden = true; $("#app").hidden = false;
+    VISTA = { n: "bandeja" }; NAV = [];
+    render();
+  }).then(null, function (e) {
+    if (e && e.message === "codigo") return;
+    pedirCodigo(false, e.message);
+  });
+}
+document.getElementById("quienes").addEventListener("click", function (e) {
+  var b = e.target.closest("button"); if (!b) return;
+  var todos = document.querySelectorAll("#quienes button");
+  for (var i = 0; i < todos.length; i++) todos[i].classList.toggle("sel", todos[i] === b);
+  QUIEN = b.getAttribute("data-q");
+});
+document.getElementById("entrar").addEventListener("click", function () {
+  var v = $("#campo").value.trim().toUpperCase();
+  if (!v) { pedirCodigo(false, "Falta el código"); return; }
+  CODIGO = v;
+  if (!QUIEN) { pedirCodigo(false, "Elige quién eres"); pedirQuienes(); return; }
+  arrancar();
+});
+document.getElementById("campo").addEventListener("keydown", function (ev) { if (ev.key === "Enter") $("#entrar").click(); });
+document.getElementById("campo").addEventListener("input", function () {
+  var v = $("#campo").value.trim().toUpperCase();
+  if (v.length >= 4) { CODIGO = v; pedirQuienes(); }
+});
+document.getElementById("salir").addEventListener("click", function () {
+  // F-11: salir es salir: tambien se olvida el codigo (antes reaparecia en claro al recargar)
+  try { localStorage.removeItem("rush_admin_quien"); localStorage.removeItem("rush_codigo_admin"); } catch (e) {}
+  QUIEN = ""; CODIGO = ""; $("#campo").value = "";
+  var todos = document.querySelectorAll("#quienes button");
+  for (var i = 0; i < todos.length; i++) todos[i].classList.remove("sel");
+  pedirCodigo(false);
+});
+
+// ---------------------------------------------------------------------
+// Marco: pestañas, navegacion, modal, toast
+// ---------------------------------------------------------------------
+function toast(t) { var el = $("#toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(function () { el.hidden = true; }, 2800); }
+function abrir(html, ancho) { $("#modal").innerHTML = html; $("#modal").classList.toggle("ancho", !!ancho); $("#modal-fondo").hidden = false; var f = $("#modal").querySelector("input,select,button"); if (f) f.focus(); }
+function cerrar() { $("#modal-fondo").hidden = true; ACC = null; }
+function ir(v, guardar) { if (guardar !== false) NAV.push(VISTA); VISTA = v; render(); window.scrollTo(0, 0); }
+function volver() { VISTA = NAV.pop() || { n: "bandeja" }; render(); }
+
+function render() {
+  var tabs = [["bandeja", "Pendientes"], ["clientes", "Clientes"], ["bitacora", "Bitácora"]];
+  var html = "";
+  for (var i = 0; i < tabs.length; i++) {
+    var n = tabs[i][0], on_ = VISTA.n === n || (n === "clientes" && (VISTA.n === "ficha" || VISTA.n === "fusionar" || VISTA.n === "agregar"));
+    html += '<button type="button" class="' + (on_ ? "on" : "") + '" ' + act("ir", { n: n }) + ">" + tabs[i][1] +
+            (n === "bandeja" && PENDIENTES_N ? '<span class="cuenta">' + PENDIENTES_N + "</span>" : "") + "</button>";
+  }
+  $("#tabs").innerHTML = html;
+  $("#yo").textContent = QUIEN_ETIQUETA;
+  TOKEN++;
+  var t = TOKEN, v = VISTA;
+  var V = { bandeja: vBandeja, clientes: vClientes, ficha: vFicha, fusionar: vFundir, agregar: vAgregar, bitacora: vBitacora };
+  V[v.n](v, function (html2) {
+    if (t !== TOKEN) return;   // llego tarde: ya se pinto otra vista
+    $("#vista").innerHTML = html2;
+    var q = $("#q"); if (q && VISTA.n === "clientes") { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+  });
+}
+
+// ---------------------------------------------------------------------
+// La previa y la confirmacion de una accion, en UN solo motor.
+//
+// Cada accion del panel es la misma RPC dos veces: con `ensayo:true` para la
+// vista previa (calcula y revierte) y sin el para hacerlo. `cfg.cuerpo()`
+// devuelve los datos de la accion (o null si falta elegir algo); `cfg.extra`
+// es el HTML de lo que el administrador elige dentro del modal.
+// ---------------------------------------------------------------------
+var ACC = null;
+function selMotivo(id, defecto) {
+  var ops = '<option value="">Elige un motivo…</option>';
+  for (var i = 0; i < MOTIVOS.length; i++) ops += '<option ' + (MOTIVOS[i] === defecto ? "selected" : "") + ">" + h(MOTIVOS[i]) + "</option>";
+  return '<div class="campo"><label for="' + id + '">Motivo (obligatorio)</label><select id="' + id + '">' + ops + '</select></div>' +
+         '<div class="campo"><label for="' + id + '-nota">Nota (opcional)</label><input id="' + id + '-nota" type="text" placeholder="Lo que quieras dejar escrito"></div>';
+}
+function leerMotivo(id) {
+  var m = $("#" + id).value, n = $("#" + id + "-nota").value.trim();
+  if (!m) { toast("Falta el motivo"); $("#" + id).focus(); return null; }
+  if (m.indexOf("Otro") === 0 && !n) { toast('Con "Otro" hay que escribir la nota'); $("#" + id + "-nota").focus(); return null; }
+  return { motivo: m, nota: n };
+}
+function abrirAccion(cfg) {
+  ACC = cfg;
+  abrir('<h2>' + h(cfg.titulo) + "</h2>" + (cfg.intro || "") +
+        '<div id="acc-extra">' + (cfg.extra || "") + "</div>" +
+        '<div id="acc-prev">' + cargando("Calculando la vista previa…") + "</div>" +
+        selMotivo("acc-motivo", cfg.motivoDefecto || "") +
+        '<div class="pie"><button type="button" ' + act("cerrar") + '>Cancelar</button>' +
+        '<button type="button" id="acc-ok" class="' + (cfg.peligro ? "peligro" : "primario") + '" disabled ' + act("confirmarAccion") + ">" + h(cfg.boton || "Confirmar") + "</button></div>", cfg.ancho);
+  previa();
+}
+var previaRetrasada = retrasar(function () { previa(); }, 250);
+function previa() {
+  var cfg = ACC; if (!cfg) return;
+  var prev = $("#acc-prev"), ok = $("#acc-ok");
+  if (!prev) return;
+  var cuerpo = cfg.cuerpo();
+  if (!cuerpo) { prev.innerHTML = '<div class="vacio">' + h(cfg.faltante || "Falta elegir…") + "</div>"; ok.disabled = true; return; }
+  prev.innerHTML = cargando("Calculando la vista previa…"); ok.disabled = true;
+  var mio = ++previa.n;
+  var sel = $("#acc-motivo");
+  cuerpo = Object.assign({}, cuerpo, { ensayo: true, motivo: (sel && sel.value) || cfg.motivoDefecto || MOTIVOS[0], nota: "vista previa" });
+  accion(cfg.ruta, cuerpo).then(function (r) {
+    if (mio !== previa.n || ACC !== cfg) return;
+    prev.innerHTML = pintarPrevia(r);
+    ok.disabled = !r.ok;
+  }, function (e) {
+    if (mio !== previa.n || ACC !== cfg) return;
+    if (e && e.message === "codigo") return;
+    prev.innerHTML = errorHTML(e); ok.disabled = true;
+  });
+}
+previa.n = 0;
+function confirmarAccion() {
+  var cfg = ACC; if (!cfg) return;
+  var m = leerMotivo("acc-motivo"); if (!m) return;
+  var cuerpo = cfg.cuerpo(); if (!cuerpo) return;
+  var ok = $("#acc-ok"); ok.disabled = true; ok.textContent = "Guardando…";
+  // auditoria 10/oct (F-4): la respuesta solo toca la pantalla si ESTA accion
+  // sigue abierta. Si el administrador cancelo y abrio otra, la primera ya
+  // corrio en el servidor (eso no se cancela) pero no cierra ni pinta la otra.
+  accion(cfg.ruta, Object.assign({}, cuerpo, m)).then(function (r) {
+    if (ACC !== cfg) { if (r.ok) { toast(r.resumen || "Listo"); render(); } return; }
+    if (!r.ok) { $("#acc-prev").innerHTML = pintarPrevia(r); ok.textContent = cfg.boton || "Confirmar"; return; }
+    toast(r.resumen || "Listo");
+    cerrar();
+    if (cfg.alTerminar) cfg.alTerminar(r); else render();
+  }, function (e) {
+    if (e && e.message === "codigo") return;
+    if (ACC !== cfg) return;
+    $("#acc-prev").innerHTML = errorHTML(e); ok.disabled = false; ok.textContent = cfg.boton || "Confirmar";
+  });
+}
+function bloqueLealtad(titulo, L) {
+  return '<div><div class="muted chico-t">' + h(titulo) + '</div><div class="n">' + (L ? (L.sellos || 0) + "/5" : "—") + '</div><div class="chico-t">' +
+         (L ? (L.disponibles || 0) + " gratis · " + pl(L.canjes || 0, "canje", "canjes") : "") + "</div></div>";
+}
+function pintarLealtad(antes, despues) {
+  if (!antes && !despues) return "";
+  if (antes && antes.queda) {   // fusionar: dos antes, una despues
+    var a = antes.queda, b = antes.va;
+    return '<div class="prev"><div class="ant"><div class="muted chico-t">Hoy, por separado</div><div class="n">' + (a.sellos || 0) + "/5 + " + (b.sellos || 0) + '/5</div><div class="chico-t">' +
+           ((a.disponibles || 0) + (b.disponibles || 0)) + " gratis · " + pl((a.canjes || 0) + (b.canjes || 0), "canje", "canjes") + "</div></div>" +
+           '<div class="fl">→</div><div class="des">' + bloqueLealtad("Fusionadas", despues) + "</div></div>";
+  }
+  if (antes && antes.origen) {   // mover: dos personas
+    return '<div class="lado"><div class="prev"><div class="ant">' + bloqueLealtad("Cliente de origen · ahora", antes.origen) + '</div><div class="fl">→</div><div class="des">' + bloqueLealtad("después", despues.origen) + "</div></div>" +
+           '<div class="prev"><div class="ant">' + bloqueLealtad("Cliente destino · ahora", antes.destino) + '</div><div class="fl">→</div><div class="des">' + bloqueLealtad("después", despues.destino) + "</div></div></div>";
+  }
+  if (antes && antes.sellos === undefined) return "";
+  return '<div class="prev"><div class="ant">' + bloqueLealtad("Ahora", antes) + '</div><div class="fl">→</div><div class="des">' + bloqueLealtad("Después", despues) + "</div></div>";
+}
+function pintarPrevia(r) {
+  if (!r || r.ok === false) return '<div class="aviso rojo">' + h((r && r.error) || "No se pudo calcular") + "</div>";
+  var html = "";
+  var adv = r.advertencias || [];
+  for (var i = 0; i < adv.length; i++) {
+    var ok_ = /buena señal|forma de un duplicado/i.test(adv[i]);
+    html += '<div class="aviso ' + (ok_ ? "verde" : "rojo") + '" style="margin-bottom:8px">' + h(adv[i]) + "</div>";
+  }
+  html += pintarLealtad(r.lealtad_antes, r.lealtad_despues);
+  if (r.visitas_movidas !== undefined) html += '<div class="chico-t" style="margin-top:8px">' + pl(r.visitas_movidas, "visita pasa", "visitas pasan") + " a la ficha que se queda · " + pl(r.placas_movidas || 0, "placa nueva", "placas nuevas") + "</div>";
+  if (r.fecha) html += '<div class="chico-t" style="margin-top:8px">Fecha de la visita: <b>' + fmtFecha(r.fecha) + "</b>" + (r.monto != null ? " · " + pesos(r.monto) : "") + "</div>";
+  html += '<div class="muted chico-t" style="margin-top:8px">Vista previa: la acción se calculó sin guardar nada.</div>';
+  return html;
+}
+// Confirmacion simple sin motivo (atender avisos, deshacer).
+function abrirSimple(titulo, texto, ruta, cuerpo, boton) {
+  ACC = { ruta: ruta, cuerpo: function () { return cuerpo; }, titulo: titulo, boton: boton };
+  abrir("<h2>" + h(titulo) + "</h2><p>" + texto + '</p><div id="acc-prev"></div><div class="pie"><button type="button" ' + act("cerrar") + '>Cancelar</button><button type="button" id="acc-ok" class="primario" ' + act("confirmarSimple") + ">" + h(boton || "Confirmar") + "</button></div>");
+}
+function confirmarSimple() {
+  var cfg = ACC; if (!cfg) return;
+  var ok = $("#acc-ok"); ok.disabled = true;
+  accion(cfg.ruta, cfg.cuerpo()).then(function (r) {
+    if (ACC !== cfg) { if (r.ok) { toast(r.resumen || "Listo"); render(); } return; }   // F-4
+    if (!r.ok) { $("#acc-prev").innerHTML = pintarPrevia(r); ok.disabled = false; return; }
+    toast(r.resumen || "Listo"); cerrar(); render();
+  }, function (e) { if (e && e.message === "codigo") return; if (ACC !== cfg) return; $("#acc-prev").innerHTML = errorHTML(e); ok.disabled = false; });
+}
+
+// Buscador chico de "a que cliente", reusado en mover, fusionar y agregar.
+var DESTINO = {};
+function buscadorDestino(pref, excluir) {
+  return '<div class="campo"><label for="' + pref + '-q">¿A qué cliente?</label><input id="' + pref + '-q" type="search" placeholder="Nombre, placa o ticket…" ' + on("input", "pintarDestinos", pref, excluir) + '><input id="' + pref + '-dest" type="hidden"><div class="res" id="' + pref + '-res"></div></div>';
+}
+var pintarDestinos = retrasar(function (pref, excluir, q) {
+  var res = $("#" + pref + "-res"); if (!res) return;
+  q = (q || "").trim();
+  if (q.length < 2) { res.innerHTML = ""; return; }
+  res.innerHTML = cargando("Buscando…");
+  pedirJSON("/clientes?q=" + encodeURIComponent(q)).then(function (d) {
+    var el = $("#" + pref + "-res"); if (!el) return;
+    var lista = listaDe(d, "personas"), html = "";
+    for (var i = 0; i < lista.length && i < 8; i++) {
+      var p = lista[i]; if (p.id === excluir) continue;
+      html += '<div class="r" ' + act("elegirDestino", pref, p.id, p.nombre) + "><span><b>" + h(p.nombre) + '</b> <span class="muted chico-t">#' + p.id + "</span></span><span class=\"muted chico-t\">" + h(lealtadTxt(p.lealtad)) + "</span></div>";
+    }
+    el.innerHTML = html || '<div class="vacio" style="padding:10px 12px">Nadie casa.</div>';
+  }, function (e) { var el = $("#" + pref + "-res"); if (el && e.message !== "codigo") el.innerHTML = errorHTML(e); });
+}, 250);
+function elegirDestino(pref, id, nombre) {
+  if (DESTINO[pref]) { DESTINO[pref](id, nombre); return; }
+  $("#" + pref + "-dest").value = id; $("#" + pref + "-q").value = nombre; $("#" + pref + "-res").innerHTML = "";
+  previa();
+}
+
+// ---------------------------------------------------------------------
+// PANTALLA: PENDIENTES
+// ---------------------------------------------------------------------
+function vBandeja(v, pinta) {
+  pinta(cargando());
+  pedirJSON("/pendientes").then(function (j) {
+    PENDIENTES_N = j.total || 0;
+    var pares = listaDe(j, "pares"), sinV = listaDe(j, "sin_visita"), gratis = listaDe(j, "gratis_sin_canje"),
+        otro = listaDe(j, "otro_dia"), dud = listaDe(j, "dudosas"), avs = listaDe(j, "avisos");
+    var i, x, html = "";
+    function sec(titulo, explica, items, vacio) {
+      return '<div class="card"><h2>' + titulo + ' <span class="muted chico-t" style="font-weight:400">· ' + items.length + "</span></h2>" +
+             '<div class="muted chico-t" style="margin-bottom:8px">' + explica + "</div>" + (items.length ? items.join("") : '<div class="vacio">' + vacio + "</div>") + "</div>";
+    }
+    var lp = [];
+    for (i = 0; i < pares.length; i++) {
+      x = pares[i];
+      lp.push('<div class="item"><div class="q"><b>' + h(x.a.nombre) + ' <span class="muted">↔</span> ' + h(x.b.nombre) + '</b><span class="muted chico-t">' + x.a.visitas + " y " + x.b.visitas + " visitas · suenan igual · la segunda se dio de alta el " + fmtFecha(x.b.creado_en, false) + "</span></div>" +
+              '<div class="acciones"><button class="primario chico" ' + act("ir", { n: "fusionar", a: x.a.id, b: x.b.id }) + '>Fusionar</button><button class="chico" ' + act("modalDescartarPar", x.a.id, x.b.id, x.a.nombre, x.b.nombre) + ">No son la misma persona</button></div></div>");
+    }
+    var ls = [];
+    for (i = 0; i < sinV.length; i++) {
+      x = sinV[i];
+      ls.push('<div class="item"><div class="q"><b>Ticket ' + h(x.ticket || "—") + " · carro " + x.carro_id + " · " + fmtFecha(x.fecha) + " · " + h(x.producto || "") + (x.variante ? " / " + h(x.variante) : "") + '</b><span class="muted chico-t">La cajera escribió «' + h(x.nota) + "» y no registró la visita. " +
+              (x.sugerida ? "Ficha que casa: " + h(x.sugerida_nombre) : (x.candidatos > 1 ? x.candidatos + " fichas casan con ese nombre: elige tú." : "Ninguna ficha casa con ese nombre.")) + "</span></div>" +
+              '<div class="acciones">' + (x.ticket ? '<button class="primario chico" ' + act("ir", { n: "agregar", ticket: x.ticket, persona: x.sugerida || null, nombre: x.sugerida_nombre || null }) + ">" + (x.sugerida ? "Registrar visita" : "Registrar visita…") + "</button>" +
+              (x.sugerida ? '<button class="chico" ' + act("ir", { n: "agregar", ticket: x.ticket }) + ">Otro cliente…</button>" : "") : '<span class="muted chico-t">Sin ticket todavía</span>') + '<button class="chico" ' + act("pendienteVisto", "sin_visita", x.carro_id, "el lavado del ticket " + (x.ticket || x.carro_id)) + ">Ya lo vi</button></div></div>");
+    }
+    var lg = [];
+    for (i = 0; i < gratis.length; i++) {
+      x = gratis[i];
+      lg.push('<div class="item"><div class="q"><b>Ticket ' + h(x.ticket || "—") + " · " + h(x.producto) + " / " + h(x.variante) + " · " + fmtFecha(x.fecha) + '</b><span class="muted chico-t">Se cobró un lavado gratis y nadie registró el canje. Nota: «' + h(x.nota || "") + "». " +
+              (x.sugerida ? "Ficha que casa: " + h(x.sugerida_nombre) + " (" + pl(x.sugerida_disponibles || 0, "gratis disponible", "gratis disponibles") + ")." : "Ninguna ficha casa sola con la nota.") + " Si no se registra, puede pedirlo dos veces.</span></div>" +
+              '<div class="acciones">' + (x.ticket ? '<button class="primario chico" ' + act("ir", { n: "agregar", ticket: x.ticket, persona: x.sugerida || null, nombre: x.sugerida_nombre || null }) + ">Registrar canje</button>" : "") + '<button class="chico" ' + act("pendienteVisto", "gratis_sin_canje", x.carro_id, "el gratis del ticket " + (x.ticket || x.carro_id)) + ">Ya lo vi</button></div></div>");
+    }
+    var lo = [];
+    for (i = 0; i < otro.length; i++) {
+      x = otro[i];
+      lo.push('<div class="item"><div class="q"><b>' + h(x.nombre) + " · ticket " + h(x.ticket) + '</b><span class="muted chico-t">La visita está fechada el ' + fmtFecha(x.fecha_visita) + " y la venta de ese ticket es del " + fmtFecha(x.fecha_venta) + " (" + Math.abs(x.dias) + " días). Casi seguro la fecha del cuaderno está mal; el ticket es el dato bueno.</span></div>" +
+              '<div class="acciones"><button class="primario chico" ' + act("modalFecha", x.visita, x.nombre, x.fecha_visita, x.fecha_venta, x.ticket) + '>Poner la fecha de la venta</button><button class="chico" ' + act("modalTicket", x.visita, x.ticket) + '>Era otro ticket…</button><button class="chico" ' + act("pendienteVisto", "otro_dia", x.visita, "la visita " + x.ticket + " de " + x.nombre) + ">Ya lo vi</button></div></div>");
+    }
+    var ld = [];
+    for (i = 0; i < dud.length; i++) {
+      x = dud[i];
+      ld.push('<div class="item"><div class="q"><b>Placa ' + h(x.placa_dudosa) + " leída en el carro " + x.carro_id + " (" + fmtFecha(x.hora) + ')</b><span class="muted chico-t">' + (x.choca_con ? "Ya era del carro " + x.choca_con + " ese día. " : "") + "El carro quedó con " + (x.placa ? "la placa " + h(x.placa) : "sin placa") + (x.marca ? " · " + h(x.marca) + " " + h(x.submarca || "") : "") + ". El candado no la escribió; sólo es para que lo sepas.</span></div>" +
+              '<div class="acciones"><button class="chico" ' + act("dudosaVista", x.carro_id) + ">Ya lo vi</button></div></div>");
+    }
+    var la = [];
+    for (i = 0; i < avs.length; i++) {
+      x = avs[i];
+      la.push('<div class="item"><div class="q"><b>' + h(x.origen) + " · " + h(x.motivo) + (x.veces > 1 ? " · " + x.veces + " veces" : "") + '</b><span class="muted chico-t">' + h(x.detalle || "") + " · " + fmtFecha(x.hasta || x.desde) + "</span></div>" +
+              '<div class="acciones"><button class="chico" ' + act("avisoAtendido", x.id) + ">Ya lo atendí</button></div></div>");
+    }
+    function tile(n, r) { return '<div class="tile ' + (n ? "ojo" : "ok") + '"><div class="v">' + n + '</div><div class="r">' + r + "</div></div>"; }
+    html = '<div class="fila entre"><div><h1>Pendientes</h1><div class="muted">Lo que el sistema encontró y espera tu decisión. Nada aquí se hace solo.</div></div>' +
+           '<div class="muted chico-t">Hoy ' + fmtFecha(j.hoy, false) + " · " + pl(j.total || 0, "pendiente", "pendientes") + "</div></div>" +
+           '<div class="tiles">' + tile(pares.length, "fichas que suenan igual") + tile(sinV.length, "lavados con nombre y sin visita") + tile(gratis.length, "gratis cobrados sin canje") +
+           tile(j.otro_dia_total || 0, "visitas con ticket de otro día") + tile(dud.length, "placas que el candado atajó") + tile(avs.length, "avisos del sistema") + "</div>" +
+           sec("Fichas que suenan igual", "Dos clientes cuyo nombre suena igual (S/Z, B/V, LL/Y…). Casi siempre es la misma persona dada de alta dos veces, con los sellos partidos.", lp, "Ninguna. El buscador fonético está haciendo su trabajo.") +
+           sec("Lavados con nombre en la nota y sin visita", "Últimos 14 días. La cajera escribió el nombre al cobrar pero no registró la visita: el cliente perdió el sello.", ls, "Ninguno.") +
+           sec("Gratis cobrados sin canje", "Últimos 30 días. Se vendió un 6to Lavado y no quedó registrado como canje: ese cliente puede pedirlo dos veces.", lg, "Ninguno.") +
+           sec("Visitas con el ticket de otro día" + (j.otro_dia_total > otro.length ? ' <span class="muted chico-t" style="font-weight:400">(las ' + otro.length + " más lejanas de " + j.otro_dia_total + ")</span>" : ""),
+               "La fecha de la visita y la de la venta no cuadran." + (otro.length > 1 ? ' <button class="chico" ' + act("pendientesVistos", "otro_dia", otro.map(function (x) { return x.visita; })) + ">Ya vi estas " + otro.length + "</button>" : ""), lo, "Ninguna.") +
+           sec("Placas que el candado atajó", "Últimos 7 días. Una foto leyó la placa de otro carro de hoy. No se escribió nada; sólo es para mirar.", ld, "Ninguna.") +
+           sec("Avisos del sistema", "Lo que las tareas de fondo dejan escrito.", la, "Ninguno.");
+    pinta(html);
+    render.tabsSolo();
+  }, function (e) { if (e.message !== "codigo") pinta(errorHTML(e)); });
+}
+render.tabsSolo = function () {
+  var b = $("#tabs button"); if (!b) return;
+  var c = b.querySelector(".cuenta");
+  if (PENDIENTES_N) { if (!c) { c = document.createElement("span"); c.className = "cuenta"; b.appendChild(c); } c.textContent = PENDIENTES_N; }
+  else if (c) c.remove();
+};
+function modalDescartarPar(a, b, na, nb) {
+  abrirAccion({ titulo: "¿No son la misma persona?", intro: "<p>" + h(na) + " y " + h(nb) + " dejarán de aparecer como posible duplicado. Las dos fichas se quedan como están.</p>",
+    ruta: "/descartar-par", cuerpo: function () { return { a: a, b: b }; }, motivoDefecto: "Otro (con nota)" });
+}
+// 196: "ya lo vi" de un pendiente calculado (no toca el dato, solo la notificacion).
+function pendienteVisto(clase, clave, texto) { abrirSimple("¿Ya lo viste?", "Deja de aparecer " + h(texto) + ". No se toca ningún dato; queda en la bitácora y se puede deshacer.", "/pendiente-visto", { clase: clase, clave: clave }, "Ya lo vi"); }
+function pendientesVistos(clase, claves) { abrirSimple("¿Ya viste estas " + claves.length + "?", "Dejan de aparecer en la bandeja. No se toca ningún dato; queda en la bitácora y se puede deshacer.", "/pendiente-visto", { clase: clase, claves: claves }, "Ya las vi"); }
+function dudosaVista(carro) { abrirSimple("¿Ya revisaste esta placa?", "El carro " + carro + " deja de aparecer en pendientes. Queda en la bitácora.", "/dudosa-vista", { carro: carro }, "Ya lo vi"); }
+function avisoAtendido(id) { abrirSimple("¿Atendido?", "El aviso deja de aparecer. Si vuelve a ocurrir, se vuelve a abrir solo.", "/aviso-atendido", { id: id }, "Ya lo atendí"); }
+function modalFecha(vid, nombre, fv, fventa, ticket) {
+  abrirAccion({ titulo: "Poner la fecha de la venta", intro: "<p>La visita de <b>" + h(nombre) + "</b> pasa del <b>" + fmtFecha(fv) + "</b> al <b>" + fmtFecha(fventa) + "</b>, que es cuando Zettle cobró el ticket " + h(ticket) + ".</p><div class=\"muted chico-t\">Mover una visita de fecha puede cambiar qué sellos van antes o después de un canje. Abajo ves si la cuenta se mueve.</div>",
+    ruta: "/corregir-fecha", cuerpo: function () { return { visita: vid }; }, motivoDefecto: "Captura equivocada" });
+}
+function modalTicket(vid, actual) {
+  abrirAccion({ titulo: "Corregir el número de ticket", intro: "<p>La visita dice <b>" + h(actual || "sin ticket") + "</b>. Escribe el ticket correcto; se comprueba que exista en Zettle y que no lo tenga otra visita. Con el ticket cambian el monto, la fecha y el lavado ligado.</p>",
+    extra: '<div class="campo"><label for="ct">Ticket correcto</label><input id="ct" type="text" inputmode="numeric" placeholder="Número del recibo" ' + on("input", "previaRetrasada") + "></div>",
+    ruta: "/corregir-ticket", faltante: "Escribe el ticket.",
+    cuerpo: function () { var t = ($("#ct") ? $("#ct").value : "").trim(); return /^\d{3,9}$/.test(t) ? { visita: vid, ticket: +t } : null; },
+    motivoDefecto: "Captura equivocada" });
+}
+
+// ---------------------------------------------------------------------
+// PANTALLA: CLIENTES
+// ---------------------------------------------------------------------
+var setQ = retrasar(function (v) { VISTA.q = v; render(); }, 250);   // F-14: una consulta por pausa, no por tecla
+function vClientes(v, pinta) {
+  var q = (v.q || "").trim();
+  var cabeza = '<div class="fila entre"><div><h1>Clientes</h1><div class="muted">Busca por nombre (también como suena), placa o número de ticket.</div></div><button class="primario" ' + act("ir", { n: "agregar" }) + '>+ Agregar visita por ticket</button></div>' +
+               '<div class="card"><div class="buscar"><input id="q" type="search" placeholder="Nombre, placa o ticket…" value="' + h(v.q || "") + '" ' + on("input", "setQ") + '></div><div id="q-res">';
+  if (q.length < 2) { pinta(cabeza + '<div class="vacio">Escribe al menos dos letras.</div></div></div>'); return; }
+  pinta(cabeza + cargando("Buscando…") + "</div></div>");
+  var mio = ++vClientes.n;
+  setTimeout(function () {
+    if (mio !== vClientes.n) return;
+    pedirJSON("/clientes?q=" + encodeURIComponent(q)).then(function (d) {
+      if (mio !== vClientes.n) return;
+      var el = $("#q-res"); if (!el) return;
+      var lista = listaDe(d, "personas"), filas = "";
+      for (var i = 0; i < lista.length; i++) {
+        var p = lista[i], L = p.lealtad || {};
+        filas += '<tr class="click" ' + act("ir", { n: "ficha", id: p.id }) + "><td><b>" + h(p.nombre) + '</b><div class="muted chico-t">#' + p.id + (p.creado_en ? " · alta " + fmtFecha(p.creado_en, false) : "") + '</div></td><td class="num">' + (L.visitas_totales || 0) + "</td><td>" + (L.sellos || 0) + "/5 " + (L.disponibles ? '<span class="chip verde">' + L.disponibles + " gratis</span>" : "") + "</td><td>" +
+                 (p.placas || []).map(function (x) { return '<span class="chip verde">' + h(x) + "</span>"; }).join(" ") + " " + (p.placas_por_confirmar || []).map(function (x) { return '<span class="chip">' + h(x) + "</span>"; }).join(" ") + "</td><td>" + fmtFecha(L.ultima_visita, false) + "</td></tr>";
+      }
+      el.innerHTML = lista.length ? '<div class="muted chico-t" style="margin:8px 0">' + (d.total > lista.length ? "Se muestran " + lista.length + " de " + d.total + ": afina la búsqueda." : pl(d.total, "cliente", "clientes")) + '</div><div class="tabla-wrap"><table><thead><tr><th>Cliente</th><th class="num">Visitas</th><th>Sellos</th><th>Placas</th><th>Última visita</th></tr></thead><tbody>' + filas + "</tbody></table></div>"
+                   : '<div class="vacio">Nadie casa con eso. El buscador también oye el sonido: prueba con menos letras.</div>';
+    }, function (e) { var el = $("#q-res"); if (el && e.message !== "codigo") el.innerHTML = errorHTML(e); });
+  }, 250);
+}
+vClientes.n = 0;
+
+// ---------------------------------------------------------------------
+// PANTALLA: FICHA
+// ---------------------------------------------------------------------
+function vFicha(v, pinta) {
+  pinta(cargando());
+  pedirJSON("/ficha?id=" + v.id).then(function (d) {
+    var p = d.ficha; if (!p) { pinta('<div class="aviso rojo">Esa ficha ya no existe.</div>'); return; }
+    var L = p.lealtad || {}, vs = listaDe(p, "visitas"), pls = listaDe(p, "placas_detalle");
+    var filas = "", i, x;
+    for (i = 0; i < vs.length; i++) {
+      x = vs[i];
+      var activa = x.estado === "activa";
+      filas += '<tr class="' + (activa ? "" : "apagada") + '"><td>' + fmtFecha(x.fecha) + '</td><td class="mono">' + h(x.ticket || "—") + "</td><td>" + h(x.producto ? x.producto + (x.variante ? " / " + x.variante : "") : (x.caja === "import" ? "del cuaderno" : "")) + '</td><td class="num">' + pesos(x.monto) + "</td><td>" + chipTipo(x.tipo) + "</td><td>" + (activa ? "" : '<span class="chip rojo">Descartada</span>') + '</td><td class="acc">' +
+               (activa ? '<div class="acciones"><button class="chico" ' + act("modalMover", x.id, p.id, p.nombre, x.ticket, x.fecha) + '>Cambiar de cliente</button><button class="chico" ' + act("modalTicket", x.id, x.ticket) + '>Corregir ticket</button><button class="chico" ' + act("modalTipo", x.id, x.tipo, x.ticket) + '>Tipo</button><button class="chico peligro suave" ' + act("modalQuitar", x.id, x.ticket, x.fecha, x.producto, x.monto, x.tipo) + ">Quitar</button></div>"
+                       : '<button class="chico" ' + act("modalRestaurar", x.id, x.ticket, x.fecha) + ">Restaurar</button>") + "</td></tr>";
+    }
+    var placas = "";
+    for (i = 0; i < pls.length; i++) {
+      x = pls[i];
+      placas += '<div class="item"><div class="q"><b class="mono">' + h(x.placa) + '</b><span class="muted chico-t">' + (x.confirmada ? "Confirmada" : "Sugerida por la foto, sin confirmar") + " · origen: " + h(x.origen || "—") + "</span></div><div class=\"acciones\">" +
+                (x.confirmada ? "" : '<button class="chico" ' + act("modalPlaca", "confirmar", p.id, x.placa) + ">Confirmar</button>") +
+                '<button class="chico" ' + act("modalMoverPlaca", p.id, x.placa) + '>Mover a otro cliente</button><button class="chico peligro suave" ' + act("modalPlaca", "quitar", p.id, x.placa) + ">Quitar</button></div></div>";
+    }
+    var html = '<div class="fila"><button class="chico" ' + act("volver") + '>← Volver</button><span class="pasos">Clientes <b>›</b> <b>' + h(p.nombre) + "</b></span></div>" +
+      '<div class="card"><div class="fila entre"><div><h1>' + h(p.nombre) + '</h1><div class="muted">#' + p.id + " · alta " + fmtFecha(p.creado_en, false) + " · " + (p.telefono ? "tel. " + h(p.telefono) : "sin teléfono") + (p.notas ? " · " + h(p.notas) : "") + (p.es_prueba ? ' · <span class="chip ambar">ficha de prueba</span>' : "") + "</div></div>" +
+      '<div class="acciones"><button ' + act("modalEditar", p.id, p.nombre, p.telefono || "", p.notas || "") + ">Editar datos</button><button " + act("ir", { n: "fusionar", a: p.id }) + '>Fusionar con…</button><button class="peligro ' + (p.puede_borrar ? "" : "suave") + '" ' + act("modalBorrar", p.id, p.nombre, p.puede_borrar, p.visitas_activas, p.placas_confirmadas, L.disponibles || 0) + ">Borrar ficha</button></div></div>" +
+      (p.puede_borrar ? "" : '<div class="muted chico-t" style="margin-top:8px">Esta ficha tiene ' + pl(p.visitas_activas, "visita activa", "visitas activas") + (p.placas_confirmadas ? " y " + pl(p.placas_confirmadas, "placa confirmada", "placas confirmadas") : "") + ": no se borra de un toque. Si es un duplicado, fusiónala; si las visitas son ajenas, quítalas una por una.</div>") + "</div>" +
+      '<div class="tiles"><div class="tile"><div class="v">' + (L.sellos || 0) + '/5</div><div class="r">sellos desde el último canje</div><div class="progreso"><i style="width:' + ((L.sellos || 0) * 20) + '%"></i></div></div>' +
+      '<div class="tile ' + (L.disponibles ? "ok" : "") + '"><div class="v">' + (L.disponibles || 0) + '</div><div class="r">lavados gratis disponibles</div></div>' +
+      '<div class="tile"><div class="v">' + (L.canjes || 0) + '</div><div class="r">canjes usados</div></div>' +
+      '<div class="tile"><div class="v">' + (L.visitas_totales || 0) + '</div><div class="r">visitas (' + (L.lavados_pagados || 0) + ' pagadas)</div></div>' +
+      '<div class="tile"><div class="v">' + pesos(p.gastado) + '</div><div class="r">gastado</div></div></div>' +
+      '<div class="grid2"><div class="card"><div class="fila entre"><h2>Placas</h2><button class="chico" ' + act("modalLigarPlaca", p.id) + ">+ Ligar placa</button></div>" + (placas || '<div class="vacio">Sin placas ligadas.</div>') + "</div>" +
+      '<div class="card"><h2>Lo que dice la cuenta</h2><div class="muted chico-t">La lealtad no se edita a mano: sale de las visitas. Se juntan 5 pagadas y la 6ta es gratis; al canjear, el contador vuelve a cero. Las cortesías quedan en el historial pero no suman ni consumen.</div><div style="margin-top:10px" class="chico-t">Última visita: <b>' + fmtFecha(L.ultima_visita) + "</b></div></div></div>" +
+      '<div class="card"><div class="fila entre"><h2>Visitas <span class="muted chico-t" style="font-weight:400">· ' + vs.length + ' en total</span></h2><button class="primario chico" ' + act("ir", { n: "agregar", persona: p.id, nombre: p.nombre }) + ">+ Agregar visita</button></div>" +
+      (vs.length ? '<div class="tabla-wrap"><table><thead><tr><th>Fecha</th><th>Ticket</th><th>Producto</th><th class="num">Monto</th><th>Tipo</th><th></th><th></th></tr></thead><tbody>' + filas + "</tbody></table></div>" : '<div class="vacio">Sin visitas. Esta ficha se puede borrar.</div>') + "</div>";
+    pinta(html);
+  }, function (e) { if (e.message !== "codigo") pinta(errorHTML(e)); });
+}
+function modalEditar(pid, nombre, tel, notas) {
+  abrirAccion({ titulo: "Editar datos",
+    extra: '<div class="form"><div class="campo"><label for="e-nombre">Nombre</label><input id="e-nombre" type="text" value="' + h(nombre) + '" ' + on("input", "previaRetrasada") + '></div><div class="campo"><label for="e-tel">Teléfono</label><input id="e-tel" type="text" value="' + h(tel) + '" ' + on("input", "previaRetrasada") + '></div><div class="campo"><label for="e-notas">Notas</label><input id="e-notas" type="text" value="' + h(notas) + '" ' + on("input", "previaRetrasada") + '></div></div>',
+    ruta: "/editar-ficha", faltante: "Falta el nombre.",
+    cuerpo: function () { var n = ($("#e-nombre") ? $("#e-nombre").value : "").trim(); return n ? { persona: pid, nombre: n, telefono: $("#e-tel").value, notas: $("#e-notas").value } : null; },
+    motivoDefecto: "Captura equivocada", boton: "Guardar" });
+}
+function modalBorrar(pid, nombre, puede, activas, confirmadas, disponibles) {
+  if (!puede) {
+    abrir("<h2>Esta ficha no se borra de un toque</h2><p><b>" + h(nombre) + "</b> tiene <b>" + pl(activas, "visita activa", "visitas activas") + "</b>" + (confirmadas ? " y <b>" + pl(confirmadas, "placa confirmada", "placas confirmadas") + "</b>" : "") + ". Borrarla se llevaría eso y " + (disponibles ? "<b>" + pl(disponibles, "lavado gratis", "lavados gratis") + " que ya se ganó</b>" : "sus sellos") + ".</p>" +
+          '<div class="aviso">Hay dos caminos, y los dos dejan ver cada visita antes de que desaparezca:</div><div class="grid2"><div class="col"><b>Es un duplicado de otro cliente</b><p class="muted chico-t">Las visitas y placas pasan a la ficha buena y ésta desaparece. Nadie pierde un sello.</p><button class="primario" ' + act("fundirCon", pid) + '>Fusionar con…</button></div><div class="col"><b>Las visitas no son de nadie</b><p class="muted chico-t">Quítalas una por una, con motivo. Cuando la ficha quede vacía, el botón de borrar se activa.</p><button ' + act("cerrar") + '>Ver sus visitas</button></div></div><div class="pie"><button ' + act("cerrar") + ">Cancelar</button></div>");
+    return;
+  }
+  abrirAccion({ titulo: "Borrar ficha", intro: "<p><b>" + h(nombre) + "</b> (#" + pid + ") no tiene visitas activas ni placas confirmadas. Se borra y queda copia en la bitácora para poder recrearla.</p>",
+    ruta: "/borrar-ficha", cuerpo: function () { return { persona: pid }; }, motivoDefecto: "Captura equivocada", peligro: true, boton: "Borrar ficha",
+    alTerminar: function () { ir({ n: "clientes", q: "" }, false); } });
+}
+function fundirCon(pid) { cerrar(); ir({ n: "fusionar", a: pid }); }
+function modalPlaca(que, pid, placa) {
+  if (que === "confirmar") {
+    abrirAccion({ titulo: "Confirmar la placa " + placa, intro: "<p>Pasa de sugerida por la foto a confirmada: la cámara de la caja propondrá a este cliente cuando la lea.</p>", ruta: "/confirmar-placa", cuerpo: function () { return { persona: pid, placa: placa }; }, motivoDefecto: "Captura equivocada", boton: "Confirmar placa" });
+  } else {
+    abrirAccion({ titulo: "Quitar la placa " + placa, intro: "<p>Deja de estar ligada a este cliente. Sus visitas no se tocan; sólo la cámara dejará de proponerlo al leer esa placa.</p>", ruta: "/quitar-placa", cuerpo: function () { return { persona: pid, placa: placa }; }, motivoDefecto: "Cliente equivocado", peligro: true, boton: "Quitar" });
+  }
+}
+function modalLigarPlaca(pid) {
+  abrirAccion({ titulo: "Ligar una placa", intro: '<div class="muted chico-t">Queda confirmada: la ligas tú, viendo al cliente. Si la placa ya es de otro cliente, se queda en los dos (un carro puede tener dos dueños en lealtad).</div>',
+    extra: '<div class="campo"><label for="l-placa">Placa</label><input id="l-placa" type="text" placeholder="AAA-100-A" style="text-transform:uppercase" ' + on("input", "previaRetrasada") + "></div>",
+    ruta: "/ligar-placa", faltante: "Escribe la placa completa.",
+    cuerpo: function () { var t = ($("#l-placa") ? $("#l-placa").value : "").trim().toUpperCase(); return t.replace(/[^A-Z0-9]/g, "").length >= 5 ? { persona: pid, placa: t } : null; },
+    motivoDefecto: "Reposición (la caja no lo registró)", boton: "Ligar" });
+}
+function modalMoverPlaca(pid, placa) {
+  DESTINO.mp = null;
+  abrirAccion({ titulo: "Mover la placa " + placa, intro: "<p>Sale de este cliente y pasa, confirmada, al cliente que elijas.</p>", extra: buscadorDestino("mp", pid),
+    ruta: "/mover-placa", faltante: "Elige al cliente destino.",
+    cuerpo: function () { var d = +($("#mp-dest") ? $("#mp-dest").value : 0); return d ? { persona: pid, placa: placa, destino: d } : null; },
+    motivoDefecto: "Cliente equivocado", boton: "Mover" });
+}
+function modalQuitar(vid, ticket, fecha, producto, monto, tipo) {
+  abrirAccion({ titulo: "Quitar visita", intro: "<p>Ticket <b>" + h(ticket || "sin ticket") + "</b> · " + fmtFecha(fecha) + (producto ? " · " + h(producto) : "") + " · " + pesos(monto) + " · " + chipTipo(tipo) + '</p><p class="muted chico-t">No se borra: se marca como descartada y se puede restaurar desde la ficha o desde la bitácora.</p>',
+    ruta: "/quitar-visita", cuerpo: function () { return { visita: vid }; }, peligro: true, boton: "Quitar visita" });
+}
+function modalRestaurar(vid, ticket, fecha) {
+  abrirAccion({ titulo: "Restaurar visita", intro: "<p>Ticket <b>" + h(ticket || "sin ticket") + "</b> · " + fmtFecha(fecha) + ". Vuelve a contar para la lealtad.</p>",
+    ruta: "/restaurar-visita", cuerpo: function () { return { visita: vid }; }, motivoDefecto: "Captura equivocada", boton: "Restaurar" });
+}
+function modalMover(vid, pid, nombre, ticket, fecha) {
+  DESTINO.mv = null;
+  abrirAccion({ titulo: "Cambiar la visita de cliente", intro: "<p>Ticket <b>" + h(ticket || "sin ticket") + "</b> · " + fmtFecha(fecha) + ". Hoy está a nombre de <b>" + h(nombre) + "</b>.</p>", extra: buscadorDestino("mv", pid),
+    ruta: "/mover-visita", faltante: "Elige al cliente destino para ver cómo quedan las dos cuentas.",
+    cuerpo: function () { var d = +($("#mv-dest") ? $("#mv-dest").value : 0); return d ? { visita: vid, persona: d } : null; },
+    motivoDefecto: "Cliente equivocado", boton: "Mover", ancho: true });
+}
+function modalTipo(vid, actual, ticket) {
+  var radios = "", tipos = ["normal", "canje", "cortesia"];
+  for (var i = 0; i < tipos.length; i++) radios += '<label class="' + (actual === tipos[i] ? "sel" : "") + '"><input type="radio" name="tipo" value="' + tipos[i] + '" ' + (actual === tipos[i] ? "checked" : "") + " " + on("change", "radioTipo") + ">" + TIPO[tipos[i]][0] + "</label>";
+  abrirAccion({ titulo: "Cambiar el tipo de la visita", intro: "<p>Ticket <b>" + h(ticket || "sin ticket") + "</b>. Hoy es " + chipTipo(actual) + ".</p>",
+    extra: '<div class="radios">' + radios + '</div><div class="muted chico-t">Normal suma sello. Canje consume un gratis y pone el contador en cero. Cortesía queda en el historial sin sumar ni consumir.</div>',
+    ruta: "/cambiar-tipo", faltante: "Elige otro tipo.",
+    cuerpo: function () { var r = document.querySelector('#modal input[name=tipo]:checked'); return r && r.value !== actual ? { visita: vid, tipo: r.value } : null; },
+    boton: "Guardar" });
+}
+function radioTipo() {
+  var ls = document.querySelectorAll("#modal .radios label");
+  for (var i = 0; i < ls.length; i++) ls[i].classList.toggle("sel", ls[i].querySelector("input").checked);
+  previa();
+}
+
+// ---------------------------------------------------------------------
+// PANTALLA: FUSIONAR
+// ---------------------------------------------------------------------
+function vFundir(v, pinta) {
+  if (!v.b) {
+    DESTINO.fu = function (id) { ir({ n: "fusionar", a: v.a, b: id, queda: v.a }, false); };
+    pedirJSON("/ficha?id=" + v.a).then(function (d) {
+      pinta('<div class="fila"><button class="chico" ' + act("volver") + '>← Volver</button><span class="pasos">Clientes <b>›</b> ' + h(d.ficha.nombre) + " <b>›</b> <b>Fusionar</b></span></div>" +
+            '<div class="card"><h2>¿Con quién se fusiona ' + h(d.ficha.nombre) + '?</h2><div class="muted chico-t" style="margin-bottom:10px">Busca la otra ficha. Después vas a ver las dos lado a lado y elegir cuál se queda.</div>' + buscadorDestino("fu", v.a) + "</div>");
+    }, function (e) { if (e.message !== "codigo") pinta(errorHTML(e)); });
+    return;
+  }
+  pinta(cargando());
+  var mi = TOKEN;   // auditoria 10/oct (F-1): la respuesta tardia no toca ACC ni pinta la previa si ya se fue a otra vista
+  Promise.all([pedirJSON("/ficha?id=" + v.a), pedirJSON("/ficha?id=" + v.b)]).then(function (rs) {
+    if (mi !== TOKEN) return;
+    var a = rs[0].ficha, b = rs[1].ficha;
+    if (!a || !b) { pinta('<div class="aviso rojo">Una de las dos fichas ya no existe.</div>'); return; }
+    var queda = v.queda || a.id, vase = queda === a.id ? b.id : a.id;
+    function col(p, otra) {
+      var L = p.lealtad || {}, esQ = p.id === queda;
+      var placas = (p.placas || []).map(function (x) { return '<span class="chip verde">' + h(x) + "</span>"; }).concat((p.placas_por_confirmar || []).map(function (x) { return '<span class="chip">' + h(x) + "</span>"; })).join(" ") || "—";
+      return '<div class="col ' + (esQ ? "queda" : "vase") + '"><div class="enc"><b style="font-size:16px">' + h(p.nombre) + '</b><label class="chip ' + (esQ ? "verde" : "") + '" style="cursor:pointer"><input type="radio" name="queda" ' + (esQ ? "checked" : "") + " " + on("change", "quedaRadio", p.id) + "> " + (esQ ? "Se queda ésta" : "Que se quede ésta") + "</label></div>" +
+             '<dl class="kv"><dt>Ficha</dt><dd>#' + p.id + " · alta " + fmtFecha(p.creado_en, false) + "</dd><dt>Teléfono</dt><dd>" + h(p.telefono || "—") + "</dd><dt>Notas</dt><dd>" + h(p.notas || "—") + "</dd><dt>Visitas</dt><dd>" + (L.visitas_totales || 0) + " (" + pl(L.lavados_pagados || 0, "pagada", "pagadas") + ", " + pl(L.canjes || 0, "canje", "canjes") + ")</dd><dt>Sellos</dt><dd>" + (L.sellos || 0) + "/5 · " + (L.disponibles || 0) + " gratis</dd><dt>Gastado</dt><dd>" + pesos(p.gastado) + "</dd><dt>Última visita</dt><dd>" + fmtFecha(L.ultima_visita) + "</dd><dt>Placas</dt><dd>" + placas + "</dd></dl>" +
+             '<div class="muted chico-t" style="margin-top:8px">' + (esQ ? "Conserva su nombre, teléfono y notas. Recibe todo lo de la otra." : "Sus visitas y placas pasan a la otra ficha. Esta ficha desaparece (queda copia en la bitácora).") + "</div></div>";
+    }
+    ACC = { ruta: "/fundir", cuerpo: function () { return { queda: queda, va: vase }; }, boton: "Fusionar fichas", motivoDefecto: "Ficha duplicada",
+            alTerminar: function () { NAV = NAV.filter(function (x) { return x.n !== "fusionar"; }); ir({ n: "ficha", id: queda }, false); } };
+    pinta('<div class="fila"><button class="chico" ' + act("volver") + '>← Volver</button><span class="pasos">Clientes <b>›</b> <b>Fusionar dos fichas</b></span></div>' +
+          '<div class="card"><h2>Fusionar dos fichas</h2><div class="muted chico-t">Elige cuál se queda. Lo que ves abajo lo calculó el servidor sin guardar nada.</div></div>' +
+          '<div class="lado">' + col(a, b) + col(b, a) + "</div>" +
+          '<div class="card"><h2>Qué va a pasar</h2><div id="acc-prev">' + cargando("Calculando la vista previa…") + '</div><div class="muted chico-t" style="margin-top:8px">La cuenta se recalcula con las visitas de las dos en orden de fecha. Por eso puede subir: sellos que estaban partidos se juntan. Se puede deshacer desde la bitácora mientras la ficha resultante no reciba movimientos nuevos.</div></div>' +
+          '<div class="card form">' + selMotivo("acc-motivo", "Ficha duplicada") + '<div class="pie"><button ' + act("volver") + '>Cancelar</button><button class="primario" id="acc-ok" disabled ' + act("confirmarAccion") + ">Fusionar fichas</button></div></div>");
+    previa();
+  }, function (e) { if (e.message !== "codigo") pinta(errorHTML(e)); });
+}
+function quedaRadio(pid) { VISTA.queda = pid; render(); }
+
+// ---------------------------------------------------------------------
+// PANTALLA: AGREGAR VISITA POR TICKET
+// ---------------------------------------------------------------------
+function buscarTicket() { VISTA.ticket = ($("#ag-ticket") ? $("#ag-ticket").value : "").trim(); VISTA.tipo = null; render(); }
+function buscarTicketEnter(ev) { if (ev.key === "Enter") buscarTicket(); }
+function tipoAgregar(t) { VISTA.tipo = t; render(); }
+function cambiarCliente() { VISTA.persona = null; VISTA.nombre = null; render(); }
+function vAgregar(v, pinta) {
+  var t = (v.ticket || "").trim();
+  var cabeza = '<div class="fila"><button class="chico" ' + act("volver") + '>← Volver</button><span class="pasos">Clientes <b>›</b> <b>Agregar visita</b></span></div>' +
+               '<div class="card form"><h2>Agregar una visita por ticket</h2><div class="muted chico-t">Teclea el número del recibo de Zettle. El panel trae la venta y el carro; tú dices de quién es.</div>' +
+               '<div class="campo"><label for="ag-ticket">Número de ticket</label><div class="buscar"><input id="ag-ticket" type="text" inputmode="numeric" placeholder="Número del recibo" value="' + h(t) + '" ' + on("keydown", "buscarTicketEnter") + "><button " + act("buscarTicket") + '>Buscar</button></div></div><div id="ag-cuerpo">';
+  if (!/^\d{3,9}$/.test(t)) { pinta(cabeza + (t ? '<div class="aviso rojo">Escribe sólo el número del recibo.</div>' : "") + "</div></div>"); return; }
+  pinta(cabeza + cargando("Buscando la venta…") + "</div></div>");
+  DESTINO.ag = function (id, nombre) { VISTA.persona = id; VISTA.nombre = nombre; render(); };
+  var mi = TOKEN;   // auditoria 10/oct (F-1): misma guarda que en Fusionar
+  pedirJSON("/venta?ticket=" + encodeURIComponent(t)).then(function (d) {
+    if (mi !== TOKEN) return;
+    var el = $("#ag-cuerpo"); if (!el) return;
+    var ve = d.venta;
+    if (!ve) { el.innerHTML = '<div class="aviso rojo">Ese ticket no existe en Zettle. Revisa el número en el recibo.</div>'; return; }
+    if (ve.visita) { el.innerHTML = '<div class="aviso rojo">Ese ticket ya está registrado a nombre de <b>' + h(ve.visita.nombre) + "</b> (" + fmtFecha(ve.visita.fecha) + "). Un lavado, un cliente. Si es el cliente equivocado, ve a su ficha y usa «Cambiar de cliente».</div>"; return; }
+    var prods = (ve.productos || []).map(function (p) { return h(p.nombre) + (p.variante ? " / " + h(p.variante) : ""); }).join(", ");
+    var tipo = v.tipo || ve.tipo_propuesto || "normal", radios = "", tipos = ["normal", "canje", "cortesia"];
+    for (var i = 0; i < tipos.length; i++) radios += '<label class="' + (tipo === tipos[i] ? "sel" : "") + '"><input type="radio" name="tipo" value="' + tipos[i] + '" ' + (tipo === tipos[i] ? "checked" : "") + " " + on("change", "tipoAgregar") + ">" + TIPO[tipos[i]][0] + "</label>";
+    var aviso = ve.cancelado ? '<div class="aviso rojo">Ese lavado está cancelado (devolución): no da sello.</div>' : (tipo !== (ve.tipo_propuesto || "normal") ? '<div class="aviso">Zettle dice que este ticket es ' + chipTipo(ve.tipo_propuesto || "normal") + " y lo vas a registrar como " + chipTipo(tipo) + ". El motivo tiene que explicarlo.</div>" : "");
+    el.innerHTML = '<div class="venta"><div><b>Venta</b>' + fmtFecha(ve.hora) + "</div><div><b>Producto</b>" + (prods || h(ve.producto || "—")) + "</div><div><b>Monto</b>" + pesos(ve.monto) + "</div><div><b>Carro</b>" + (ve.carro_id ? "#" + ve.carro_id : "sin carro (archivo)") + "</div><div><b>Cajera</b>" + h(ve.cajero || "—") + "</div><div><b>Nota de la cajera</b>" + (ve.nota ? "«" + h(ve.nota) + "»" : "—") + "</div></div>" +
+      '<div class="campo"><label>Cliente</label>' + (v.persona ? '<div class="fila"><span class="chip verde" style="font-size:14px;padding:6px 12px">' + h(v.nombre || ("#" + v.persona)) + '</span><button class="liso chico" ' + act("cambiarCliente") + ">Cambiar</button></div>" : buscadorDestino("ag", 0)) + "</div>" +
+      '<div class="campo"><label>Tipo de visita</label><div class="radios">' + radios + '</div><div class="muted chico-t">Lo propone el producto de Zettle: «Gratis / 6to Lavado» es canje, otros «Gratis» son cortesía.</div></div>' + aviso +
+      '<div class="campo"><label>Fecha de la visita</label><div><b>' + fmtFecha(ve.hora) + '</b> <span class="muted chico-t">· la del lavado, no la de hoy. Así cae en el día correcto de cualquier cuenta.</span></div></div>' +
+      '<div id="acc-prev"></div>' + selMotivo("acc-motivo", "Reposición (la caja no lo registró)") +
+      '<div class="pie"><button ' + act("volver") + '>Cancelar</button><button class="primario" id="acc-ok" disabled ' + act("confirmarAccion") + ">Registrar visita</button></div>";
+    ACC = { ruta: "/agregar-visita", faltante: "Elige al cliente para ver cómo queda su cuenta.", boton: "Registrar visita", motivoDefecto: "Reposición (la caja no lo registró)",
+            cuerpo: function () { return VISTA.persona ? { ticket: +t, persona: VISTA.persona, tipo: tipo } : null; },
+            alTerminar: function () { var p = VISTA.persona; NAV = NAV.filter(function (x) { return x.n !== "agregar"; }); ir({ n: "ficha", id: p }, false); } };
+    previa();
+  }, function (e) { var el = $("#ag-cuerpo"); if (el && e.message !== "codigo") el.innerHTML = errorHTML(e); });
+}
+
+// ---------------------------------------------------------------------
+// PANTALLA: BITÁCORA
+// ---------------------------------------------------------------------
+function filtroQuien(x) { VISTA.quien = x; render(); }
+function filtroAccion(x) { VISTA.accion = x; render(); }
+var filtroTexto = retrasar(function (x) { VISTA.t = x; render(); var q = $("#bit-q"); if (q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }, 300);
+function deshacer(id, resumen) { abrirSimple("¿Deshacer?", "Se deshace: <b>" + h(resumen) + "</b>. Las fichas vuelven a como estaban antes de ese movimiento.", "/deshacer", { id: id }, "Deshacer"); }
+function vBitacora(v, pinta) {
+  pinta(cargando());
+  var qs = "?quien=" + encodeURIComponent(v.quien || "") + "&accion=" + encodeURIComponent(v.accion || "") + "&t=" + encodeURIComponent(v.t || "");
+  pedirJSON("/bitacora" + qs).then(function (d) {
+    var lista = listaDe(d, "movimientos"), filas = "", acciones = {}, i, e;
+    for (i = 0; i < lista.length; i++) acciones[lista[i].accion] = true;
+    for (i = 0; i < lista.length; i++) {
+      e = lista[i];
+      var c = e.puede_deshacer || {};
+      filas += '<tr class="' + (e.deshecho ? "apagada" : "") + '"><td class="mono">' + fmtFecha(e.hora) + "</td><td>" + h(e.quien) + '</td><td><span class="chip ' + (/Borrar|Quitar|Fusionar/.test(e.accion) ? "rojo" : /Deshacer/.test(e.accion) ? "ambar" : "") + '">' + h(e.accion) + "</span></td><td>" + h(e.resumen) +
+               "<details><summary>antes / después</summary><div class=\"lado\" style=\"margin-top:6px\"><pre class=\"json\">" + h(JSON.stringify(e.antes, null, 1)) + '</pre><pre class="json">' + h(JSON.stringify(e.despues, null, 1)) + "</pre></div></details></td><td>" + h(e.motivo || "") + (e.nota ? '<div class="muted chico-t">' + h(e.nota) + "</div>" : "") + '</td><td class="acc">' +
+               (e.deshecho ? '<span class="chip">Deshecho' + (e.deshecho_por ? " · " + h(e.deshecho_por) : "") + "</span>" : c.ok ? '<button class="chico" ' + act("deshacer", e.id, e.resumen) + ">Deshacer</button>" : '<span class="muted chico-t">' + h(c.por || "") + "</span>") + "</td></tr>";
+    }
+    var ops = '<option value="">Todas las acciones</option>';
+    for (var a in acciones) if (acciones.hasOwnProperty(a)) ops += "<option " + (v.accion === a ? "selected" : "") + ">" + h(a) + "</option>";
+    // Quienes: los de hoy (admin_quienes) mas cualquier nombre que ya este en la bitacora.
+    var nombres = {}, k;
+    for (k in QUIENES) if (QUIENES.hasOwnProperty(k)) nombres[QUIENES[k]] = true;
+    for (i = 0; i < lista.length; i++) nombres[lista[i].quien] = true;
+    var opsQ = '<option value="">Todos</option>';
+    for (k in nombres) if (nombres.hasOwnProperty(k)) opsQ += "<option " + (v.quien === k ? "selected" : "") + ">" + h(k) + "</option>";
+    pinta('<div class="fila entre"><div><h1>Bitácora</h1><div class="muted">Todo lo que se hizo desde el panel: quién, cuándo, qué y por qué. No se edita; se deshace.</div></div><span class="muted chico-t">' + pl(lista.length, "movimiento", "movimientos") + (lista.length >= 100 ? " (los últimos 100)" : "") + "</span></div>" +
+          '<div class="card"><div class="fila"><select style="width:auto" ' + on("change", "filtroQuien") + ">" + opsQ + '</select><select style="width:auto" ' + on("change", "filtroAccion") + ">" + ops + '</select><input id="bit-q" type="search" style="flex:1;min-width:160px" placeholder="Buscar en el resumen o el motivo…" value="' + h(v.t || "") + '" ' + on("input", "filtroTexto") + "></div>" +
+          (lista.length ? '<div class="tabla-wrap" style="margin-top:12px"><table><thead><tr><th>Cuándo</th><th>Quién</th><th>Acción</th><th>Qué</th><th>Motivo</th><th></th></tr></thead><tbody>' + filas + "</tbody></table></div>" : '<div class="vacio">Todavía no se ha hecho nada desde el panel. Lo que hagas en Pendientes o en una ficha aparece aquí.</div>') +
+          '<div class="muted chico-t" style="margin-top:10px">Deshacer sólo se ofrece mientras las fichas de ese movimiento no hayan cambiado después. Si cambiaron, se corrige a mano con los datos de «antes».</div></div>');
+  }, function (e) { if (e.message !== "codigo") pinta(errorHTML(e)); });
+}
+
+// ---------------------------------------------------------------------
+// DESPACHO DE ACCIONES Y ARRANQUE
+// ---------------------------------------------------------------------
+var ACT = { ir: ir, volver: volver, cerrar: cerrar, render: render, confirmarAccion: confirmarAccion, confirmarSimple: confirmarSimple, previaRetrasada: previaRetrasada,
+  modalDescartarPar: modalDescartarPar, dudosaVista: dudosaVista, pendienteVisto: pendienteVisto, pendientesVistos: pendientesVistos, avisoAtendido: avisoAtendido, modalFecha: modalFecha, modalTicket: modalTicket,
+  setQ: setQ, modalEditar: modalEditar, modalBorrar: modalBorrar, fundirCon: fundirCon, modalPlaca: modalPlaca, modalLigarPlaca: modalLigarPlaca, modalMoverPlaca: modalMoverPlaca,
+  modalQuitar: modalQuitar, modalRestaurar: modalRestaurar, modalMover: modalMover, modalTipo: modalTipo, radioTipo: radioTipo, pintarDestinos: pintarDestinos, elegirDestino: elegirDestino,
+  quedaRadio: quedaRadio, buscarTicket: buscarTicket, buscarTicketEnter: buscarTicketEnter, tipoAgregar: tipoAgregar, cambiarCliente: cambiarCliente,
+  filtroQuien: filtroQuien, filtroAccion: filtroAccion, filtroTexto: filtroTexto, deshacer: deshacer };
+function despachar(e, tipoEvento) {
+  var el = e.target.closest("[data-act]"); if (!el) return;
+  var esperado = el.getAttribute("data-on") || "click"; if (esperado !== tipoEvento) return;
+  var fn = ACT[el.getAttribute("data-act")]; if (!fn) return;
+  var args = JSON.parse(el.getAttribute("data-args") || "[]");
+  if (tipoEvento === "input" || tipoEvento === "change") args.push(el.value);
+  if (tipoEvento === "keydown") args.push(e);
+  if (tipoEvento === "click" && el.tagName === "BUTTON" && el.disabled) return;
+  fn.apply(null, args);
+}
+document.addEventListener("click", function (e) { despachar(e, "click"); });
+document.addEventListener("input", function (e) { despachar(e, "input"); });
+document.addEventListener("change", function (e) { despachar(e, "change"); });
+document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("#modal-fondo").hidden) { cerrar(); return; } despachar(e, "keydown"); });
+$("#modal-fondo").addEventListener("click", function (e) { if (e.target.id === "modal-fondo") cerrar(); });
+
+cargarCredenciales();
+if (CODIGO && QUIEN) arrancar(); else { pedirCodigo(false); if (CODIGO) { $("#campo").value = CODIGO; pedirQuienes(); } }
+</script>
