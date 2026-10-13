@@ -1072,7 +1072,7 @@ function cajaHTML(v, d) {
     "<dt>Visitas</dt><dd>Registradas en la caja, ligadas a su lavado.</dd>" +
     "<dt>No asignar</dt><dd>Sin visita, pero con captura de la cámara pegada: pasó por \"No asignar a cliente\". Cuenta como atendido.</dd>" +
     "<dt>Sin tocar</dt><dd>Sin visita y sin captura. La omisión real, o un cliente que declinó sin que se tomara la foto. Si después se le repone la visita desde este panel, sigue contando aquí (la cajera no lo registró) pero el renglón lo dice. Una visita que se quita desde el panel deja el carro como \"no asignar\" si tenía captura.</dd>" +
-    "<dt>Placa leída</dt><dd>Capturas de la cámara de caja en que la placa se leyó y sigue siendo la foto del carro. Si el supervisor retomó la foto en el patio, cuenta como no leída: es una aproximación que resta a lo más 1 o 2 puntos.</dd>" +
+    "<dt>Placa leída</dt><dd>Capturas de la cámara de caja en que la cámara leyó la placa. Desde el 12/oct/2026 ese dato se guarda en el momento (aunque el supervisor retome la foto después); una placa tecleada por la cajera no cuenta como leída. Para lo anterior se deduce de la foto del carro, y ahí una retoma del patio puede restar 1 o 2 puntos.</dd>" +
     "<dt>Canjes / 6to</dt><dd>Lavados gratis vendidos contra los registrados como canje. Deben ser iguales.</dd>" +
     "<dt>Cobro → registro</dt><dd>Segundos entre el cobro en Zettle y el registro en la caja.</dd>" +
     "<dt>Sola</dt><dd>Ese día ningún otro usuario de Zettle cobró un lavado. Cualquier usuario que cobre cuenta como cajera.</dd>" +
