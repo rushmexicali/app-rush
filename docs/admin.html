@@ -141,7 +141,10 @@
   .rango input[type=date] { background:var(--card); border:1px solid var(--borde); border-radius:8px; padding:8px 10px; min-width:150px; }
   .presets { display:flex; gap:6px; flex-wrap:wrap; }
   .presets button.on { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); }
-  .comp { display:grid; }
+  /* Una columna por cajera (--cols la pone la pantalla); en angosto las columnas se encogen antes de desplazar. */
+  .comp { display:grid; grid-template-columns: minmax(180px,1.4fr) repeat(var(--cols, 2), minmax(110px,1fr)); }
+  @media (max-width:520px) { .comp { grid-template-columns: minmax(120px,1.2fr) repeat(var(--cols, 2), minmax(84px,1fr)); } }
+  .tile.mal { border-color:var(--rojo); }
   .comp > div { padding:9px 10px; border-bottom:1px solid var(--borde); min-width:0; }
   .comp .enc { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
   .comp .enc.caj { font-size:15px; text-transform:none; letter-spacing:0; color:var(--fg); font-weight:800; }
@@ -922,6 +925,9 @@ function vBitacora(v, pinta) {
 // SEPARADA por cajera, con las mismas columnas, para comparar.
 // ---------------------------------------------------------------------
 var CAJA_SIN_PU = false;
+// El ultimo reporte pintado (para que el interruptor "sin pickups" no vuelva a
+// consultar) y el ultimo rango elegido (para que volver a la pestana no lo pierda).
+var CAJA_CACHE = null, CAJA_RANGO = null;
 var DIAS_SEMANA = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
 function hoyLocal() {
   try {
@@ -946,17 +952,30 @@ function segs(s) { if (s == null) return "—"; s = Math.round(s); return s < 60
 function esFecha(x) { return /^\d{4}-\d{2}-\d{2}$/.test(String(x || "")); }
 
 function vCaja(v, pinta) {
-  if (!esFecha(v.desde) || !esFecha(v.hasta)) { var hoy = hoyLocal(); v.hasta = hoy; v.desde = sumarDias(hoy, -6); }
+  if (!esFecha(v.desde) || !esFecha(v.hasta)) {
+    if (CAJA_RANGO) { v.desde = CAJA_RANGO.desde; v.hasta = CAJA_RANGO.hasta; v.preset = CAJA_RANGO.preset; }
+    else { var hoy = hoyLocal(); v.hasta = hoy; v.desde = sumarDias(hoy, -6); v.preset = "7"; }
+  }
+  CAJA_RANGO = { desde: v.desde, hasta: v.hasta, preset: v.preset };
+  // El interruptor "sin pickups" solo cambia columnas: se repinta lo ya bajado.
+  if (CAJA_CACHE && CAJA_CACHE.fresca && CAJA_CACHE.desde === v.desde && CAJA_CACHE.hasta === v.hasta) {
+    CAJA_CACHE.fresca = false; pinta(cajaHTML(v, CAJA_CACHE.d)); return;
+  }
   pinta(cargando());
+  // Sin lista=1: la vista principal no usa la lista de sin tocar, solo el conteo.
   pedirJSON("/reporte-cajeras?desde=" + encodeURIComponent(v.desde) + "&hasta=" + encodeURIComponent(v.hasta)).then(function (d) {
-    if (!d || !d.cajeras) { pinta(errorHTML("La respuesta no trae el reporte.")); return; }
+    if (!d || !d.cajeras) { pinta(cajaControles(v) + errorHTML("La respuesta no trae el reporte.")); return; }
+    CAJA_CACHE = { desde: v.desde, hasta: v.hasta, d: d, fresca: false };
     pinta(cajaHTML(v, d));
-  }, function (e) { if (e.message !== "codigo") pinta(errorHTML(e)); });
+  // Con el error se pintan tambien los controles: un rango de mas de 120 dias
+  // lo rechaza la base, y sin las casillas el dueno no tenia como corregirlo
+  // ("Reintentar" repetia el mismo rango).
+  }, function (e) { if (e.message !== "codigo") pinta(cajaControles(v) + errorHTML(e)); });
 }
 
 function cajaControles(v) {
   var hoy = hoyLocal();
-  var presets = [["sem", "Esta semana"], ["ant", "Semana pasada"], ["14", "Últimos 14 días"], ["mes", "Este mes"], ["ayer", "Ayer"]];
+  var presets = [["7", "Últimos 7 días"], ["sem", "Esta semana"], ["ant", "Semana pasada"], ["14", "Últimos 14 días"], ["mes", "Este mes"], ["ayer", "Ayer"]];
   var html = '<div class="card"><div class="rango">' +
     '<div class="campo"><label for="caja-desde">Del</label><input type="date" id="caja-desde" value="' + h(v.desde) + '" max="' + hoy + '" ' + on("change", "cajaDesde") + "></div>" +
     '<div class="campo"><label for="caja-hasta">al</label><input type="date" id="caja-hasta" value="' + h(v.hasta) + '" max="' + hoy + '" ' + on("change", "cajaHasta") + "></div>" +
@@ -978,8 +997,8 @@ function cajaHTML(v, d) {
   var canjesOk = T.canjes === T.sextos;
   html += '<div class="tiles">' +
     '<div class="tile"><div class="v">' + T.carros + '</div><div class="r">carros cobrados' + (unDia ? "" : " · " + pl(T.turnos, "día", "días")) + "</div></div>" +
-    '<div class="tile ' + (T.efic >= 97 ? "ok" : T.efic >= 90 ? "ojo" : "") + '"><div class="v">' + T.efic + '%</div><div class="r">eficiencia de caja<br><span class="chico-t">' + T.visitas + " visitas + " + T.no_asignar + " no asignar</span></div></div>" +
-    '<div class="tile ' + (T.sin_tocar ? "ojo" : "ok") + '"><div class="v">' + T.sin_tocar + '</div><div class="r">lavados <a ' + act("cajaSinTocar", null) + ">sin tocar</a></div></div>" +
+    '<div class="tile ' + (T.efic >= 97 ? "ok" : T.efic >= 90 ? "ojo" : "mal") + '"><div class="v">' + T.efic + '%</div><div class="r">eficiencia de caja<br><span class="chico-t">' + T.visitas + " visitas + " + T.no_asignar + " no asignar</span></div></div>" +
+    '<div class="tile ' + (T.sin_tocar ? "ojo" : "ok") + '"><div class="v">' + T.sin_tocar + '</div><div class="r">lavados <button type="button" class="liso chico" ' + act("cajaSinTocar", null) + ">sin tocar</button></div></div>" +
     '<div class="tile ' + (canjesOk ? "ok" : "ojo") + '"><div class="v">' + T.canjes + " / " + T.sextos + '</div><div class="r">canjes registrados / 6to vendidos</div></div>' +
     '<div class="tile"><div class="v">' + (CAJA_SIN_PU ? pctTxt(T.leidas_sin_pu, T.capturas_sin_pu) : pctTxt(T.leidas, T.capturas)) + '</div><div class="r">placa leída en la captura' + (CAJA_SIN_PU ? " (sin pickups)" : "") + "</div></div>" +
     '<div class="tile"><div class="v">' + segs(T.med_s) + '</div><div class="r">cobro → registro, mediana</div></div>' +
@@ -996,20 +1015,20 @@ function cajaHTML(v, d) {
   function fila(nombre, campo, fmt, cmp) {
     var vals = [], k, s = '<div class="lbl">' + nombre + "</div>";
     for (k = 0; k < caj.length; k++) vals.push(typeof campo === "function" ? campo(caj[k].total) : caj[k].total[campo]);
-    var g = cmp ? gana(vals, cmp === "mayor") : [];
+    // Con una sola cajera no hay "mejor": sin rival, el verde se leia como calificacion.
+    var g = (cmp && caj.length > 1) ? gana(vals, cmp === "mayor") : [];
     for (k = 0; k < caj.length; k++) s += '<div class="num ' + (g[k] || "") + '">' + (fmt ? fmt(vals[k], caj[k].total, k) : h(vals[k])) + "</div>";
     return s;
   }
   function conPct(base) { return function (x, tt) { return x + '<span class="pct">' + pctTxt(x, tt[base]) + "</span>"; }; }
-  var cols = "minmax(180px,1.4fr) repeat(" + caj.length + ", minmax(110px,1fr))";
   html += '<div class="card"><div class="fila entre"><h2>' + (caj.length > 1 ? "Lado a lado" : "Totales") + '</h2><span class="nota">' + (caj.length > 1 ? "Verde = la mejor en ese renglón" : "Sólo una cajera cobró en este rango") + "</span></div>" +
-    '<div class="tabla-wrap"><div class="comp" style="grid-template-columns:' + cols + '"><div class="enc"></div>';
+    '<div class="tabla-wrap"><div class="comp" style="--cols:' + caj.length + '"><div class="enc"></div>';
   for (i = 0; i < caj.length; i++) html += '<div class="enc caj num">' + h(caj[i].cajera) + '<div class="turno">' + pl(caj[i].total.turnos, "día", "días") + "</div></div>";
   html += '<div class="sec">Cobertura</div>' +
     fila("Carros cobrados", "carros") +
     fila("Visitas registradas", "visitas", conPct("carros")) +
     fila("\"No asignar a cliente\"", "no_asignar") +
-    fila("Sin tocar", "sin_tocar", function (x, tt, k) { return "<a " + act("cajaSinTocar", caj[k].cajera) + ">" + x + "</a>"; }, "menor") +
+    fila("Sin tocar", "sin_tocar", function (x, tt, k) { return '<button type="button" class="liso chico" ' + act("cajaSinTocar", caj[k].cajera) + ">" + x + "</button>"; }, "menor") +
     fila("<b>Eficiencia</b>", "efic", function (x) { return "<b>" + x + "%</b>"; }, "mayor") +
     '<div class="sec">Cámara de la caja</div>' +
     fila("Capturas", "capturas", conPct("carros")) +
@@ -1041,10 +1060,10 @@ function cajaHTML(v, d) {
         '<td class="num">' + t.carros + '</td><td class="num">' + t.visitas + '</td><td class="num">' + t.no_asignar + "</td>" +
         '<td class="num">' + (t.sin_tocar ? '<b style="color:var(--ambar)">' + t.sin_tocar + "</b>" : "0") + "</td>" +
         '<td class="num"><span class="barra-ef ' + cls + '"><i style="width:' + t.efic + '%"></i></span>' + t.efic + "%</td>" +
-        '<td class="num">' + lei + '</td><td class="num">' + t.canjes + "/" + t.sextos + '</td><td class="num">' + segs(t.med_s) + "</td></tr>";
+        '<td class="num">' + lei + '</td><td class="num">' + t.canjes + "/" + t.sextos + '</td><td class="num">' + segs(t.med_s) + '</td><td class="acc"><button type="button" class="liso chico" ' + act("cajaDia", c.cajera, t.dia) + ">Ver</button></td></tr>";
     }
     html += '<div class="card"><div class="fila entre"><h2>' + h(c.cajera) + '</h2><span class="nota">Toca un día para ver el detalle</span></div>' +
-      '<div class="tabla-wrap"><table><thead><tr><th>Día</th><th>Horas</th><th class="num">Carros</th><th class="num">Visitas</th><th class="num">No asignar</th><th class="num">Sin tocar</th><th class="num">Efic.</th><th class="num">Placa leída' + (CAJA_SIN_PU ? " (sin PU)" : "") + '</th><th class="num">Canjes/6to</th><th class="num">Mediana</th></tr></thead><tbody>' + filas + "</tbody></table></div></div>";
+      '<div class="tabla-wrap"><table><thead><tr><th>Día</th><th>Horas</th><th class="num">Carros</th><th class="num">Visitas</th><th class="num">No asignar</th><th class="num">Sin tocar</th><th class="num">Efic.</th><th class="num">Placa leída' + (CAJA_SIN_PU ? " (sin PU)" : "") + '</th><th class="num">Canjes/6to</th><th class="num">Mediana</th><th></th></tr></thead><tbody>' + filas + "</tbody></table></div></div>";
   }
   html += "</div>" +
     '<div class="leyenda"><span class="l l-ok">Eficiencia 97% o más</span><span class="l l-ojo">90 a 96%</span><span class="l l-mal">Menos de 90%</span><span><span class="chip cian">sola</span> cubrió el día completo</span></div>' +
@@ -1052,48 +1071,60 @@ function cajaHTML(v, d) {
     "<dt>Carros</dt><dd>Lavados cobrados por esa cajera en Zettle. Sin pruebas ni devoluciones. Un \"Borrar unidad\" sí cuenta: el cliente pagó.</dd>" +
     "<dt>Visitas</dt><dd>Registradas en la caja, ligadas a su lavado.</dd>" +
     "<dt>No asignar</dt><dd>Sin visita, pero con captura de la cámara pegada: pasó por \"No asignar a cliente\". Cuenta como atendido.</dd>" +
-    "<dt>Sin tocar</dt><dd>Sin visita y sin captura. La omisión real, o un cliente que declinó sin que se tomara la foto.</dd>" +
-    "<dt>Placa leída</dt><dd>Capturas de la cámara de caja en que la placa se leyó y sigue siendo la foto del carro. Si el supervisor retomó la foto en el patio, cuenta como no leída: es una aproximación.</dd>" +
+    "<dt>Sin tocar</dt><dd>Sin visita y sin captura. La omisión real, o un cliente que declinó sin que se tomara la foto. Si después se le repone la visita desde este panel, sigue contando aquí (la cajera no lo registró) pero el renglón lo dice. Una visita que se quita desde el panel deja el carro como \"no asignar\" si tenía captura.</dd>" +
+    "<dt>Placa leída</dt><dd>Capturas de la cámara de caja en que la placa se leyó y sigue siendo la foto del carro. Si el supervisor retomó la foto en el patio, cuenta como no leída: es una aproximación que resta a lo más 1 o 2 puntos.</dd>" +
     "<dt>Canjes / 6to</dt><dd>Lavados gratis vendidos contra los registrados como canje. Deben ser iguales.</dd>" +
     "<dt>Cobro → registro</dt><dd>Segundos entre el cobro en Zettle y el registro en la caja.</dd>" +
+    "<dt>Sola</dt><dd>Ese día ningún otro usuario de Zettle cobró un lavado. Cualquier usuario que cobre cuenta como cajera.</dd>" +
     "</dl></details></div>";
   return html;
 }
 
 // Los modales vuelven a preguntar a la base (el rango de la vista, o un dia):
 // es una consulta chica y asi no se guarda una copia que pueda quedar vieja.
+// Los dos modales consultan fuera de render(): llevan su propia guarda (`mi`)
+// para que una respuesta tardia no abra un modal sobre otra pestana ni gane al
+// toque mas reciente (mismo patron que Fusionar/Agregar).
+var CAJA_MODAL = 0;
 function cajaSinTocar(cajera, desde, hasta) {
   var de = esFecha(desde) ? desde : VISTA.desde, ha = esFecha(hasta) ? hasta : VISTA.hasta;
-  pedirJSON("/reporte-cajeras?desde=" + encodeURIComponent(de) + "&hasta=" + encodeURIComponent(ha)).then(function (d) {
+  var mi = ++CAJA_MODAL, token = TOKEN;
+  pedirJSON("/reporte-cajeras?lista=1&desde=" + encodeURIComponent(de) + "&hasta=" + encodeURIComponent(ha)).then(function (d) {
+    if (mi !== CAJA_MODAL || token !== TOKEN || VISTA.n !== "caja") return;
     var lista = [], i, x;
     for (i = 0; i < (d.sin_tocar || []).length; i++) { x = d.sin_tocar[i]; if (!cajera || x.cajera === cajera) lista.push(x); }
     var filas = "";
     for (i = 0; i < lista.length; i++) {
       x = lista[i];
       filas += "<tr><td>" + diaCorto(x.dia) + " " + h(x.hora) + "</td><td>" + h(x.cajera) + '</td><td class="mono">' + x.carro_id + "</td><td>" + h(x.nota || "") + (x.borrado ? ' <span class="chip">borrado</span>' : "") + "</td><td>" + h(x.producto || "") + (x.variante ? " / " + h(x.variante) : "") + "</td><td>" +
-        (x.ticket ? '<button type="button" class="chico" ' + act("cajaRegistrar", x.ticket) + ">Registrar visita…</button>" : '<span class="muted chico-t">sin ticket</span>') + "</td></tr>";
+        (x.repuesta ? '<span class="chip verde">ya se repuso desde el panel</span>' : x.ticket ? '<button type="button" class="chico" ' + act("cajaRegistrar", x.ticket) + ">Registrar visita…</button>" : '<span class="muted chico-t">sin ticket</span>') + "</td></tr>";
     }
     abrir("<h2>Lavados sin tocar" + (cajera ? " · " + h(cajera) : "") + "</h2>" +
-      '<p class="muted chico-t">Sin visita y sin captura de la cámara. Si la nota de caja trae el nombre del cliente, fue descuido; si sólo trae tipo y color, no se distingue de un cliente que declinó. Se registran con la misma pantalla "Agregar visita por ticket".</p>' +
+      '<p class="muted chico-t">Sin visita y sin captura de la cámara. Si la nota de caja trae el nombre del cliente, fue descuido; si sólo trae tipo y color, no se distingue de un cliente que declinó. Se registran con la misma pantalla "Agregar visita por ticket". Uno ya repuesto desde el panel sigue aquí porque la cajera no lo registró; el renglón lo dice.</p>' +
       (lista.length ? '<div class="tabla-wrap"><table><thead><tr><th>Cuándo</th><th>Cajera</th><th>Carro</th><th>Nota de caja</th><th>Servicio</th><th></th></tr></thead><tbody>' + filas + "</tbody></table></div>" : '<div class="vacio">Ninguno en este rango.</div>') +
       '<div class="pie"><button type="button" ' + act("cerrar") + ">Cerrar</button></div>", true);
   }, function (e) { if (e.message !== "codigo") toast("No se pudo consultar: " + (e.message || e)); });
 }
 function cajaDia(cajera, dia) {
-  var v = VISTA;
-  pedirJSON("/reporte-cajeras?desde=" + encodeURIComponent(dia) + "&hasta=" + encodeURIComponent(dia)).then(function (d) {
-    var f = null, otras = [], i;
-    for (i = 0; i < (d.cajeras || []).length; i++) { if (d.cajeras[i].cajera === cajera) f = d.cajeras[i].total; else otras.push(d.cajeras[i]); }
+  var mi = ++CAJA_MODAL, token = TOKEN;
+  pedirJSON("/reporte-cajeras?lista=1&desde=" + encodeURIComponent(dia) + "&hasta=" + encodeURIComponent(dia)).then(function (d) {
+    if (mi !== CAJA_MODAL || token !== TOKEN || VISTA.n !== "caja") return;
+    var f = null, horas = null, otras = [], i, c;
+    for (i = 0; i < (d.cajeras || []).length; i++) {
+      c = d.cajeras[i];
+      // Las horas van en el renglon del dia (los totales no las traen, 212).
+      if (c.cajera === cajera) { f = c.total; horas = (c.dias && c.dias[0]) || {}; } else otras.push(c);
+    }
     if (!f) { toast("Ese día ya no trae datos de " + cajera); return; }
     var st = [], x;
-    for (i = 0; i < (d.sin_tocar || []).length; i++) { x = d.sin_tocar[i]; if (x.cajera === cajera) st.push("carro " + x.carro_id + " a las " + h(x.hora) + " (" + h(x.nota || "sin nota") + ")"); }
+    for (i = 0; i < (d.sin_tocar || []).length; i++) { x = d.sin_tocar[i]; if (x.cajera === cajera) st.push("carro " + x.carro_id + " a las " + h(x.hora) + " (" + h(x.nota || "sin nota") + (x.repuesta ? ", ya repuesto" : "") + ")"); }
     var quien = "";
-    for (i = 0; i < otras.length; i++) quien += '<span class="muted chico-t">' + h(otras[i].cajera) + " cubrió de " + h(otras[i].total.primera) + " a " + h(otras[i].total.ultima) + "</span>";
+    for (i = 0; i < otras.length; i++) { var od = (otras[i].dias && otras[i].dias[0]) || {}; quien += '<span class="muted chico-t">' + h(otras[i].cajera) + " cubrió de " + h(od.primera) + " a " + h(od.ultima) + "</span>"; }
     abrir("<h2>" + h(cajera) + " · " + diaCorto(dia) + "</h2>" +
-      '<div class="fila"><span class="chip">' + h(f.primera) + " a " + h(f.ultima) + "</span>" + (otras.length ? quien : '<span class="chip cian">cubrió el día completo sola</span>') + "</div>" +
+      '<div class="fila"><span class="chip">' + h(horas.primera) + " a " + h(horas.ultima) + "</span>" + (otras.length ? quien : '<span class="chip cian">cubrió el día completo sola</span>') + "</div>" +
       '<div class="tiles">' +
       '<div class="tile"><div class="v">' + f.carros + '</div><div class="r">carros</div></div>' +
-      '<div class="tile ' + (f.efic >= 97 ? "ok" : "ojo") + '"><div class="v">' + f.efic + '%</div><div class="r">eficiencia</div></div>' +
+      '<div class="tile ' + (f.efic >= 97 ? "ok" : f.efic >= 90 ? "ojo" : "mal") + '"><div class="v">' + f.efic + '%</div><div class="r">eficiencia</div></div>' +
       '<div class="tile"><div class="v">' + f.leidas + "/" + f.capturas + '</div><div class="r">placa leída · sin pickups ' + f.leidas_sin_pu + "/" + f.capturas_sin_pu + "</div></div>" +
       '<div class="tile"><div class="v">' + segs(f.med_s) + '</div><div class="r">mediana · p90 ' + segs(f.p90_s) + "</div></div></div>" +
       '<dl class="kv" style="grid-template-columns:220px 1fr">' +
@@ -1109,12 +1140,21 @@ function cajaDia(cajera, dia) {
   }, function (e) { if (e.message !== "codigo") toast("No se pudo consultar: " + (e.message || e)); });
 }
 function cajaSinTocarDia(cajera, dia) { cajaSinTocar(cajera, dia, dia); }
-function cajaDesde(x) { if (!esFecha(x)) return; if (esFecha(VISTA.hasta) && x > VISTA.hasta) { toast("El primer día tiene que ser antes que el segundo."); render(); return; } VISTA.desde = x; VISTA.preset = ""; render(); }
-function cajaHasta(x) { if (!esFecha(x)) return; if (esFecha(VISTA.desde) && x < VISTA.desde) { toast("El primer día tiene que ser antes que el segundo."); render(); return; } VISTA.hasta = x; VISTA.preset = ""; render(); }
+// Dias entre dos fechas AAAA-MM-DD (b - a).
+function diasEntre(a, b) { var x = /^(\d{4})-(\d{2})-(\d{2})$/.exec(a), y = /^(\d{4})-(\d{2})-(\d{2})$/.exec(b); if (!x || !y) return 0; return Math.round((Date.UTC(+y[1], +y[2] - 1, +y[3]) - Date.UTC(+x[1], +x[2] - 1, +x[3])) / 86400000); }
+// El mismo tope que la base (120 dias), avisado aqui para no mandar una consulta que va a fallar.
+function cajaRangoValido(de, ha) {
+  if (de > ha) { toast("El primer día tiene que ser antes que el segundo."); return false; }
+  if (diasEntre(de, ha) > 120) { toast("El rango no puede pasar de 120 días."); return false; }
+  return true;
+}
+function cajaDesde(x) { if (!esFecha(x)) return; if (esFecha(VISTA.hasta) && !cajaRangoValido(x, VISTA.hasta)) { render(); return; } VISTA.desde = x; VISTA.preset = ""; render(); }
+function cajaHasta(x) { if (!esFecha(x)) return; if (esFecha(VISTA.desde) && !cajaRangoValido(VISTA.desde, x)) { render(); return; } VISTA.hasta = x; VISTA.preset = ""; render(); }
 function cajaPreset(k) {
   var hoy = hoyLocal(), m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(hoy);
   // La semana corre de lunes a domingo, como el reporte del lunes.
   var dow = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay(), lunes = sumarDias(hoy, -((dow + 6) % 7));
+  if (k === "7") { VISTA.desde = sumarDias(hoy, -6); VISTA.hasta = hoy; }
   if (k === "sem") { VISTA.desde = lunes; VISTA.hasta = hoy; }
   if (k === "ant") { VISTA.desde = sumarDias(lunes, -7); VISTA.hasta = sumarDias(lunes, -1); }
   if (k === "14") { VISTA.desde = sumarDias(hoy, -13); VISTA.hasta = hoy; }
@@ -1122,7 +1162,7 @@ function cajaPreset(k) {
   if (k === "ayer") { VISTA.desde = sumarDias(hoy, -1); VISTA.hasta = VISTA.desde; }
   VISTA.preset = k; render();
 }
-function cajaSinPu() { var el = $("#caja-sinpu"); CAJA_SIN_PU = !!(el && el.checked); render(); }
+function cajaSinPu() { var el = $("#caja-sinpu"); CAJA_SIN_PU = !!(el && el.checked); if (CAJA_CACHE) CAJA_CACHE.fresca = true; render(); }
 function cajaRegistrar(ticket) { cerrar(); ir({ n: "agregar", ticket: String(ticket) }); }
 
 // ---------------------------------------------------------------------
