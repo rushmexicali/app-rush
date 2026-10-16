@@ -166,6 +166,9 @@
   .leyenda { display:flex; gap:14px; flex-wrap:wrap; font-size:13px; color:var(--muted); align-items:center; }
   .leyenda span.l::before { content:""; display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:middle; }
   .leyenda .l-ok::before { background:var(--verde); } .leyenda .l-ojo::before { background:var(--ambar); } .leyenda .l-mal::before { background:var(--rojo); }
+  /* Pestaña Comisiones (215): un renglon de devolucion se ve en rojo */
+  tr.dev td { color:var(--rojo); }
+  tr.dev td .muted { color:var(--rojo); opacity:.8; }
 </style>
 
 <div id="acceso">
@@ -406,7 +409,7 @@ function ir(v, guardar) { if (guardar !== false) NAV.push(VISTA); VISTA = v; ren
 function volver() { VISTA = NAV.pop() || { n: "bandeja" }; render(); }
 
 function render() {
-  var tabs = [["bandeja", "Pendientes"], ["clientes", "Clientes"], ["caja", "Caja"], ["bitacora", "Bitácora"]];
+  var tabs = [["bandeja", "Pendientes"], ["clientes", "Clientes"], ["caja", "Caja"], ["comisiones", "Comisiones"], ["bitacora", "Bitácora"]];
   var html = "";
   for (var i = 0; i < tabs.length; i++) {
     var n = tabs[i][0], on_ = VISTA.n === n || (n === "clientes" && (VISTA.n === "ficha" || VISTA.n === "fusionar" || VISTA.n === "agregar"));
@@ -417,7 +420,7 @@ function render() {
   $("#yo").textContent = QUIEN_ETIQUETA;
   TOKEN++;
   var t = TOKEN, v = VISTA;
-  var V = { bandeja: vBandeja, clientes: vClientes, ficha: vFicha, fusionar: vFundir, agregar: vAgregar, caja: vCaja, bitacora: vBitacora };
+  var V = { bandeja: vBandeja, clientes: vClientes, ficha: vFicha, fusionar: vFundir, agregar: vAgregar, caja: vCaja, comisiones: vComisiones, bitacora: vBitacora };
   V[v.n](v, function (html2) {
     if (t !== TOKEN) return;   // llego tarde: ya se pinto otra vista
     $("#vista").innerHTML = html2;
@@ -1166,6 +1169,258 @@ function cajaSinPu() { var el = $("#caja-sinpu"); CAJA_SIN_PU = !!(el && el.chec
 function cajaRegistrar(ticket) { cerrar(); ir({ n: "agregar", ticket: String(ticket) }); }
 
 // ---------------------------------------------------------------------
+// COMISIONES: lo que gana cada cajera por venta adicional (migracion 215,
+// 16/oct/2026). Todo lo calcula la base (comisiones_del_periodo); aqui
+// solo se pinta. Un mes calendario a la vez; la fecha de pago (el primer
+// martes despues del ultimo dia) la da el servidor. "Marcar como pagado"
+// congela el desglose en la base: un recalculo posterior no lo reescribe,
+// y la pantalla lo dice si difiere. Las tarifas se editan aqui mismo, con
+// fecha de vigencia, y cada cambio queda en la bitacora.
+// Sin Object.assign ni trim ni metodos de arreglo: el arnes
+// (pruebas/panel-comisiones.sh) ejecuta este bloque con el JScript de Windows.
+// ---------------------------------------------------------------------
+var COM_MES = null, COM_CACHE = null, COM_MODAL = 0, COM_TARIFA_LISTO = null;
+var MESES_LARGO = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+var DIAS_LARGO = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+function esMes(x) { return /^\d{4}-\d{2}$/.test(String(x || "")); }
+function mesLocal() { return hoyLocal().slice(0, 7); }
+function sumarMeses(ym, n) {
+  var m = /^(\d{4})-(\d{2})$/.exec(ym); if (!m) return ym;
+  var d = new Date(Date.UTC(+m[1], +m[2] - 1 + n, 1));
+  return d.getUTCFullYear() + "-" + ("0" + (d.getUTCMonth() + 1)).slice(-2);
+}
+function mesRango(ym) {
+  var m = /^(\d{4})-(\d{2})$/.exec(ym);
+  var fin = new Date(Date.UTC(+m[1], +m[2], 0));   // dia 0 del mes siguiente = ultimo dia
+  return { desde: ym + "-01", hasta: ym + "-" + ("0" + fin.getUTCDate()).slice(-2) };
+}
+function mesTxt(ym) { var m = /^(\d{4})-(\d{2})$/.exec(ym); return m ? MESES_LARGO[+m[2] - 1] + " " + m[1] : String(ym); }
+function fechaLarga(iso) {   // "martes 3 de noviembre"
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || "")); if (!m) return h(iso);
+  var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  return DIAS_LARGO[d.getUTCDay()] + " " + (+m[3]) + " de " + MESES_LARGO[+m[2] - 1];
+}
+function recortar(s) { return String(s == null ? "" : s).replace(/^\s+|\s+$/g, ""); }
+function mezclar(a, b) { var o = {}, k; for (k in a) if (a.hasOwnProperty(k)) o[k] = a[k]; for (k in b) if (b.hasOwnProperty(k)) o[k] = b[k]; return o; }
+function num(x) { var n = Number(x); return isNaN(n) ? 0 : n; }
+
+function vComisiones(v, pinta) {
+  if (!esMes(v.mes)) v.mes = COM_MES || sumarMeses(mesLocal(), -1);   // abre en el ultimo mes cerrado
+  COM_MES = v.mes;
+  var rg = mesRango(v.mes);
+  pinta(cargando());
+  pedirJSON("/comisiones?desde=" + rg.desde + "&hasta=" + rg.hasta).then(function (d) {
+    if (!d || !d.cajeras) { pinta(comControles(v) + errorHTML("La respuesta no trae el cálculo.")); return; }
+    COM_CACHE = { mes: v.mes, d: d };
+    pinta(comHTML(v, d));
+  }, function (e) { if (e.message !== "codigo") pinta(comControles(v) + errorHTML(e)); });
+}
+
+function comControles(v) {
+  var hoy = mesLocal(), ant = sumarMeses(v.mes, -1), sig = sumarMeses(v.mes, 1);
+  return '<div class="card"><div class="fila entre"><div class="fila">' +
+    '<button type="button" class="chico" ' + act("comMes", ant) + ">‹ " + h(mesTxt(ant)) + "</button>" +
+    '<b style="font-size:18px;text-transform:capitalize">' + h(mesTxt(v.mes)) + "</b>" +
+    (v.mes < hoy ? '<button type="button" class="chico" ' + act("comMes", sig) + ">" + h(mesTxt(sig)) + " ›</button>" : "") +
+    '</div><div class="presets">' +
+    '<button type="button" class="chico ' + (v.mes === sumarMeses(hoy, -1) ? "on" : "") + '" ' + act("comMes", sumarMeses(hoy, -1)) + ">Mes pasado</button>" +
+    '<button type="button" class="chico ' + (v.mes === hoy ? "on" : "") + '" ' + act("comMes", hoy) + ">Este mes</button>" +
+    "</div></div></div>";
+}
+function comMes(ym) { if (!esMes(ym) || ym > mesLocal()) return; VISTA.mes = ym; render(); }
+
+function comHTML(v, d) {
+  var caj = d.cajeras || [], rg = mesRango(v.mes), cerrado = rg.hasta < hoyLocal();
+  var i, j, c, p, html, pendientes = [], porPagar = 0, pagado = 0;
+  for (i = 0; i < caj.length; i++) {
+    c = caj[i];
+    if (c.pagado) pagado += num(c.pagado.monto); else { pendientes.push(c.cajera); porPagar += num(c.total); }
+  }
+  html = '<div class="fila entre"><div><h1>Comisiones</h1><div class="muted">Lo que gana cada cajera por lo que vende de más en el ticket: aromas, encerados, detallados. Unidades netas por la tarifa vigente el día de la venta; una devolución se le resta a quien vendió.</div></div></div>' + comControles(v);
+
+  // El mes: fecha de pago y el boton de pagar a todas
+  html += '<div class="card"><div class="fila entre"><div style="font-size:16px">' +
+    (cerrado ? "Se paga el <b>" + h(fechaLarga(d.fecha_pago)) + "</b>" : '<span class="chip ambar">mes en curso</span> se pagará el <b>' + h(fechaLarga(d.fecha_pago)) + "</b>") +
+    "</div>" +
+    (cerrado && pendientes.length > 1 ? '<button type="button" class="primario" ' + act("comPagar", v.mes, pendientes) + ">Marcar todas como pagadas…</button>" : "") +
+    "</div>" +
+    '<div class="tiles" style="margin-top:12px">' +
+    '<div class="tile"><div class="v">' + h(pesos(d.total)) + '</div><div class="r">comisiones del mes</div></div>' +
+    '<div class="tile ' + (porPagar > 0 && cerrado ? "ojo" : "") + '"><div class="v">' + h(pesos(porPagar)) + '</div><div class="r">por pagar · ' + pl(pendientes.length, "cajera", "cajeras") + "</div></div>" +
+    '<div class="tile ' + (pagado > 0 ? "ok" : "") + '"><div class="v">' + h(pesos(pagado)) + '</div><div class="r">ya pagado</div></div>' +
+    "</div></div>";
+
+  if (num(d.ventas_sin_desglose) > 0) {
+    html += '<div class="aviso rojo"><b>' + pl(num(d.ventas_sin_desglose), "venta", "ventas") + " sin desglose de productos</b> en este mes (el índice de la venta falló al entrar): no entran al cálculo. Están en la bitácora del webhook.</div>";
+  }
+  if ((d.sin_tarifa || []).length) {
+    var st = "";
+    for (i = 0; i < d.sin_tarifa.length; i++) {
+      p = d.sin_tarifa[i];
+      st += (i ? ", " : "") + "<b>" + h(p.producto) + "</b> ×" + h(num(p.unidades)) + (p.categoria ? ' <span class="muted chico-t">(' + h(p.categoria) + ")</span>" : "") +
+            ' <button type="button" class="liso chico" ' + act("comTarifa", p.producto) + ">ponerle tarifa</button>";
+    }
+    html += '<div class="aviso"><b>Vendido este mes sin tarifa</b> (no se paga, pero no se esconde): ' + st + ".</div>";
+  }
+
+  if (!caj.length) {
+    html += '<div class="card vacio">Nadie vendió nada con comisión en ' + h(mesTxt(v.mes)) + ".</div>";
+  }
+  for (i = 0; i < caj.length; i++) {
+    c = caj[i];
+    var filas = "";
+    for (j = 0; j < (c.productos || []).length; j++) {
+      p = c.productos[j];
+      filas += "<tr><td>" + h(p.producto) + '</td><td class="num">' + h(num(p.vendidas)) + '</td><td class="num">' + (num(p.devueltas) ? '<span class="chip rojo">−' + h(num(p.devueltas)) + "</span>" : "—") +
+               '</td><td class="num">' + h(pesos(p.tarifa)) + '</td><td class="num"><b>' + h(pesos(p.comision)) + "</b></td></tr>";
+    }
+    var estado;
+    if (c.pagado) {
+      estado = '<span class="chip verde">Pagado el ' + h(fmtFecha(c.pagado.pagado_en, false)) + " · " + h(c.pagado.quien) + "</span>" +
+               (num(c.pagado.monto) !== num(c.total) ? ' <span class="chip ambar" title="Lo pagado no se reescribe. La diferencia es de un cambio posterior (una venta que entró tarde o una tarifa movida hacia atrás).">se pagó ' + h(pesos(c.pagado.monto)) + "; hoy el cálculo da " + h(pesos(c.total)) + "</span>" : "");
+    } else if (cerrado) {
+      estado = '<button type="button" class="primario chico" ' + act("comPagar", v.mes, [c.cajera]) + ">Marcar como pagado…</button>";
+    } else {
+      estado = '<span class="chip">mes en curso</span>';
+    }
+    html += '<div class="card"><div class="fila entre"><h2 style="margin:0">' + h(c.cajera) + '</h2><div class="fila"><span class="mono" style="font-size:26px;font-weight:800">' + h(pesos(c.total)) + "</span>" + estado + "</div></div>" +
+      '<div class="tabla-wrap" style="margin-top:10px"><table><thead><tr><th>Producto</th><th class="num">Vendidas</th><th class="num">Devueltas</th><th class="num">Tarifa</th><th class="num">Comisión</th></tr></thead><tbody>' + filas + "</tbody></table></div>" +
+      '<div class="fila" style="margin-top:8px"><button type="button" class="liso chico" ' + act("comTickets", c.cajera) + ">Ver los " + pl((c.renglones || []).length, "renglón", "renglones") + " ticket por ticket</button></div></div>";
+  }
+
+  if ((d.monto_libre || []).length) {
+    var ml = "";
+    for (i = 0; i < d.monto_libre.length; i++) {
+      p = d.monto_libre[i];
+      ml += (i ? ", " : "") + "ticket " + h(p.ticket) + " " + h(pesos(p.monto)) + ' <span class="muted chico-t">(' + h(p.cajera) + ", " + h(diaCorto(p.dia)) + ")</span>";
+    }
+    html += '<div class="card"><div class="nota"><b>' + pl(d.monto_libre.length, "cobro de monto libre", "cobros de monto libre") + "</b> no comisionan: no traen nombre de producto, así que no se sabe qué fueron. " + ml + ". Si alguno era un detallado o un encerado, hay que cobrarlo con su producto.</div></div>";
+  }
+
+  // Tarifas vigentes
+  var tf = "";
+  for (i = 0; i < (d.tarifas || []).length; i++) {
+    p = d.tarifas[i];
+    tf += "<tr><td>" + h(p.producto) + '</td><td class="num">' + h(pesos(p.monto)) + "</td><td>" + h(fmtFecha(p.desde)) + '</td><td class="acc"><button type="button" class="chico" ' + act("comTarifa", p.producto) + ">Cambiar…</button></td></tr>";
+  }
+  html += '<div class="card"><div class="fila entre"><h2 style="margin:0">Tarifas vigentes</h2><button type="button" class="chico" ' + act("comTarifa", "") + ">Agregar producto…</button></div>" +
+    (tf ? '<div class="tabla-wrap" style="margin-top:10px"><table><thead><tr><th>Producto</th><th class="num">Por unidad</th><th>Desde</th><th></th></tr></thead><tbody>' + tf + "</tbody></table></div>" : '<div class="vacio">No hay ninguna tarifa vigente.</div>') +
+    '<div class="nota" style="margin-top:8px">Se casa por el nombre exacto del producto en Zettle, sin importar la variante. Cambiar una tarifa aplica desde la fecha que digas; lo ya pagado no se mueve.</div>' +
+    '<details style="margin-top:8px"><summary>Cómo se calcula</summary><dl class="kv" style="margin-top:8px;grid-template-columns:180px 1fr">' +
+    "<dt>Fuente</dt><dd>Cada renglón del ticket de Zettle: producto, cantidad y la cajera que cobró (su usuario de Zettle). Un Pinito ×2 son dos comisiones.</dd>" +
+    "<dt>Devoluciones</dt><dd>Se restan a quien <b>vendió</b> (no a quien procesó la devolución), con la tarifa del día de la venta, en el mes en que se devolvió. Así un mes ya pagado no cambia.</dd>" +
+    "<dt>Tarifa</dt><dd>La vigente el día de la venta. Cambiarla no reescribe lo anterior.</dd>" +
+    "<dt>Fecha de pago</dt><dd>El primer martes <b>después</b> del último día del mes. Si el mes termina en martes, el martes siguiente.</dd>" +
+    "<dt>Sin tarifa</dt><dd>Un producto de Aroma, Extras o Paquetes Especial vendido sin tarifa se avisa en vez de pagar cero en silencio. Con tarifa $0 deja de avisar.</dd>" +
+    "<dt>Monto libre</dt><dd>Un cobro sin producto no comisiona: no se sabe qué fue.</dd>" +
+    "<dt>Pagado</dt><dd>Al marcarlo se guarda el desglose tal como estaba. Queda en la bitácora y se puede deshacer.</dd>" +
+    "</dl></details></div>";
+  return html;
+}
+
+// Los renglones de una cajera, ticket por ticket, de lo ya bajado.
+function comTickets(cajera) {
+  if (!COM_CACHE || COM_CACHE.mes !== VISTA.mes) { toast("Vuelve a cargar el mes"); return; }
+  var caj = COM_CACHE.d.cajeras || [], c = null, i, r, filas = "";
+  for (i = 0; i < caj.length; i++) if (caj[i].cajera === cajera) c = caj[i];
+  if (!c) { toast("Esa cajera ya no está en el mes"); return; }
+  for (i = 0; i < (c.renglones || []).length; i++) {
+    r = c.renglones[i];
+    filas += '<tr class="' + (r.devolucion ? "dev" : "") + '"><td>' + h(diaCorto(r.dia)) + " " + h(r.hora) + '</td><td class="mono">' + h(r.ticket) + "</td><td>" + h(r.producto) + (r.variante ? ' <span class="muted chico-t">' + h(r.variante) + "</span>" : "") +
+             (r.devolucion ? ' <span class="chip rojo">devolución' + (r.ticket_original ? " del ticket " + h(r.ticket_original) : "") + "</span>" : "") +
+             '</td><td class="num">' + h(num(r.cant)) + '</td><td class="num">' + h(pesos(r.tarifa)) + '</td><td class="num"><b>' + h(pesos(r.comision)) + "</b></td></tr>";
+  }
+  abrir("<h2>" + h(cajera) + " · " + h(mesTxt(COM_CACHE.mes)) + "</h2>" +
+    '<p class="muted chico-t">Cada renglón con comisión, en el orden en que se cobró. El número de ticket es el de Zettle.</p>' +
+    (filas ? '<div class="tabla-wrap"><table><thead><tr><th>Cuándo</th><th>Ticket</th><th>Producto</th><th class="num">Cant.</th><th class="num">Tarifa</th><th class="num">Comisión</th></tr></thead><tbody>' + filas + "</tbody></table></div>" : '<div class="vacio">Sin renglones.</div>') +
+    '<div class="fila entre" style="margin-top:8px"><span class="mono"><b>Total ' + h(pesos(c.total)) + '</b></span><button type="button" class="primario" ' + act("cerrar") + ">Cerrar</button></div>", true);
+}
+
+// Marcar como pagado: una cajera o todas las pendientes del mes. Sin motivo
+// (no toca datos de clientes); queda en la bitacora y se deshace.
+function comPagar(ym, cajeras) {
+  if (!COM_CACHE || COM_CACHE.mes !== ym || !esMes(ym)) { toast("Vuelve a cargar el mes"); return; }
+  var rg = mesRango(ym), caj = COM_CACHE.d.cajeras || [], partes = [], i, j;
+  for (i = 0; i < cajeras.length; i++) for (j = 0; j < caj.length; j++) if (caj[j].cajera === cajeras[i]) partes.push("<b>" + h(caj[j].cajera) + " " + h(pesos(caj[j].total)) + "</b>");
+  if (!partes.length) { toast("No hay a quién pagarle"); return; }
+  abrirSimple("¿Marcar como pagado?", "Comisiones de <b>" + h(mesTxt(ym)) + "</b>: " + partes.join(", ") + ". Se guarda el desglose tal como está hoy. Queda en la bitácora y se puede deshacer.",
+    "/comision-pagar", { desde: rg.desde, hasta: rg.hasta, cajeras: cajeras }, "Sí, ya se pagó");
+}
+
+// Cambiar o dar de alta una tarifa. El menu de productos lo da la base
+// (vendidos en 180 dias en Aroma/Extras/Paquetes Especial + los que ya
+// tienen tarifa). Dos pasos en el mismo modal: "Ver que cambia" corre la
+// accion en ensayo y muestra el resumen y las advertencias; "Confirmar"
+// la hace. Cualquier cambio en los campos vuelve al primer paso.
+function comTarifa(producto) {
+  var mi = ++COM_MODAL, token = TOKEN;
+  COM_TARIFA_LISTO = null;
+  pedirJSON("/comisiones-productos").then(function (d) {
+    if (mi !== COM_MODAL || token !== TOKEN || VISTA.n !== "comisiones") return;
+    var lista = listaDe(d, "productos"), ops = "", i, p, actual = null, hay = false;
+    for (i = 0; i < lista.length; i++) {
+      p = lista[i];
+      if (producto && p.producto === producto) { hay = true; if (p.tarifa != null) actual = p.tarifa; }
+      ops += '<option value="' + h(p.producto) + '"' + (producto && p.producto === producto ? " selected" : "") + ">" + h(p.producto) +
+             (p.tarifa != null ? " · hoy " + h(pesos(p.tarifa)) : "") + (p.unidades ? " · " + h(num(p.unidades)) + " vendidos en 180 días" : "") + "</option>";
+    }
+    if (producto && !hay) ops += '<option value="' + h(producto) + '" selected>' + h(producto) + "</option>";
+    ops = (producto ? "" : '<option value="">Elige un producto…</option>') + ops + '<option value="__otro">Otro (escribir el nombre)…</option>';
+    abrir("<h2>" + (producto ? "Cambiar tarifa" : "Tarifa nueva") + "</h2>" +
+      '<div class="form">' +
+      '<div class="campo"><label for="ct-prod">Producto (tal como está en Zettle)</label><select id="ct-prod" ' + on("change", "comTarifaProd") + ">" + ops + '</select><input id="ct-otro" type="text" placeholder="Nombre exacto del producto en Zettle" hidden ' + on("input", "comTarifaCambio") + "></div>" +
+      '<div class="campo"><label for="ct-monto">Comisión por unidad (pesos)</label><input id="ct-monto" type="number" min="0" step="1" inputmode="numeric" value="' + (actual != null ? h(actual) : "") + '" ' + on("input", "comTarifaCambio") + "></div>" +
+      '<div class="campo"><label for="ct-desde">Aplica desde</label><input id="ct-desde" type="date" value="' + h(hoyLocal().slice(0, 8) + "01") + '" ' + on("change", "comTarifaCambio") + "></div>" +
+      '<div class="campo"><label for="ct-nota">Nota (opcional)</label><input id="ct-nota" type="text" placeholder="Por qué cambia"></div>' +
+      '<div id="ct-prev"></div>' +
+      '<div class="muted chico-t">Con $0 el producto deja de comisionar. Lo ya pagado no cambia; lo que se vendió antes de la fecha conserva su tarifa.</div>' +
+      '</div><div class="pie"><button type="button" ' + act("cerrar") + '>Cancelar</button><button type="button" class="primario" id="ct-ok" ' + act("comTarifaGuardar") + ">Ver qué cambia</button></div>");
+  }, function (e) { if (e.message !== "codigo") toast("No se pudo consultar: " + (e.message || e)); });
+}
+function comTarifaProd(val) { var o = $("#ct-otro"); if (o) { o.hidden = val !== "__otro"; if (!o.hidden) o.focus(); } comTarifaCambio(); }
+function comTarifaCambio() {
+  COM_TARIFA_LISTO = null;
+  var ok = $("#ct-ok"), prev = $("#ct-prev");
+  if (ok) { ok.textContent = "Ver qué cambia"; ok.disabled = false; }
+  if (prev) prev.innerHTML = "";
+}
+function comTarifaCuerpo() {
+  var sel = $("#ct-prod"), otro = $("#ct-otro"), monto = $("#ct-monto"), desde = $("#ct-desde"), nota = $("#ct-nota");
+  if (!sel || !monto || !desde) return null;
+  var producto = sel.value === "__otro" ? recortar(otro ? otro.value : "") : sel.value;
+  if (!producto) { toast("Falta el producto"); return null; }
+  var m = recortar(monto.value);
+  if (m === "" || isNaN(Number(m)) || Number(m) < 0) { toast("La tarifa tiene que ser un monto de cero o más"); monto.focus(); return null; }
+  if (!esFecha(desde.value)) { toast("Falta desde qué día aplica"); desde.focus(); return null; }
+  return { producto: producto, monto: Number(m), desde: desde.value, nota: nota ? recortar(nota.value) : "" };
+}
+function comPreviaTarifa(r) {
+  var html = "", adv = r.advertencias || [], i;
+  for (i = 0; i < adv.length; i++) html += '<div class="aviso" style="margin-bottom:8px">' + h(adv[i]) + "</div>";
+  html += '<div class="prev"><div class="ant"><div class="muted chico-t">Hoy</div><div class="n">' + (r.monto_antes != null ? h(pesos(r.monto_antes)) : "sin tarifa") + '</div></div><div class="fl">→</div><div class="des"><div class="muted chico-t">Desde el ' + h(fmtFecha(r.desde)) + '</div><div class="n">' + h(pesos(r.monto)) + "</div></div></div>" +
+          '<div class="muted chico-t" style="margin-top:8px">' + h(r.resumen || "") + " · Vista previa: no se guardó nada todavía.</div>";
+  return html;
+}
+function comTarifaGuardar() {
+  var cuerpo = comTarifaCuerpo(); if (!cuerpo) return;
+  var ok = $("#ct-ok"), prev = $("#ct-prev"), mi = ++COM_MODAL;
+  if (!ok || !prev) return;
+  var listo = COM_TARIFA_LISTO && JSON.stringify(COM_TARIFA_LISTO) === JSON.stringify(cuerpo);
+  ok.disabled = true; ok.textContent = listo ? "Guardando…" : "Calculando…";
+  accion("/comision-tarifa", listo ? cuerpo : mezclar(cuerpo, { ensayo: true })).then(function (r) {
+    if (mi !== COM_MODAL || !$("#ct-ok")) { if (listo && r.ok) { toast(r.resumen || "Listo"); render(); } return; }
+    ok.disabled = false;
+    if (!r.ok) { prev.innerHTML = pintarPrevia(r); COM_TARIFA_LISTO = null; ok.textContent = "Ver qué cambia"; return; }
+    if (listo) { toast(r.resumen || "Listo"); cerrar(); render(); return; }
+    prev.innerHTML = comPreviaTarifa(r); COM_TARIFA_LISTO = cuerpo; ok.textContent = "Confirmar";
+  }, function (e) {
+    if (e && e.message === "codigo") return;
+    if (mi !== COM_MODAL || !$("#ct-ok")) return;
+    prev.innerHTML = errorHTML(e); ok.disabled = false; ok.textContent = listo ? "Confirmar" : "Ver qué cambia";
+  });
+}
+
+// ---------------------------------------------------------------------
 // DESPACHO DE ACCIONES Y ARRANQUE
 // ---------------------------------------------------------------------
 var ACT = { ir: ir, volver: volver, cerrar: cerrar, render: render, confirmarAccion: confirmarAccion, confirmarSimple: confirmarSimple, previaRetrasada: previaRetrasada,
@@ -1174,7 +1429,8 @@ var ACT = { ir: ir, volver: volver, cerrar: cerrar, render: render, confirmarAcc
   modalQuitar: modalQuitar, modalRestaurar: modalRestaurar, modalMover: modalMover, modalTipo: modalTipo, radioTipo: radioTipo, pintarDestinos: pintarDestinos, elegirDestino: elegirDestino,
   quedaRadio: quedaRadio, buscarTicket: buscarTicket, buscarTicketEnter: buscarTicketEnter, tipoAgregar: tipoAgregar, cambiarCliente: cambiarCliente,
   filtroQuien: filtroQuien, filtroAccion: filtroAccion, filtroTexto: filtroTexto, deshacer: deshacer,
-  cajaSinTocar: cajaSinTocar, cajaDia: cajaDia, cajaSinTocarDia: cajaSinTocarDia, cajaDesde: cajaDesde, cajaHasta: cajaHasta, cajaPreset: cajaPreset, cajaSinPu: cajaSinPu, cajaRegistrar: cajaRegistrar };
+  cajaSinTocar: cajaSinTocar, cajaDia: cajaDia, cajaSinTocarDia: cajaSinTocarDia, cajaDesde: cajaDesde, cajaHasta: cajaHasta, cajaPreset: cajaPreset, cajaSinPu: cajaSinPu, cajaRegistrar: cajaRegistrar,
+  comMes: comMes, comTickets: comTickets, comPagar: comPagar, comTarifa: comTarifa, comTarifaProd: comTarifaProd, comTarifaCambio: comTarifaCambio, comTarifaGuardar: comTarifaGuardar };
 function despachar(e, tipoEvento) {
   var el = e.target.closest("[data-act]"); if (!el) return;
   var esperado = el.getAttribute("data-on") || "click"; if (esperado !== tipoEvento) return;
