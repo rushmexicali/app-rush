@@ -2046,6 +2046,13 @@ document.getElementById("btn-sc-guardar").addEventListener("click", function () 
                          "¿Seguro que es el cobro de este carro? Si acaba de pagar, espera unos segundos a que aparezca su ticket.")) {
     return;
   }
+  // 217/218 (pedido del dueño, 22/oct/2026): desde que "No asignar" saca el
+  // ticket de la lista, un toque por error ya no se arregla desde la caja (la
+  // corrección queda en el panel). Por eso se confirma antes, diciendo qué pasa.
+  if (!confirm("¿Estás segura de que NO quieres asignar este lavado a un cliente?\n\n" +
+               "El ticket " + (ticketSC.ticket || "") + " se quitará de la lista y desde la caja ya no se podrá recuperar.")) {
+    return;
+  }
   conCandado(this, "Guardando…", function () {
     return postJSON("/foto-al-ticket", {
       carro:     ticketSC.carro_id,

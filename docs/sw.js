@@ -109,7 +109,10 @@
 //                     tenga un envio en vuelo; "No asignar a cliente" tambien
 //                     marca el ticket viejo y pide confirmar; "Salir" del
 //                     panel quita los botones con los nombres.
-var CACHE = "rush-v30";
+//  v31 (22/oct/2026) — "No asignar a cliente" confirma antes de guardar: desde
+//                     la 217 el ticket desaparece de la lista y la correccion
+//                     queda en el panel (218).
+var CACHE = "rush-v31";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest", "./actualizacion.js",
