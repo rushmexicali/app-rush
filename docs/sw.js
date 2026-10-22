@@ -112,7 +112,11 @@
 //  v31 (22/oct/2026) — "No asignar a cliente" confirma antes de guardar: desde
 //                     la 217 el ticket desaparece de la lista y la correccion
 //                     queda en el panel (218).
-var CACHE = "rush-v31";
+//  v32 (22/oct/2026) — Tras la mini auditoria de la 217-218: un solo confirm en
+//                     "No asignar" (ticket viejo + aviso en un mensaje), "Buscando..."
+//                     mientras no conteste la primera consulta, y la Ayuda dice que la
+//                     lista son los 5 mas recientes SIN atender.
+var CACHE = "rush-v32";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest", "./actualizacion.js",

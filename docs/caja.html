@@ -561,8 +561,8 @@
 
     <div class="ayuda-bloque ayuda-ojo">
       <h3>🎫 La lista de tickets</h3>
-      <p>Salen los <b>últimos 5 tickets</b> de Zettle y <b>se actualiza sola cada 3 segundos</b>: cóbralo y en un momento aparece, sin que toques nada.</p>
-      <p>De cada uno ves el <b>número, el monto, qué se vendió y la hora exacta</b>. Un ticket que <b>ya se registró</b> con otro cliente desaparece de la lista.</p>
+      <p>Salen los <b>5 tickets más recientes que todavía no se han atendido</b> y <b>se actualiza sola cada 3 segundos</b>: cóbralo y en un momento aparece, sin que toques nada.</p>
+      <p>De cada uno ves el <b>número, el monto, qué se vendió y la hora exacta</b>. Un ticket que <b>ya se registró</b> con un cliente, o que pasó por <b>"No asignar a cliente"</b>, desaparece de la lista. Por eso pueden asomar tickets de <b>días pasados</b> que nadie atendió: salen marcados como <b>TICKET VIEJO</b>.</p>
       <p>Un ticket <b>apagado</b> es uno que no trae lavado (por ejemplo puro Pinito o tapetes) y por eso no se puede elegir. Debajo te dice la razón.</p>
       <p>Si tocas el que ya elegiste, lo <b>sueltas</b>. Así se corrige antes de registrar.</p>
     </div>
@@ -1953,6 +1953,7 @@ function cargarTickets() {
 // Copiar esa función habría traído reglas que en esta pantalla no aplican.
 var ticketSC = null;
 var scFirma = null;
+var scAbiertoCon = 0;   // el tkOk que había al abrir la pantalla (ver pintarSinCliente)
 
 function pintarSinCliente() {
   var cont = document.getElementById("sc-tickets");
@@ -1964,13 +1965,23 @@ function pintarSinCliente() {
   // La edad entra en la firma como texto: el ticket viejo tambien se marca aqui
   // (11/oct/2026, decision delegada: la regla de los 30 min es una sola funcion
   // y pegar la FOTO al carro equivocado es el mismo error humano).
+  // Mientras no haya contestado NINGUNA consulta desde que se abrió esta
+  // pantalla, la lista vacía no significa "no hay tickets": significa que
+  // todavía no se sabe. `irInicio` vacía `ticketsAhora`, así que sin esto la
+  // cajera leía "Cóbralo en Zettle" sobre un ticket ya cobrado durante la
+  // primera consulta (preexistente desde la 136; mini auditoría de la 217-218,
+  // punto J). `tkOk` sube con cada respuesta buena, así que "ya contestó una"
+  // es simplemente que rebasó la que había al abrir.
+  var scEsperando = tkOk <= scAbiertoCon;
   var firma = ticketsAhora.map(function (t) { return t.carro_id + "|" + t.ticket + "|" + (ticketViejo(t) || ""); }).join(",") +
-              "#" + (ticketSC ? ticketSC.carro_id : "");
+              "#" + (ticketSC ? ticketSC.carro_id : "") + "|" + (scEsperando ? 1 : 0);
   if (firma !== scFirma) {
     scFirma = firma;
     if (!ticketsAhora.length) {
-      cont.innerHTML = '<div class="nota aviso">Todavía no aparece ningún ticket. ' +
-                       'Cóbralo en Zettle y aquí sale solo.</div>';
+      cont.innerHTML = scEsperando
+        ? '<div class="nota">Buscando los últimos tickets…</div>'
+        : '<div class="nota aviso">Todavía no aparece ningún ticket. ' +
+          'Cóbralo en Zettle y aquí sale solo.</div>';
     } else {
       var html = "";
       ticketsAhora.forEach(function (t) {
@@ -2019,7 +2030,7 @@ document.getElementById("sc-tickets").addEventListener("click", function (ev) {
 });
 
 document.getElementById("btn-sin-cliente").addEventListener("click", function () {
-  ticketSC = null; scFirma = null;
+  ticketSC = null; scFirma = null; scAbiertoCon = tkOk;
   document.getElementById("sc-tickets").innerHTML =
     '<div class="nota">Buscando los últimos tickets…</div>';
   mostrar("p-sin-cliente", true);
@@ -2041,16 +2052,19 @@ document.getElementById("btn-sc-guardar").addEventListener("click", function () 
   var quien = marcaDeCliente();
   // Un ticket viejo se confirma antes de pegarle la foto (misma regla que
   // "Registrar visita", ver ticketViejo).
-  var edadSC = ticketViejo(ticketSC);
-  if (edadSC && !confirm("El ticket " + (ticketSC.ticket || "") + " es de " + edadSC + ".\n\n" +
-                         "¿Seguro que es el cobro de este carro? Si acaba de pagar, espera unos segundos a que aparezca su ticket.")) {
-    return;
-  }
   // 217/218 (pedido del dueño, 22/oct/2026): desde que "No asignar" saca el
   // ticket de la lista, un toque por error ya no se arregla desde la caja (la
   // corrección queda en el panel). Por eso se confirma antes, diciendo qué pasa.
-  if (!confirm("¿Estás segura de que NO quieres asignar este lavado a un cliente?\n\n" +
-               "El ticket " + (ticketSC.ticket || "") + " se quitará de la lista y desde la caja ya no se podrá recuperar.")) {
+  // Un SOLO confirm: si el ticket además es viejo (ticketViejo), se antepone
+  // ese aviso al mismo mensaje en vez de preguntar dos veces (mini auditoría
+  // de la 217-218, punto H; §4: un toque, una pregunta).
+  var edadSC = ticketViejo(ticketSC);
+  var preguntaSC =
+    (edadSC ? "El ticket " + (ticketSC.ticket || "") + " es de " + edadSC + ". " +
+              "Si acaba de pagar, espera unos segundos a que aparezca su ticket.\n\n" : "") +
+    "¿Estás segura de que NO quieres asignar este lavado a un cliente?\n\n" +
+    "El ticket " + (ticketSC.ticket || "") + " se quitará de la lista y desde la caja ya no se podrá recuperar.";
+  if (!confirm(preguntaSC)) {
     return;
   }
   conCandado(this, "Guardando…", function () {
