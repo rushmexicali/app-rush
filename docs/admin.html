@@ -149,6 +149,8 @@
   .comp .enc { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
   .comp .enc.caj { font-size:15px; text-transform:none; letter-spacing:0; color:var(--fg); font-weight:800; }
   .comp .lbl { font-size:14px; }
+  /* Supervisores (221): el punto del color del perfil junto a su nombre. */
+  .punto { display:inline-block; width:12px; height:12px; border-radius:50%; margin-right:6px; vertical-align:middle; border:1px solid rgba(0,0,0,.25); }
   .comp .num { text-align:right; font-variant-numeric:tabular-nums; }
   .comp .sec { grid-column:1 / -1; background:var(--card2); color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; font-weight:600; padding:6px 10px; }
   .comp .gana { color:var(--verde); font-weight:700; }
@@ -409,7 +411,7 @@ function ir(v, guardar) { if (guardar !== false) NAV.push(VISTA); VISTA = v; ren
 function volver() { VISTA = NAV.pop() || { n: "bandeja" }; render(); }
 
 function render() {
-  var tabs = [["bandeja", "Pendientes"], ["clientes", "Clientes"], ["caja", "Caja"], ["comisiones", "Comisiones"], ["bitacora", "Bitácora"]];
+  var tabs = [["bandeja", "Pendientes"], ["clientes", "Clientes"], ["caja", "Caja"], ["supervisores", "Supervisores"], ["comisiones", "Comisiones"], ["bitacora", "Bitácora"]];
   var html = "";
   for (var i = 0; i < tabs.length; i++) {
     var n = tabs[i][0], on_ = VISTA.n === n || (n === "clientes" && (VISTA.n === "ficha" || VISTA.n === "fusionar" || VISTA.n === "agregar"));
@@ -420,7 +422,7 @@ function render() {
   $("#yo").textContent = QUIEN_ETIQUETA;
   TOKEN++;
   var t = TOKEN, v = VISTA;
-  var V = { bandeja: vBandeja, clientes: vClientes, ficha: vFicha, fusionar: vFundir, agregar: vAgregar, caja: vCaja, comisiones: vComisiones, bitacora: vBitacora };
+  var V = { bandeja: vBandeja, clientes: vClientes, ficha: vFicha, fusionar: vFundir, agregar: vAgregar, caja: vCaja, supervisores: vSupervisores, comisiones: vComisiones, bitacora: vBitacora };
   V[v.n](v, function (html2) {
     if (t !== TOKEN) return;   // llego tarde: ya se pinto otra vista
     $("#vista").innerHTML = html2;
@@ -1167,6 +1169,154 @@ function cajaPreset(k) {
 }
 function cajaSinPu() { var el = $("#caja-sinpu"); CAJA_SIN_PU = !!(el && el.checked); if (CAJA_CACHE) CAJA_CACHE.fresca = true; render(); }
 function cajaRegistrar(ticket) { cerrar(); ir({ n: "agregar", ticket: String(ticket) }); }
+
+// ---------------------------------------------------------------------
+// SUPERVISORES: quien hizo que en la app del supervisor (migracion 221,
+// 26/oct/2026). Sale de supervisor_bitacora (220) cruzada con carros y
+// etapas. Mismas columnas para todos los perfiles, con "Sin perfil" como una
+// columna mas; y APARTE, por dia y sin persona, los hechos de la cola
+// (entradas, olvidos, cierres, secados cortos): son del equipo, no de quien
+// traia el telefono (decision del dueno, 25/oct). No lleva copia de ninguna
+// regla: todo lo calcula la base.
+// ---------------------------------------------------------------------
+var SUP_RANGO = null;
+function vSupervisores(v, pinta) {
+  if (!esFecha(v.desde) || !esFecha(v.hasta)) {
+    if (SUP_RANGO) { v.desde = SUP_RANGO.desde; v.hasta = SUP_RANGO.hasta; v.preset = SUP_RANGO.preset; }
+    else { var hoy = hoyLocal(); v.hasta = hoy; v.desde = sumarDias(hoy, -6); v.preset = "7"; }
+  }
+  SUP_RANGO = { desde: v.desde, hasta: v.hasta, preset: v.preset };
+  pinta(cargando());
+  pedirJSON("/supervisores?desde=" + encodeURIComponent(v.desde) + "&hasta=" + encodeURIComponent(v.hasta)).then(function (d) {
+    if (!d || !d.perfiles) { pinta(supControles(v) + errorHTML("La respuesta no trae el reporte.")); return; }
+    pinta(supHTML(v, d));
+  // Con el error se pintan tambien los controles (misma leccion que Caja).
+  }, function (e) { if (e.message !== "codigo") pinta(supControles(v) + errorHTML(e)); });
+}
+
+function supControles(v) {
+  var hoy = hoyLocal();
+  var presets = [["7", "Últimos 7 días"], ["sem", "Esta semana"], ["ant", "Semana pasada"], ["14", "Últimos 14 días"], ["mes", "Este mes"], ["ayer", "Ayer"], ["hoy", "Hoy"]];
+  var html = '<div class="card"><div class="rango">' +
+    '<div class="campo"><label for="sup-desde">Del</label><input type="date" id="sup-desde" value="' + h(v.desde) + '" max="' + hoy + '" ' + on("change", "supDesde") + "></div>" +
+    '<div class="campo"><label for="sup-hasta">al</label><input type="date" id="sup-hasta" value="' + h(v.hasta) + '" max="' + hoy + '" ' + on("change", "supHasta") + "></div>" +
+    '<div class="presets">';
+  for (var i = 0; i < presets.length; i++) html += '<button type="button" class="chico ' + (v.preset === presets[i][0] ? "on" : "") + '" ' + act("supPreset", presets[i][0]) + ">" + presets[i][1] + "</button>";
+  return html + "</div></div></div>";
+}
+
+function supHTML(v, d) {
+  var P = d.perfiles || [], D = d.dias || [], C = d.cola || {}, i, j, k;
+  var unDia = v.desde === v.hasta;
+  var umbral = d.umbral_olvido_min || 20;
+  var html = '<div class="fila entre"><div><h1>Supervisores</h1><div class="muted">Qué hizo cada quien en la app del supervisor, con las mismas columnas para todos. Los olvidos y los cierres son de la cola, no de una persona: van aparte, por día.</div></div></div>' + supControles(v);
+  var totalMov = 0, sinPerfil = 0;
+  for (i = 0; i < P.length; i++) { totalMov += P[i].movimientos || 0; if (P[i].clave === null) sinPerfil = P[i].movimientos || 0; }
+  if (!totalMov && !C.entradas) return html + '<div class="card vacio">No hay movimientos ni carros entre el ' + fmtFecha(v.desde) + " y el " + fmtFecha(v.hasta) + ". Prueba otro rango.</div>";
+
+  // Resumen
+  html += '<div class="tiles">' +
+    '<div class="tile"><div class="v">' + totalMov + '</div><div class="r">movimientos de los supervisores</div></div>' +
+    '<div class="tile"><div class="v">' + (C.entradas || 0) + '</div><div class="r">carros que entraron a la cola</div></div>' +
+    '<div class="tile ' + (C.olvidos ? "ojo" : "ok") + '"><div class="v">' + (C.olvidos || 0) + '</div><div class="r">pasaron de ' + umbral + ' min sin asignar</div></div>' +
+    '<div class="tile ' + (C.cierres ? "ojo" : "ok") + '"><div class="v">' + (C.cierres || 0) + '</div><div class="r">los entregó solo el cierre</div></div>' +
+    '<div class="tile ' + (C.secados_cortos ? "ojo" : "ok") + '"><div class="v">' + (C.secados_cortos || 0) + '</div><div class="r">secados de menos de 3 min</div></div>' +
+    '<div class="tile ' + (sinPerfil ? "ojo" : "ok") + '"><div class="v">' + sinPerfil + '</div><div class="r">movimientos sin perfil</div></div>' +
+    "</div>";
+
+  // Lado a lado: una columna por perfil. Por el verde compiten solo los
+  // perfiles con nombre que SI tocaron la app en el rango: "Sin perfil" no es
+  // una persona, y quien no trabajo esos dias no "gano" por tener cero borrados.
+  function compite(k) { return P[k].clave !== null && (P[k].movimientos || 0) > 0; }
+  var conNombre = 0; for (k = 0; k < P.length; k++) if (compite(k)) conNombre++;
+  function gana(vals, mayorEsMejor) {
+    var mejor = null, out = [];
+    for (k = 0; k < vals.length; k++) if (compite(k) && vals[k] != null && (mejor == null || (mayorEsMejor ? vals[k] > mejor : vals[k] < mejor))) mejor = vals[k];
+    var cuantos = 0; for (k = 0; k < vals.length; k++) if (compite(k) && vals[k] === mejor) cuantos++;
+    for (k = 0; k < vals.length; k++) out.push(cuantos === 1 && compite(k) && vals[k] === mejor ? "gana" : "");
+    return out;
+  }
+  function fila(nombre, campo, fmt, cmp) {
+    var vals = [], s = '<div class="lbl">' + nombre + "</div>";
+    for (k = 0; k < P.length; k++) vals.push(typeof campo === "function" ? campo(P[k]) : P[k][campo]);
+    var g = (cmp && conNombre > 1) ? gana(vals, cmp === "mayor") : [];
+    for (k = 0; k < P.length; k++) s += '<div class="num ' + (g[k] || "") + '">' + (fmt ? fmt(vals[k], P[k]) : (vals[k] == null ? "—" : h(vals[k]))) + "</div>";
+    return s;
+  }
+  function n0(x) { return x == null ? "—" : x; }
+  html += '<div class="card"><div class="fila entre"><h2>' + (conNombre > 1 ? "Lado a lado" : "Totales") + '</h2><span class="nota">' + (conNombre > 1 ? "Verde = el mejor en ese renglón (Sin perfil y quien no tocó la app no compiten)" : "Un solo perfil con movimientos") + "</span></div>" +
+    '<div class="tabla-wrap"><div class="comp" style="--cols:' + P.length + '"><div class="enc"></div>';
+  for (i = 0; i < P.length; i++) {
+    html += '<div class="enc caj num"' + (P[i].clave === null ? ' style="color:var(--ambar)"' : "") + '><span class="punto" style="background:' + h(P[i].color) + '"></span>' + h(P[i].nombre) +
+            '<div class="turno">' + (P[i].dias ? pl(P[i].dias, "día", "días") : "sin movimientos") + "</div></div>";
+  }
+  html += '<div class="sec">Toques</div>' +
+    fila("Movimientos", "movimientos", null, "mayor") +
+    fila("Asignó", "asigno") +
+    fila("Reacción pago → asignar, mediana", "reaccion_med_s", segs, "menor") +
+    fila("Reacción pago → asignar, p90", "reaccion_p90_s", segs, "menor") +
+    fila("Entregó", "entrego") +
+    fila("Rechazos de entrega registrados", "rechazo") +
+    '<div class="sec">Correcciones</div>' +
+    fila("Borró unidades", "borro", null, "menor") +
+    fila("Restauró", "restauro") +
+    fila("Regresó (deshizo un paso)", "regreso", null, "menor") +
+    fila("Corrigió la captura", "corrigio", null, "menor") +
+    fila("Fotos retomadas", "retomo_foto") +
+    fila("Toques que la base no aceptó", "rechazados", null, "menor") +
+    '<div class="sec">Cobertura</div>' +
+    fila("Días con movimientos", "dias") +
+    fila("Cambios de perfil hacia él", "cambios") +
+    (unDia ? fila("Primera acción", "primera", function (x) { return n0(x); }) + fila("Última acción", "ultima", function (x) { return n0(x); }) : "") +
+    "</div></div>" +
+    '<div class="nota" style="margin-top:10px">La reacción se mide sobre los carros que esa persona <b>sí</b> asignó, y es la mediana: quien levanta un carro que otro olvidó no se ve lento por eso. El olvido va en la cuenta de la cola, abajo.</div></div>';
+
+  // La cola, por dia
+  var filas = "";
+  for (j = 0; j < D.length; j++) {
+    var t = D[j], chips = "";
+    for (i = 0; i < P.length; i++) {
+      var cl = P[i].clave === null ? "_sin" : P[i].clave, nn = (t.por_perfil || {})[cl];
+      if (nn) chips += '<span class="chip"' + (P[i].clave === null ? ' style="color:var(--ambar);border-color:var(--ambar)"' : "") + '><span class="punto" style="background:' + h(P[i].color) + '"></span>' + h(P[i].nombre) + " " + nn + "</span> ";
+    }
+    filas += "<tr><td>" + diaCorto(t.dia) + '</td><td class="num">' + t.entradas + '</td>' +
+      '<td class="num">' + (t.olvidos ? '<b style="color:var(--ambar)">' + t.olvidos + "</b>" : "0") + "</td>" +
+      '<td class="num">' + (t.cierres ? '<b style="color:var(--ambar)">' + t.cierres + "</b>" : "0") + "</td>" +
+      '<td class="num">' + (t.secados_cortos ? '<b style="color:var(--ambar)">' + t.secados_cortos + "</b>" : "0") + "</td>" +
+      "<td>" + (chips || '<span class="muted chico-t">nadie tocó la app</span>') + "</td></tr>";
+  }
+  html += '<div class="card"><div class="fila entre"><h2>La cola, por día · del equipo, sin persona</h2><span class="nota">Un carro olvidado no es error de quien traía el teléfono</span></div>' +
+    '<div class="tabla-wrap"><table><thead><tr><th>Día</th><th class="num">Entraron</th><th class="num">Pasaron de ' + umbral + ' min</th><th class="num">Los entregó el cierre</th><th class="num">Secados &lt; 3 min</th><th>Quién tocó la app ese día</th></tr></thead><tbody>' + filas + "</tbody></table></div></div>";
+
+  html += '<div class="card"><details><summary>Cómo se mide cada columna</summary><dl class="kv" style="margin-top:10px;grid-template-columns:220px 1fr">' +
+    "<dt>Movimientos</dt><dd>Toques que la base aceptó: asignar, entregar, rechazar, regresar, restaurar, borrar, corregir, foto, secador a mano. Cambiar de perfil no cuenta.</dd>" +
+    "<dt>Reacción</dt><dd>Minutos del pago a \"Asignar unidad\" en los carros que esa persona asignó (mediana y p90). Se guarda en el momento del toque.</dd>" +
+    "<dt>Toques que la base no aceptó</dt><dd>Un toque que la base rechazó con su texto (\"La línea 1 es solo para express\", \"Deja al menos un secador\"). Es información, no error de la app.</dd>" +
+    "<dt>Sin perfil</dt><dd>Toques hechos sin elegir nombre en la pastilla. No es una persona; la meta es que sea cero.</dd>" +
+    "<dt>Entraron</dt><dd>Carros creados por una venta de Zettle ese día (sin pruebas).</dd>" +
+    "<dt>Pasaron de " + umbral + " min</dt><dd>Carros que seguían sin asignar a los " + umbral + " minutos de pagar (el mismo umbral que pinta la tarjeta de rojo). Un lavado a mano no cuenta. Se cuenta por carro, no por persona.</dd>" +
+    "<dt>Los entregó el cierre</dt><dd>Carros que nadie entregó antes del corte de las 8:30 PM.</dd>" +
+    "<dt>Secados &lt; 3 min</dt><dd>Carros asignados y entregados de un jalón (olvidos que se cerraron tarde). El reporte del dueño los saca del promedio de secado.</dd>" +
+    "<dt>Quién tocó la app</dt><dd>Movimientos aceptados por perfil ese día. Dice quién cubrió cada día sin pedirle a nadie que cheque.</dd>" +
+    "</dl></details></div>";
+  return html;
+}
+
+function supDesde(x) { if (!esFecha(x)) return; if (esFecha(VISTA.hasta) && !cajaRangoValido(x, VISTA.hasta)) { render(); return; } VISTA.desde = x; VISTA.preset = ""; render(); }
+function supHasta(x) { if (!esFecha(x)) return; if (esFecha(VISTA.desde) && !cajaRangoValido(VISTA.desde, x)) { render(); return; } VISTA.hasta = x; VISTA.preset = ""; render(); }
+function supPreset(k) {
+  var hoy = hoyLocal(), m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(hoy);
+  var dow = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay(), lunes = sumarDias(hoy, -((dow + 6) % 7));
+  if (k === "7") { VISTA.desde = sumarDias(hoy, -6); VISTA.hasta = hoy; }
+  if (k === "sem") { VISTA.desde = lunes; VISTA.hasta = hoy; }
+  if (k === "ant") { VISTA.desde = sumarDias(lunes, -7); VISTA.hasta = sumarDias(lunes, -1); }
+  if (k === "14") { VISTA.desde = sumarDias(hoy, -13); VISTA.hasta = hoy; }
+  if (k === "mes") { VISTA.desde = hoy.slice(0, 8) + "01"; VISTA.hasta = hoy; }
+  if (k === "ayer") { VISTA.desde = sumarDias(hoy, -1); VISTA.hasta = VISTA.desde; }
+  if (k === "hoy") { VISTA.desde = hoy; VISTA.hasta = hoy; }
+  VISTA.preset = k; render();
+}
+// FIN SUPERVISORES (el arnes pruebas/panel-supervisores.sh corta aqui)
 
 // ---------------------------------------------------------------------
 // COMISIONES: lo que gana cada cajera por venta adicional (migracion 215,
