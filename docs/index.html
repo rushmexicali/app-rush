@@ -27,7 +27,38 @@
   #logo { height: 30px; width: auto; display: block; }
   /* Respaldo si la imagen no carga: se ve la palabra, no un hueco. */
   h1 { font-size: 26px; letter-spacing:1px; margin:0; }
-  #cuantos { font-size: 20px; color:#8b949e; font-weight:700; }
+  /* 17px y no 20 desde el 25/oct/2026: la pastilla del perfil ocupa la esquina
+     derecha y "12 en proceso" tiene que caber en medio sin partirse. */
+  #cuantos { font-size: 17px; line-height:1.1; color:#8b949e; font-weight:700; flex:1; margin:0 8px; }
+
+  /* ---- La pastilla del perfil (220, 25/oct/2026) ----
+     Quien esta usando el telefono. Mismo alto que los botones de la tarjeta
+     para que se toque con el pulgar. Sin perfil elegido se pinta en rojo con
+     los guiones girando (la clase .girando de siempre: "este es el boton que
+     se toca"), y dice "Seleccionar perfil" (texto del dueno). */
+  #perfil-boton {
+    display:flex; align-items:center; gap:9px; flex:none;
+    min-height:52px; padding:0 14px 0 6px;
+    background:#161b22; border:2px solid #30363d; border-radius:999px;
+    color:#fff; font-size:18px; font-weight:800; cursor:pointer; white-space:nowrap;
+  }
+  #perfil-boton:active { background:#21262d; }
+  /* Sin perfil, el texto es mas largo que un nombre: se deja partir en dos
+     renglones y se acota el ancho, para que "N en proceso" siga cabiendo a la
+     izquierda en un telefono de 360 px. */
+  #perfil-boton.sin {
+    color:#ffb3b3; border-color:#ff4d4f; padding:6px 14px; font-size:16px;
+    white-space:normal; line-height:1.05; text-align:center; max-width:46%;
+  }
+  #perfil-boton.girando::before { border-radius:999px; }
+  /* El circulo con la inicial, del color del perfil. El color solo tine el
+     circulo y la bitacora: no significa ningun estado de la cola. */
+  .avatar {
+    width:38px; height:38px; border-radius:50%; flex:none;
+    display:inline-flex; align-items:center; justify-content:center;
+    font-weight:900; font-size:19px; color:#08090b; background:var(--c, #6e7681);
+  }
+  .avatar.chico { width:28px; height:28px; font-size:14px; }
 
   .carro {
     border-radius: 16px;
@@ -420,7 +451,9 @@
   /* ---- Confirmar entrega / lista de entregados ---- */
   /* Mismo patron de pantalla completa que #asignar: el supervisor ya lo
      conoce. Debajo de #acceso (50) y encima de #asignar (40). */
-  #entrega, #entregados {
+  /* #perfil (el selector) y #bitacora (220) son pantallas completas del mismo
+     tipo: se abren desde la cola, el back las cierra. */
+  #entrega, #entregados, #perfil, #bitacora {
     display:none;
     position:fixed; inset:0; z-index:45;
     background:#0d1117;
@@ -429,27 +462,27 @@
   }
   /* Sin relleno arriba: se lo queda la cabecera fija, para que al pegarse
      no deje una franja de fondo encima. */
-  #entregados { padding-top:0; }
+  #entregados, #bitacora { padding-top:0; }
 
-  #entregados-cabecera {
+  #entregados-cabecera, #bitacora-cabecera {
     position:sticky; top:0; z-index:2;
     background:#0d1117;
     padding:14px 0 12px;
     border-bottom:1px solid #21262d;
     margin-bottom:14px;
   }
-  #entregados-cerrar {
+  #entregados-cerrar, #bitacora-cerrar {
     width:100%; min-height:64px; margin-bottom:12px;
     font-size:19px; font-weight:800;
     background:#161b22; color:#e6edf3;
     border:2px solid #30363d; border-radius:14px; cursor:pointer;
   }
-  #entregados-cerrar:active { background:#30363d; }
+  #entregados-cerrar:active, #bitacora-cerrar:active { background:#30363d; }
 
   /* El boton de volver y el selector de dia, en la misma fila. */
   .fila-cabecera { display:flex; gap:10px; align-items:center; }
-  .fila-cabecera #entregados-cerrar { flex:1 1 auto; }
-  #entregados-dia {
+  .fila-cabecera #entregados-cerrar, .fila-cabecera #bitacora-cerrar { flex:1 1 auto; }
+  #entregados-dia, #bitacora-dia {
     flex:0 0 auto; min-height:52px; max-width:46%;
     background:#21262d; color:#e6edf3; border:1px solid #30363d;
     border-radius:12px; padding:0 12px; font-size:17px; font-weight:700;
@@ -491,8 +524,8 @@
   #detalle .quienes { margin-top:20px; }
   #detalle .quienes .titulo2 { font-size:19px; color:#adbac7; font-weight:700; margin-bottom:8px; }
   #detalle .quienes .nombre { font-size:24px; font-weight:800; line-height:1.35; }
-  #entrega .quien, #entregados .quien { font-size:28px; font-weight:800; line-height:1.15; }
-  #entrega .cual,  #entregados .cual  { font-size:18px; color:#8b949e; margin-top:4px; }
+  #entrega .quien, #entregados .quien, #perfil .quien, #bitacora .quien { font-size:28px; font-weight:800; line-height:1.15; }
+  #entrega .cual,  #entregados .cual,  #perfil .cual,  #bitacora .cual  { font-size:18px; color:#8b949e; margin-top:4px; }
   #entrega .rejilla.entrega2 { margin-top:26px; }
 
   /* Entregar en verde, rechazar en rojo: el color dice cual es cual sin
@@ -562,6 +595,64 @@
     border:2px solid #30363d; border-radius:14px; cursor:pointer;
   }
   #ver-entregados:active { background:#161b22; }
+
+  /* La bitacora (220): debajo de Finalizados, mas apagada. Es un boton y no
+     una pestana por la misma razon de siempre (s4). */
+  #ver-bitacora {
+    width:100%; margin-top:10px; min-height:60px;
+    font-size:18px; font-weight:700;
+    background:transparent; color:#8b949e;
+    border:2px solid #30363d; border-radius:14px; cursor:pointer;
+  }
+  #ver-bitacora:active { background:#161b22; }
+
+  /* ---- El selector de perfil (220) ---- */
+  .rejilla.perfiles { grid-template-columns:1fr; gap:12px; margin-top:8px; }
+  .opcion.perfil {
+    min-height:84px; display:flex; align-items:center; gap:16px;
+    font-size:25px; text-align:left; padding:10px 16px;
+    border-left:12px solid var(--c);
+  }
+  .opcion.perfil .avatar { width:52px; height:52px; font-size:25px; }
+  .opcion.perfil .ahora {
+    margin-left:auto; font-size:15px; font-weight:800; color:#3fb950;
+    border:2px solid #3fb950; border-radius:999px; padding:3px 10px;
+  }
+
+  /* ---- La bitacora (220) ---- */
+  .filtros { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 12px; }
+  .filtro {
+    min-height:46px; padding:0 13px; font-size:16px; font-weight:800;
+    color:#adbac7; background:transparent; border:2px solid #30363d; border-radius:999px;
+    cursor:pointer; display:inline-flex; align-items:center; gap:8px;
+  }
+  .filtro.elegido { background:#21262d; border-color:#e6edf3; color:#fff; }
+  .conteo {
+    background:#161b22; border:1px solid #30363d; border-radius:12px;
+    padding:10px 14px; font-size:16px; color:#adbac7; margin-bottom:14px; line-height:1.5;
+  }
+  .conteo b { color:#fff; font-size:18px; }
+  .mov { display:grid; grid-template-columns:56px 1fr; column-gap:10px; padding:12px 0; border-bottom:1px solid #21262d; }
+  .mov .hora { font-size:17px; font-weight:800; color:#8b949e; font-variant-numeric:tabular-nums; padding-top:3px; }
+  .mov .q { display:flex; align-items:center; gap:8px; font-size:18px; font-weight:800; flex-wrap:wrap; }
+  .mov .q .nombre { color:#e6edf3; white-space:nowrap; }
+  .mov .carro-t { font-size:16px; color:#adbac7; margin-top:4px; line-height:1.3; }
+  .mov .det { font-size:15px; color:#8b949e; margin-top:2px; line-height:1.3; }
+  /* Un toque que la base no acepto: en rojo, con el texto del error. */
+  .mov.error .q .verbo, .mov.error .det { color:#ff7875; }
+  /* Sin perfil: en ambar, para que se note que falta elegir nombre. */
+  .mov.sin .q .nombre { color:#e3b341; }
+  .mov.cambio { background:#161b22; border-radius:10px; padding:10px 12px; margin:6px 0; border-bottom:none; }
+  .mov.cambio .q .verbo { color:#adbac7; font-weight:700; }
+  /* Hechos de la cola, sin persona: en gris; la entrada lleva un + verde
+     porque es lo normal, no una alerta. */
+  .mov.cola { border-left:4px solid #6e7681; padding-left:8px; }
+  .mov.cola .q .nombre, .mov.cola .q .verbo { color:#adbac7; }
+  .mov.cola.entrada { border-left-color:#3fb950; }
+  .mov .placa-mini {
+    font-family: ui-monospace, "Consolas", monospace;
+    background:#f0f6fc; color:#0d1117; border-radius:3px; padding:0 5px; font-size:14px; font-weight:700;
+  }
   .rejilla.lineas    { grid-template-columns: repeat(3, 1fr); }
   .rejilla.secadores { grid-template-columns: repeat(2, 1fr); }
 
@@ -699,6 +790,9 @@
   <img id="logo" src="RUSH-Logo.png" alt="RUSH"
        onerror="this.outerHTML='&lt;h1&gt;RUSH&lt;/h1&gt;'">
   <div id="cuantos"></div>
+  <!-- 220: quien esta usando el telefono. Un toque abre el selector; otro
+       elige el nombre. No es inicio de sesion. -->
+  <button id="perfil-boton" type="button" title="Quién está usando el teléfono"></button>
 </header>
 
 <!-- "HAY UNA ACTUALIZACION": lo pinta actualizacion.js cuando sw.js cambio de
@@ -713,6 +807,36 @@
      Es un boton y no una pestaña a proposito — el CLAUDE.md pide toques
      directos, sin elementos de navegacion permanentes. -->
 <button id="ver-entregados">Finalizados</button>
+<!-- 220: la bitacora de los movimientos del dia, debajo de Finalizados. -->
+<button id="ver-bitacora">Bitácora</button>
+
+<!-- ===== El selector de perfil (220): el segundo de los dos toques ===== -->
+<div id="perfil">
+  <div class="quien">¿Quién está usando el teléfono?</div>
+  <div class="cual" id="perfil-desde"></div>
+  <div class="rejilla perfiles" id="perfil-lista"></div>
+  <div class="cual" style="margin-top:18px">Todo lo que se toque a partir de ahora queda a nombre de esa persona. Si te equivocas, vuelve a tocar el botón de arriba y cámbialo.</div>
+  <button id="perfil-cancelar" class="opcion volver" type="button">Cancelar</button>
+</div>
+
+<!-- ===== La bitacora (220) ===== -->
+<div id="bitacora">
+  <!-- Cabecera fija, como en Finalizados: volver, el dia (selector nativo,
+       abre en hoy) y el filtro por persona. -->
+  <div id="bitacora-cabecera">
+    <div class="fila-cabecera">
+      <button id="bitacora-cerrar">&#8592;&nbsp; Volver a la cola</button>
+      <select id="bitacora-dia" title="Ver otro día"></select>
+    </div>
+    <div class="quien">Bitácora</div>
+  </div>
+  <!-- El filtro por persona NO va en la cabecera fija: con cuatro nombres
+       ocupa tres renglones y la cabecera se comeria media pantalla. Se
+       desplaza con la lista; Volver y el dia siguen fijos. -->
+  <div class="filtros" id="bitacora-filtros"></div>
+  <div class="conteo" id="bitacora-conteo" style="display:none"></div>
+  <div id="bitacora-lista"></div>
+</div>
 
 <div id="asignar">
   <div class="quien" id="asig-quien"></div>
@@ -1426,6 +1550,16 @@ function pedir(ruta, opciones) {
   opciones = opciones || {};
   opciones.headers = opciones.headers || {};
   opciones.headers["x-codigo"] = CODIGO;
+  // 220: en cada ENVIO va quien esta en el telefono (x-perfil), el telefono
+  // (x-dispositivo) y su hora (x-hora, por si el wifi tarda). Solo en los
+  // POST: las lecturas no se anotan y no tienen por que cargarlas. Un POST
+  // tambien es un toque: reinicia el reloj de la pastilla (ver anotarToque).
+  if (String(opciones.method || "GET").toUpperCase() === "POST") {
+    if (PERFIL) opciones.headers["x-perfil"] = PERFIL;
+    if (DISPOSITIVO) opciones.headers["x-dispositivo"] = DISPOSITIVO;
+    opciones.headers["x-hora"] = new Date().toISOString();
+    anotarToque();
+  }
   // ⚠️ Aqui iba `opciones.cache = "no-store"` y se QUITO el 2/oct/2026. Con esa
   // opcion Chrome no usa su memoria de preflight, asi que el telefono mandaba
   // un OPTIONS antes de CADA llamada: 3,113 OPTIONS por 3,349 consultas de la
@@ -3605,7 +3739,380 @@ document.addEventListener("pointerdown", primerToque);
 // registra actualizacion.js, compartido con la caja, que ademas pinta el
 // aviso rojo de "hay version nueva" en #aviso-version.
 
+// =====================================================================
+// --- El perfil del supervisor y la bitacora (220, 25/oct/2026) --------
+// =====================================================================
+// QUIEN esta en el telefono. No es un inicio de sesion: una pastilla en la
+// esquina, cuatro nombres, dos toques. El perfil se queda guardado en el
+// telefono y en cada POST viaja como cabecera (x-perfil); la base anota cada
+// toque a ese nombre (supervisor_accion). Sin perfil elegido TODO sigue
+// funcionando: los toques quedan como "Sin perfil" y la pastilla pide con los
+// guiones girando. La app nunca se bloquea (s4).
+//
+// El dueno acepto el margen de error (alguien toca con el perfil de otro):
+// por eso el cambio de perfil tambien queda en la bitacora, y por eso la
+// pastilla vuelve a girar tras dos horas sin toques o al primer toque de un
+// dia nuevo, para que quien tome el telefono vea que nombre trae.
+var PERFIL = "";             // clave del perfil elegido ("" = ninguno)
+var PERFILES = [];           // [{clave, nombre, color}] de /perfiles, con copia en el telefono
+var DISPOSITIVO = "";        // identificador que este telefono se invento una vez
+var ULTIMO_TOQUE = 0;        // ms del ultimo POST
+var PASTILLA_DORMIDA = false;
+var DORMIR_MS = 2 * 60 * 60 * 1000;
+
+function cargarPerfil() {
+  try {
+    PERFIL = localStorage.getItem("rush_perfil") || "";
+    PERFILES = JSON.parse(localStorage.getItem("rush_perfiles") || "[]");
+    DISPOSITIVO = localStorage.getItem("rush_dispositivo") || "";
+    ULTIMO_TOQUE = Number(localStorage.getItem("rush_ultimo_toque") || 0);
+  } catch (e) {}
+  if (Object.prototype.toString.call(PERFILES) !== "[object Array]") PERFILES = [];
+  if (!DISPOSITIVO) {
+    DISPOSITIVO = "tel-" + Math.random().toString(36).slice(2, 10);
+    try { localStorage.setItem("rush_dispositivo", DISPOSITIVO); } catch (e) {}
+  }
+}
+
+function perfilDe(clave) {
+  for (var i = 0; i < PERFILES.length; i++) if (PERFILES[i].clave === clave) return PERFILES[i];
+  return null;
+}
+
+// El circulo con la inicial. Sin perfil: un "?" ambar.
+function avatarDe(p, chico) {
+  var ini = p ? String(p.nombre || "?").trim().charAt(0).toUpperCase() : "?";
+  return '<span class="avatar' + (chico ? " chico" : "") + '" style="--c:' +
+         escapar(p ? p.color : "#e3b341") + '">' + escapar(ini || "?") + '</span>';
+}
+
+function pintarPerfilBoton() {
+  var b = document.getElementById("perfil-boton");
+  var p = perfilDe(PERFIL);
+  if (!p) { b.className = "sin girando"; b.textContent = "Seleccionar perfil"; return; }
+  b.className = PASTILLA_DORMIDA ? "girando" : "";
+  b.innerHTML = avatarDe(p) + '<span>' + escapar(p.nombre) + '</span>';
+}
+
+// La lista viene de la base (los nombres NO viven en este archivo, que es
+// publico). Se guarda una copia en el telefono para que la pastilla pinte
+// aunque la consulta falle (wifi caido al abrir).
+function pedirPerfiles() {
+  return pedir("/perfiles")
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d || Object.prototype.toString.call(d.perfiles) !== "[object Array]") return;
+      PERFILES = d.perfiles;
+      try { localStorage.setItem("rush_perfiles", JSON.stringify(PERFILES)); } catch (e) {}
+      pintarPerfilBoton();
+      if (document.getElementById("perfil").style.display === "block") pintarListaPerfiles();
+    })
+    .catch(function () {});
+}
+
+function pintarListaPerfiles() {
+  var h = "";
+  for (var i = 0; i < PERFILES.length; i++) {
+    var p = PERFILES[i];
+    h += '<button type="button" class="opcion perfil" data-perfil="' + escapar(p.clave) +
+         '" style="--c:' + escapar(p.color) + '">' + avatarDe(p) +
+         '<span>' + escapar(p.nombre) + '</span>' +
+         (PERFIL === p.clave ? '<span class="ahora">ahora</span>' : '') + '</button>';
+  }
+  document.getElementById("perfil-lista").innerHTML =
+    h || '<div class="cual">No se pudo cargar la lista. Revisa el wifi e intenta otra vez.</div>';
+  var actual = perfilDe(PERFIL);
+  document.getElementById("perfil-desde").textContent =
+    actual ? "Ahora está como " + actual.nombre : "Nadie ha elegido perfil en este teléfono";
+}
+
+function abrirPerfil() {
+  pintarListaPerfiles();
+  document.getElementById("perfil").style.display = "block";
+  window.scrollTo(0, 0);
+  registrarPantalla(cerrarPerfil);   // el back la cierra
+  pedirPerfiles();                   // por si cambio un nombre o entro alguien nuevo
+}
+function cerrarPerfil() { document.getElementById("perfil").style.display = "none"; }
+
+function elegirPerfil(clave) {
+  var de = PERFIL;
+  PERFIL = clave;
+  PASTILLA_DORMIDA = false;
+  try { localStorage.setItem("rush_perfil", PERFIL); } catch (e) {}
+  pintarPerfilBoton();
+  cerrarPantalla();
+  if (de === clave) return;
+  // El cambio queda en la bitacora a nombre del perfil NUEVO (la cabecera ya
+  // lo trae). Si el wifi falla, el perfil igual quedo en el telefono.
+  pedir("/perfil", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ de: de || null })
+  }).catch(function () {});
+}
+
+// Un POST es un toque. Lo llama pedir().
+function anotarToque() {
+  ULTIMO_TOQUE = Date.now();
+  try { localStorage.setItem("rush_ultimo_toque", String(ULTIMO_TOQUE)); } catch (e) {}
+  if (PASTILLA_DORMIDA) { PASTILLA_DORMIDA = false; pintarPerfilBoton(); }
+}
+
+// Cada segundo: si pasaron dos horas sin toques, o el ultimo toque fue otro
+// dia, la pastilla gira hasta el siguiente toque. No abre nada ni bloquea.
+function vigilarPastilla() {
+  if (!PERFIL || !ULTIMO_TOQUE) return;
+  var ahora = Date.now();
+  var dormida = (ahora - ULTIMO_TOQUE > DORMIR_MS) ||
+                (new Date(ULTIMO_TOQUE).toDateString() !== new Date(ahora).toDateString());
+  if (dormida !== PASTILLA_DORMIDA) { PASTILLA_DORMIDA = dormida; pintarPerfilBoton(); }
+}
+
+// --- La bitacora -------------------------------------------------------
+// Lo que lee la pantalla viene de /bitacora (bitacora_del_dia): los toques
+// del dia con quien, que, a que carro y el resultado, MAS los hechos de la
+// cola sin persona (entro una venta, paso de 20 min sin asignar, lo entrego
+// el cierre). Se pide el dia completo una vez y el filtro por persona se
+// aplica aqui, sin volver a consultar.
+var BITACORA_MOVS = [];
+var bitacoraToken = 0;
+var diaBitacora = "";        // "" = hoy
+var filtroBitacora = "";     // "" = todos
+
+var VERBOS = {
+  asigno: "Asignó", entrego: "Entregó", rechazo: "Rechazó la entrega",
+  regreso: "Regresó", restauro: "Restauró", borro: "Borró la unidad",
+  corrigio: "Corrigió", foto: "Tomó la foto", retomo_foto: "Retomó la foto",
+  secador_manual: "Agregó un secador a mano", cambio_perfil: "Cambió el perfil",
+  entrada: "Entró un carro nuevo", olvido: "Pasó de 20 min sin asignar",
+  cierre: "El cierre de las 8:30 lo entregó solo"
+};
+var CORTOS = {
+  asigno: "asignó", entrego: "entregó", rechazo: "rechazó", borro: "borró",
+  restauro: "restauró", regreso: "regresó", corrigio: "corrigió",
+  foto: "fotos", retomo_foto: "retomó foto", secador_manual: "secador a mano"
+};
+var ESTADO_CORTO = { prelavado: "prelavado", secando: "secando", entregado: "entregado" };
+
+function minutosDe(seg) { return (seg === null || seg === undefined) ? null : Math.round(seg / 60); }
+
+function textoDetalle(m) {
+  var d = m.detalle || {};
+  var min = minutosDe(m.en_etapa_seg);
+  var sec = (d.secadores && d.secadores.length) ? d.secadores.join(", ") : "";
+  switch (m.accion) {
+    case "asigno":   return "Línea " + (d.linea || "?") + (sec ? " · " + sec : "") + (min !== null ? " · a los " + min + " min de pagar" : "");
+    case "entrego":  return (min !== null ? min + " min de secado" : "") + (sec ? " · " + sec : "") + (d.restaurado ? " · estaba borrado y se restauró" : "");
+    case "rechazo":  return "Le faltó: " + ((d.motivos || []).join(", ") || "?") + (sec ? " · a " + sec : "") + (min !== null ? " · llevaba " + min + " min" : "");
+    case "regreso":  return "De " + (ESTADO_CORTO[d.de] || d.de || "?") + " a " + (ESTADO_CORTO[d.a] || d.a || "?") + (min !== null ? " · llevaba " + min + " min" : "");
+    case "restauro": return "De entregado a secando" + (sec ? " · " + sec : "");
+    case "borro":    return "Estaba " + (d.estado === "secando" ? "secando" : "sin asignar") + (min !== null ? " desde hacía " + min + " min" : "");
+    case "corrigio": return (d.cambios && d.cambios.length) ? d.cambios.join(" · ") : "Sin cambios";
+    case "foto":     return "";
+    case "retomo_foto": return d.motivo ? "Porque " + d.motivo : "";
+    case "secador_manual": return d.nombre ? "Agregó a " + d.nombre : "";
+    case "cambio_perfil": {
+      var pde = perfilDe(d.de), pa = perfilDe(d.a);
+      return (pde ? pde.nombre : "Sin perfil") + " → " + (pa ? pa.nombre : (d.a || "?"));
+    }
+    case "entrada":  return "Venta en caja" + (d.ticket ? " · ticket " + d.ticket : "") + (d.monto != null ? " · $" + d.monto : "") + ". Entró solo por el cobro; nadie lo tocó";
+    case "olvido":   return "Hecho de la cola, sin persona: seguía sin asignar a los " + (d.en || 20) + " min de pagar";
+    case "cierre":   return "Hecho de la cola, sin persona: nadie lo entregó antes del corte";
+  }
+  return "";
+}
+
+// En 24 horas: "22:18" cabe en la columna de la hora; "10:18 p.m." se
+// partia en dos renglones.
+function horaDe(t) {
+  try { return new Date(t).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit", hour12: false }); }
+  catch (e) { return ""; }
+}
+
+function cargarDiasBitacora() {
+  var sel = document.getElementById("bitacora-dia");
+  return pedir("/reportes")
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var hoy = d.hoy;
+      var dias = (d.dias || []).map(function (x) { return x.fecha; });
+      if (dias.indexOf(hoy) === -1) dias.unshift(hoy);
+      dias.sort().reverse();
+      var h = "";
+      for (var i = 0; i < dias.length; i++) {
+        h += '<option value="' + escapar(dias[i] === hoy ? "" : dias[i]) + '">' +
+             escapar(dias[i] === hoy ? "Hoy" : comoSeLee(dias[i])) + "</option>";
+      }
+      sel.innerHTML = h;
+      sel.value = diaBitacora;
+    })
+    .catch(function () { /* sin selector, pero la lista de hoy si sirve */ });
+}
+
+// yaAbierta = true al cambiar de dia (la pantalla ya esta en la pila).
+// En cada apertura fresca se vuelve a HOY y a "Todos": lo normal es ver que
+// paso hoy; lo de otros dias se escoge a proposito.
+function abrirBitacora(yaAbierta) {
+  document.getElementById("bitacora").style.display = "block";
+  window.scrollTo(0, 0);
+  if (!yaAbierta) {
+    diaBitacora = ""; filtroBitacora = "";
+    registrarPantalla(cerrarBitacora);
+    cargarDiasBitacora();
+  }
+  document.getElementById("bitacora-lista").innerHTML = '<div class="cual">Cargando…</div>';
+  document.getElementById("bitacora-conteo").style.display = "none";
+  pintarFiltrosBitacora();
+
+  var miToken = ++bitacoraToken;
+  pedir("/bitacora" + (diaBitacora ? "?fecha=" + encodeURIComponent(diaBitacora) : ""))
+    .then(function (r) {
+      if (!r.ok) throw new Error("El servidor respondio " + r.status);
+      return r.json();
+    })
+    .then(function (d) {
+      if (miToken !== bitacoraToken) return;   // ya se pidio otro dia
+      // Misma regla que la cola y Finalizados: si no viene una lista, es un
+      // error, no un dia sin movimientos.
+      if (!d || d.ok === false || Object.prototype.toString.call(d.movimientos) !== "[object Array]") {
+        throw new Error("La respuesta no trae la bitacora");
+      }
+      BITACORA_MOVS = d.movimientos;
+      pintarBitacora();
+    })
+    .catch(function () {
+      if (miToken !== bitacoraToken) return;
+      document.getElementById("bitacora-lista").innerHTML =
+        '<div class="cual">No se pudo cargar. Intenta otra vez.</div>';
+    });
+}
+function cerrarBitacora() { document.getElementById("bitacora").style.display = "none"; }
+
+function pintarFiltrosBitacora() {
+  var h = '<button type="button" class="filtro' + (filtroBitacora === "" ? " elegido" : "") + '" data-filtro="">Todos</button>';
+  for (var i = 0; i < PERFILES.length; i++) {
+    var p = PERFILES[i];
+    h += '<button type="button" class="filtro' + (filtroBitacora === p.clave ? " elegido" : "") +
+         '" data-filtro="' + escapar(p.clave) + '">' + avatarDe(p, true) + escapar(p.nombre) + '</button>';
+  }
+  document.getElementById("bitacora-filtros").innerHTML = h;
+}
+
+function pintarBitacora() {
+  var todos = BITACORA_MOVS;
+  // Los hechos de la cola (quien = null, nombre "La cola") no son de nadie:
+  // solo salen en "Todos".
+  var lista = todos.filter(function (m) {
+    if (filtroBitacora === "") return true;
+    return m.quien === filtroBitacora;
+  });
+  var esCola = function (m) { return m.quien === null && m.nombre === "La cola"; };
+  var esToque = function (m) { return !esCola(m) && m.accion !== "cambio_perfil" && m.ok !== false; };
+
+  var cont = {}, total = 0, errores = 0;
+  for (var k = 0; k < lista.length; k++) {
+    var a = lista[k];
+    if (a.ok === false) { errores++; continue; }
+    if (!esToque(a)) continue;
+    total++;
+    cont[a.accion] = (cont[a.accion] || 0) + 1;
+  }
+  var sin = todos.filter(function (m) { return m.quien === null && !esCola(m) && m.accion !== "cambio_perfil"; }).length;
+  var entradas = todos.filter(function (m) { return esCola(m) && m.accion === "entrada"; }).length;
+  var olvidos  = todos.filter(function (m) { return esCola(m) && m.accion === "olvido"; }).length;
+  var cierres  = todos.filter(function (m) { return esCola(m) && m.accion === "cierre"; }).length;
+
+  var piezas = [];
+  var orden = ["asigno", "entrego", "rechazo", "borro", "restauro", "regreso", "corrigio", "foto", "retomo_foto", "secador_manual"];
+  for (var o = 0; o < orden.length; o++) if (cont[orden[o]]) piezas.push(cont[orden[o]] + " " + CORTOS[orden[o]]);
+  var pf = perfilDe(filtroBitacora);
+  var rotuloDia = diaBitacora ? comoSeLee(diaBitacora) : "hoy";
+  var quienT = pf ? pf.nombre + " · " + rotuloDia : (diaBitacora ? rotuloDia : "Hoy");
+  var cola = [];
+  if (entradas) cola.push(entradas + " entraron");
+  if (olvidos)  cola.push(olvidos + " pasaron de 20 min sin asignar");
+  if (cierres)  cola.push(cierres + " los entregó el cierre");
+  var conteo = document.getElementById("bitacora-conteo");
+  conteo.innerHTML = '<b>' + total + ' movimientos</b> · ' + escapar(quienT) +
+    (piezas.length ? '<br>' + escapar(piezas.join(" · ")) : "") +
+    (errores ? '<br><span style="color:#ff7875">' + errores + ' que la base no aceptó</span>' : "") +
+    (filtroBitacora === "" && sin ? '<br><span style="color:#e3b341">' + sin + ' sin perfil</span>' : "") +
+    (filtroBitacora === "" && cola.length ? '<br><span style="color:#8b949e">De la cola, sin persona: ' + escapar(cola.join(" · ")) + '</span>' : "");
+  conteo.style.display = "block";
+
+  var out = "";
+  for (var j = 0; j < lista.length; j++) {
+    var m = lista[j];
+    var p = perfilDe(m.quien);
+    var carroT = "";
+    if (m.carro) {
+      var c = m.carro;
+      carroT = describir(c) +
+               (c.placa ? ' <span class="placa-mini">' + escapar(c.placa) + '</span>' : '') +
+               (c.producto ? ' · ' + escapar(c.producto) + (c.variante && c.variante !== c.producto ? ' · ' + escapar(c.variante) : '') : '');
+    }
+    var verbo = VERBOS[m.accion] || m.accion;
+    var det = textoDetalle(m);
+    if (esCola(m)) {
+      out += '<div class="mov cola' + (m.accion === "entrada" ? " entrada" : "") + '">' +
+             '<div class="hora">' + escapar(horaDe(m.t)) + '</div><div>' +
+             '<div class="q"><span class="avatar chico" style="--c:' + (m.accion === "entrada" ? "#3fb950" : "#6e7681") + '">' +
+               (m.accion === "entrada" ? "+" : "&#9888;") + '</span>' +
+               '<span class="nombre">La cola</span><span class="verbo">· ' + escapar(verbo) + '</span></div>' +
+             (carroT ? '<div class="carro-t">' + carroT + '</div>' : '') +
+             (det ? '<div class="det">' + escapar(det) + '</div>' : '') +
+             '</div></div>';
+      continue;
+    }
+    if (m.accion === "cambio_perfil") {
+      out += '<div class="mov cambio"><div class="hora">' + escapar(horaDe(m.t)) + '</div><div>' +
+             '<div class="q">' + avatarDe(p, true) + '<span class="verbo">Cambió el perfil: ' + escapar(det) + '</span></div>' +
+             '</div></div>';
+      continue;
+    }
+    var nombre = p ? p.nombre : (m.nombre || "Sin perfil");
+    out += '<div class="mov' + (m.ok === false ? " error" : "") + (m.quien === null ? " sin" : "") + '">' +
+           '<div class="hora">' + escapar(horaDe(m.t)) + '</div><div>' +
+           '<div class="q">' + avatarDe(p, true) + '<span class="nombre">' + escapar(nombre) + '</span>' +
+             '<span class="verbo">· ' + escapar(verbo) + '</span></div>' +
+           (carroT ? '<div class="carro-t">' + carroT + '</div>' : '') +
+           ((det || m.ok === false) ? '<div class="det">' +
+             (m.ok === false ? '✕ No entró: ' + escapar(m.error || "la base no lo aceptó") + (det ? ' — ' : '') : '') +
+             escapar(det) + '</div>' : '') +
+           '</div></div>';
+  }
+  document.getElementById("bitacora-lista").innerHTML = out ||
+    '<div class="cual">' + (pf ? "Nada de " + escapar(pf.nombre) + " ese día." : (diaBitacora ? "Ese día no hubo movimientos." : "Todavía no hay movimientos hoy.")) + '</div>';
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  document.getElementById("perfil-boton").addEventListener("click", function () { abrirPerfil(); });
+  document.getElementById("perfil-cancelar").addEventListener("click", function () { cerrarPantalla(); });
+  document.getElementById("perfil-lista").addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("[data-perfil]") : null;
+    if (b) elegirPerfil(b.getAttribute("data-perfil"));
+  });
+  document.getElementById("ver-bitacora").addEventListener("click", function () { abrirBitacora(); });
+  document.getElementById("bitacora-cerrar").addEventListener("click", function () { cerrarPantalla(); });
+  document.getElementById("bitacora-dia").addEventListener("change", function () {
+    diaBitacora = this.value;
+    abrirBitacora(true);
+  });
+  document.getElementById("bitacora-filtros").addEventListener("click", function (e) {
+    var b = e.target.closest ? e.target.closest("[data-filtro]") : null;
+    if (!b) return;
+    filtroBitacora = b.getAttribute("data-filtro") || "";
+    pintarFiltrosBitacora();
+    pintarBitacora();
+  });
+});
+
 cargarCodigo();
+cargarPerfil();
+pintarPerfilBoton();
+pedirPerfiles();
+setInterval(vigilarPastilla, 1000);
 // El reloj corre cada segundo pero SOLO actualiza numeros, no reconstruye
 // (por eso los guiones no se cortan). El HTML se rehace solo cuando
 // consultar() trae datos distintos, y pintar() ademas se salta el rebuild
