@@ -1264,6 +1264,7 @@ function supHTML(v, d) {
     fila("Corrigió la captura", "corrigio", null, "menor") +
     fila("Fotos tomadas al asignar", "foto") +
     fila("Fotos retomadas", "retomo_foto") +
+    fila("Fotos que resultaron de otro carro", "fotos_ajenas", null, "menor") +
     fila("Secadores agregados a mano", "secador_manual") +
     fila("Toques que la base no aceptó", "rechazados", null, "menor") +
     '<div class="sec">Cobertura</div>' +
@@ -1295,6 +1296,7 @@ function supHTML(v, d) {
     "<dt>Reacción</dt><dd>Minutos del pago a \"Asignar unidad\" en los carros que esa persona asignó (mediana y p90). Se guarda en el momento del toque.</dd>" +
     "<dt>Toques que la base no aceptó</dt><dd>Un toque que la base rechazó con su texto (\"La línea 1 es solo para express\", \"Deja al menos un secador\"). Es información, no error de la app. Un reintento tras un corte de wifi (la primera petición sí llegó) no cuenta ni aquí ni como movimiento.</dd>" +
     "<dt>Fotos</dt><dd>Tomadas al asignar, y retomadas desde la tarjeta (\"Tomar foto otra vez\"). La captura de la cámara de la caja no es de los supervisores y no se cuenta.</dd>" +
+    "<dt>Fotos que resultaron de otro carro</dt><dd>Fotos de esa persona cuya lectura trajo la placa de otro carro de hoy, o que la caja contradijo (la tarjeta pidió retomarla). Se decide al subir la foto; una lectura que corra después en el obrero de fondo no se refleja.</dd>" +
     "<dt>Sin perfil</dt><dd>Toques hechos sin elegir nombre en la pastilla. No es una persona; la meta es que sea cero.</dd>" +
     "<dt>Entraron</dt><dd>Carros creados por una venta de Zettle ese día (sin pruebas).</dd>" +
     "<dt>Pasaron de " + umbral + " min</dt><dd>Carros que seguían sin asignar a los " + umbral + " minutos de pagar (el mismo umbral que pinta la tarjeta de rojo). Un lavado a mano no cuenta. Se cuenta por carro, no por persona.</dd>" +
