@@ -116,7 +116,7 @@
 //                     "No asignar" (ticket viejo + aviso en un mensaje), "Buscando..."
 //                     mientras no conteste la primera consulta, y la Ayuda dice que la
 //                     lista son los 5 mas recientes SIN atender.
-var CACHE = "rush-v33";
+var CACHE = "rush-v34";
 var BASICOS = [
   "./", "./index.html", "./manifest.json",
   "./caja.html", "./caja.webmanifest", "./actualizacion.js",

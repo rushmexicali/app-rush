@@ -1558,7 +1558,9 @@ function pedir(ruta, opciones) {
     if (PERFIL) opciones.headers["x-perfil"] = PERFIL;
     if (DISPOSITIVO) opciones.headers["x-dispositivo"] = DISPOSITIVO;
     opciones.headers["x-hora"] = new Date().toISOString();
-    anotarToque();
+    // Un reintento del outbox de fotos (opciones.automatico) no es un toque
+    // humano: no reinicia el reloj de la pastilla (mini auditoria, R2.1).
+    if (!opciones.automatico) anotarToque();
   }
   // ⚠️ Aqui iba `opciones.cache = "no-store"` y se QUITO el 2/oct/2026. Con esa
   // opcion Chrome no usa su memoria de preflight, asi que el telefono mandaba
@@ -3435,7 +3437,8 @@ function intentarSubir(entry) {
   pedir("/foto", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ carro: entry.id, imagen: entry.imagen })
+    body: JSON.stringify({ carro: entry.id, imagen: entry.imagen }),
+    automatico: true   // lo manda el outbox, no un dedo: no cuenta como toque para la pastilla
   })
     .then(function (r) {
       if (r.status === 401) { soltar(); return; }   // codigo malo: no es falla de la foto
@@ -3820,7 +3823,7 @@ function pintarListaPerfiles() {
          (PERFIL === p.clave ? '<span class="ahora">ahora</span>' : '') + '</button>';
   }
   document.getElementById("perfil-lista").innerHTML =
-    h || '<div class="cual">No se pudo cargar la lista. Revisa el wifi e intenta otra vez.</div>';
+    h || '<div class="cual">Cargando la lista… Si no aparece, revisa el wifi e intenta otra vez.</div>';
   var actual = perfilDe(PERFIL);
   document.getElementById("perfil-desde").textContent =
     actual ? "Ahora está como " + actual.nombre : "Nadie ha elegido perfil en este teléfono";
@@ -4018,7 +4021,8 @@ function pintarBitacora() {
     total++;
     cont[a.accion] = (cont[a.accion] || 0) + 1;
   }
-  var sin = todos.filter(function (m) { return m.quien === null && !esCola(m) && m.accion !== "cambio_perfil"; }).length;
+  // Misma regla que "movimientos": sin perfil, aceptados y que no sean cambio de perfil.
+  var sin = todos.filter(function (m) { return m.quien === null && !esCola(m) && m.accion !== "cambio_perfil" && m.ok !== false; }).length;
   var entradas = todos.filter(function (m) { return esCola(m) && m.accion === "entrada"; }).length;
   var olvidos  = todos.filter(function (m) { return esCola(m) && m.accion === "olvido"; }).length;
   var cierres  = todos.filter(function (m) { return esCola(m) && m.accion === "cierre"; }).length;

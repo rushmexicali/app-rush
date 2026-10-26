@@ -1172,7 +1172,7 @@ function cajaRegistrar(ticket) { cerrar(); ir({ n: "agregar", ticket: String(tic
 
 // ---------------------------------------------------------------------
 // SUPERVISORES: quien hizo que en la app del supervisor (migracion 221,
-// 26/oct/2026). Sale de supervisor_bitacora (220) cruzada con carros y
+// 25/oct/2026). Sale de supervisor_bitacora (220) cruzada con carros y
 // etapas. Mismas columnas para todos los perfiles, con "Sin perfil" como una
 // columna mas; y APARTE, por dia y sin persona, los hechos de la cola
 // (entradas, olvidos, cierres, secados cortos): son del equipo, no de quien
@@ -1262,7 +1262,9 @@ function supHTML(v, d) {
     fila("Restauró", "restauro") +
     fila("Regresó (deshizo un paso)", "regreso", null, "menor") +
     fila("Corrigió la captura", "corrigio", null, "menor") +
+    fila("Fotos tomadas al asignar", "foto") +
     fila("Fotos retomadas", "retomo_foto") +
+    fila("Secadores agregados a mano", "secador_manual") +
     fila("Toques que la base no aceptó", "rechazados", null, "menor") +
     '<div class="sec">Cobertura</div>' +
     fila("Días con movimientos", "dias") +
@@ -1291,7 +1293,8 @@ function supHTML(v, d) {
   html += '<div class="card"><details><summary>Cómo se mide cada columna</summary><dl class="kv" style="margin-top:10px;grid-template-columns:220px 1fr">' +
     "<dt>Movimientos</dt><dd>Toques que la base aceptó: asignar, entregar, rechazar, regresar, restaurar, borrar, corregir, foto, secador a mano. Cambiar de perfil no cuenta.</dd>" +
     "<dt>Reacción</dt><dd>Minutos del pago a \"Asignar unidad\" en los carros que esa persona asignó (mediana y p90). Se guarda en el momento del toque.</dd>" +
-    "<dt>Toques que la base no aceptó</dt><dd>Un toque que la base rechazó con su texto (\"La línea 1 es solo para express\", \"Deja al menos un secador\"). Es información, no error de la app.</dd>" +
+    "<dt>Toques que la base no aceptó</dt><dd>Un toque que la base rechazó con su texto (\"La línea 1 es solo para express\", \"Deja al menos un secador\"). Es información, no error de la app. Un reintento tras un corte de wifi (la primera petición sí llegó) no cuenta ni aquí ni como movimiento.</dd>" +
+    "<dt>Fotos</dt><dd>Tomadas al asignar, y retomadas desde la tarjeta (\"Tomar foto otra vez\"). La captura de la cámara de la caja no es de los supervisores y no se cuenta.</dd>" +
     "<dt>Sin perfil</dt><dd>Toques hechos sin elegir nombre en la pastilla. No es una persona; la meta es que sea cero.</dd>" +
     "<dt>Entraron</dt><dd>Carros creados por una venta de Zettle ese día (sin pruebas).</dd>" +
     "<dt>Pasaron de " + umbral + " min</dt><dd>Carros que seguían sin asignar a los " + umbral + " minutos de pagar (el mismo umbral que pinta la tarjeta de rojo). Un lavado a mano no cuenta. Se cuenta por carro, no por persona.</dd>" +
