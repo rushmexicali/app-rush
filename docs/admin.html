@@ -1620,7 +1620,17 @@ var ACT = { ir: ir, volver: volver, cerrar: cerrar, render: render, confirmarAcc
 function despachar(e, tipoEvento) {
   var el = e.target.closest("[data-act]"); if (!el) return;
   var esperado = el.getAttribute("data-on") || "click"; if (esperado !== tipoEvento) return;
-  var fn = ACT[el.getAttribute("data-act")]; if (!fn) return;
+  var fn = ACT[el.getAttribute("data-act")];
+  // Un boton con un nombre que no esta en ACT NO se queda mudo (26/oct/2026):
+  // asi nacieron los filtros de Supervisores y nadie lo vio, porque el toque
+  // moria aqui sin ruido. Ahora lo dice en pantalla y en la consola; la prueba
+  // pruebas/acciones-del-panel.sh lo ataja antes de publicar.
+  if (!fn) {
+    var nombre = el.getAttribute("data-act");
+    if (typeof console !== "undefined" && console.error) console.error("Boton sin registrar en ACT:", nombre);
+    if (typeof toast === "function") toast("Este botón no está conectado (" + nombre + "). Avísale a quien mantiene el panel.");
+    return;
+  }
   var args = JSON.parse(el.getAttribute("data-args") || "[]");
   if (tipoEvento === "input" || tipoEvento === "change") args.push(el.value);
   if (tipoEvento === "keydown") args.push(e);
