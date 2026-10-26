@@ -1612,6 +1612,10 @@ var ACT = { ir: ir, volver: volver, cerrar: cerrar, render: render, confirmarAcc
   quedaRadio: quedaRadio, buscarTicket: buscarTicket, buscarTicketEnter: buscarTicketEnter, tipoAgregar: tipoAgregar, cambiarCliente: cambiarCliente,
   filtroQuien: filtroQuien, filtroAccion: filtroAccion, filtroTexto: filtroTexto, deshacer: deshacer,
   cajaSinTocar: cajaSinTocar, cajaDia: cajaDia, cajaSinTocarDia: cajaSinTocarDia, cajaDesde: cajaDesde, cajaHasta: cajaHasta, cajaPreset: cajaPreset, cajaSinPu: cajaSinPu, cajaRegistrar: cajaRegistrar,
+  // Supervisores (221). Nacieron SIN registrar y los botones no hacian nada
+  // (26/oct): pruebas/acciones-del-panel.sh exige desde entonces que todo
+  // act()/on() de la pantalla este aqui.
+  supDesde: supDesde, supHasta: supHasta, supPreset: supPreset,
   comMes: comMes, comTickets: comTickets, comPagar: comPagar, comTarifa: comTarifa, comTarifaProd: comTarifaProd, comTarifaCambio: comTarifaCambio, comTarifaGuardar: comTarifaGuardar };
 function despachar(e, tipoEvento) {
   var el = e.target.closest("[data-act]"); if (!el) return;
