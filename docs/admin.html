@@ -1617,13 +1617,13 @@ function comTarifaGuardar() {
 // ---------------------------------------------------------------------
 var VE_FAC = false;            // lo dice /motivos (admin_quienes.ve_facturacion)
 var FAC_FALLIDAS = false, FAC_RANGO = null, FAC_MODAL = 0, FAC_CACHE = {};
-var FAC_ESTADO = { timbrada: ["Timbrada", "verde"], borrador: ["Borrador sin timbre", "ambar"], error: ["Intento fallido", "rojo"], descartada: ["Descartada", ""] };
+var FAC_ESTADO = { timbrada: ["Timbrada", "verde"], borrador: ["Borrador sin timbre", "ambar"], cancelada: ["Cancelada", ""], error: ["Intento fallido", "rojo"], descartada: ["Descartada", ""] };
 var FAC_MOTIVO = {
   sat_rechazo: "El SAT rechazó el timbre", factura_rechazada: "Alegra no creó la factura", pago_rechazado: "Alegra rechazó el cobro",
   pago_no_registrado: "Cobro no registrado en Alegra", correo_no_enviado: "El correo no salió", borrador_sobrante: "Borrador de más en Alegra",
   reembolso_facturado: "Reembolso de una venta facturada", factura_descartada: "Factura descartada", total_no_cuadra: "El total no cuadró",
   no_cuadra: "El total no cuadró", sin_timbre: "Quedó sin timbre", alegra_caida: "Alegra no contestó", articulo_sin_mapear: "Artículo sin mapear",
-  sin_id_de_retencion: "Falta la retención en el servidor"
+  sin_id_de_retencion: "Falta la retención en el servidor", cancelada_en_alegra: "Cancelada en Alegra", sincronizacion_fallo: "No se pudo leer Alegra"
 };
 function facMotivo(m) { return FAC_MOTIVO[m] || String(m || "Aviso"); }
 
@@ -1655,10 +1655,23 @@ function facControles(v) {
   return html;
 }
 
-function facNumero(f) { return f.serie && f.numero ? h(f.serie) + "-" + h(f.numero) : "sin número"; }
+function facNumero(f) { return f.numero ? (f.serie ? h(f.serie) + "-" : "") + h(f.numero) : "sin número"; }
+// La llave de una fila: el id de `facturas` (la web) o "a:<id de Alegra>" (la contadora, 236).
+function facClave(f) { return f.origen === "alegra" ? "a:" + f.alegra_id : f.id; }
+function facTitulo(f) {
+  if (!f) return "esta factura";
+  var t = f.tickets || (f.ticket != null ? [f.ticket] : []);
+  var num = f.numero ? " (" + (f.serie ? f.serie + "-" : "") + f.numero + ")" : "";
+  if (!t.length) return "factura" + (f.numero ? " " + (f.serie ? f.serie + "-" : "") + f.numero : "");
+  return (t.length > 1 ? "tickets " : "ticket ") + t.join(", ") + num;
+}
 
 function facFila(f) {
-  var est = FAC_ESTADO[f.estado] || [f.estado, ""], chips = '<span class="chip ' + est[1] + '">' + h(est[0]) + "</span>", i;
+  var est = FAC_ESTADO[f.estado] || [f.estado, ""], i;
+  // Quien la hizo (236): la pagina web (Claude, serie W) o la contadora en Alegra.
+  var chips = (f.origen === "alegra" ? '<span class="chip morado">Alegra</span> ' : '<span class="chip cian">Claude</span> ') +
+              '<span class="chip ' + est[1] + '">' + h(est[0]) + "</span>";
+  if (f.sin_ticket) chips += ' <span class="chip ambar">Sin recibo en la factura</span>';
   if (f.reembolsada_en) chips += ' <span class="chip rojo">Reembolsada después de facturar · ' + h(pesos(f.reembolso_monto)) + "</span>";
   if (f.correo_no_salio) chips += ' <span class="chip ambar">El correo no salió</span>';
   if (f.cobro_no_registrado) chips += ' <span class="chip ambar">Cobro no registrado en Alegra</span>';
@@ -1674,16 +1687,23 @@ function facFila(f) {
     for (i = 0; i < avisos.length; i++) av += '<div class="chico-t muted" style="margin-top:4px"><b>' + h(facMotivo(avisos[i].motivo)) + "</b> · " + fmtFecha(avisos[i].en) + "<br>" + h(avisos[i].detalle) + "</div>";
     av += "</details>";
   }
+  var clave = facClave(f);
+  // Reenviar va al correo guardado: una de la contadora sin correo en Alegra
+  // solo ofrece "Enviar a otro correo".
   var botones = f.puede_enviar
-    ? '<div class="fila" style="gap:8px"><button type="button" class="chico" ' + act("facReenviar", f.id) + ">Reenviar factura</button>" +
-      '<button type="button" class="chico" ' + act("facOtroCorreo", f.id) + ">Enviar a otro correo</button></div>"
+    ? '<div class="fila" style="gap:8px">' + (f.correo ? '<button type="button" class="chico" ' + act("facReenviar", clave) + ">Reenviar factura</button>" : "") +
+      '<button type="button" class="chico" ' + act("facOtroCorreo", clave) + ">Enviar a otro correo</button></div>"
     : "";
+  var tks = f.tickets || (f.ticket != null ? [f.ticket] : []);
+  var titulo = tks.length ? (tks.length > 1 ? "Tickets " : "Ticket ") + h(tks.join(", ")) : "Factura " + facNumero(f);
+  var importe = f.monto != null
+    ? h(pesos(f.monto)) + (f.total != null && Number(f.total) !== Number(f.monto) ? ' <span class="muted chico-t">(total de la factura ' + h(pesos(f.total)) + (f.retencion ? ", retención " + h(pesos(f.retencion)) : "") + ")</span>" : "")
+    : (f.total != null ? "total " + h(pesos(f.total)) : "");
   return '<div class="item" style="align-items:flex-start">' +
     '<div style="min-width:0;flex:1">' +
-      '<div class="fila" style="gap:8px"><b>Ticket ' + h(f.ticket) + "</b>" + '<span class="muted chico-t">' + facNumero(f) + " · " + fmtFecha(f.fecha) + "</span> " + chips + "</div>" +
-      "<div>" + h(f.nombre) + ' <span class="muted chico-t">' + h(f.rfc) + "</span> · " + h(pesos(f.monto)) +
-        (f.total != null && Number(f.total) !== Number(f.monto) ? ' <span class="muted chico-t">(total de la factura ' + h(pesos(f.total)) + (f.retencion ? ", retención " + h(pesos(f.retencion)) : "") + ")</span>" : "") + "</div>" +
-      '<div class="chico-t">Correo: <b>' + h(f.correo) + "</b>" + (f.enviado_en ? ' <span class="muted">· enviada al facturar, ' + fmtFecha(f.enviado_en) + "</span>" : "") + "</div>" +
+      '<div class="fila" style="gap:8px"><b>' + titulo + "</b>" + '<span class="muted chico-t">' + facNumero(f) + " · " + fmtFecha(f.fecha) + "</span> " + chips + "</div>" +
+      "<div>" + h(f.nombre || "—") + ' <span class="muted chico-t">' + h(f.rfc || "") + "</span>" + (importe ? " · " + importe : "") + "</div>" +
+      '<div class="chico-t">Correo: ' + (f.correo ? "<b>" + h(f.correo) + "</b>" : '<span class="muted">sin correo en Alegra</span>') + (f.enviado_en ? ' <span class="muted">· enviada al facturar, ' + fmtFecha(f.enviado_en) + "</span>" : "") + "</div>" +
       env +
       (f.error && f.estado !== "timbrada" ? '<div class="chico-t" style="color:var(--rojo)">' + h(f.error) + "</div>" : "") +
       av +
@@ -1693,11 +1713,14 @@ function facFila(f) {
 function facHTML(v, d) {
   var F = d.facturas || [], R = d.resumen || {}, S = d.avisos_sueltos || [], i;
   FAC_CACHE = {};
-  for (i = 0; i < F.length; i++) FAC_CACHE[F[i].id] = F[i];
-  var html = '<div class="fila entre"><div><h1>Facturación</h1><div class="muted">Las facturas que pidieron los clientes en la página web. Es sólo informativa: generar, cancelar o editar una factura se hace en Alegra, donde la atiende la contadora.</div></div></div>' + facControles(v);
+  for (i = 0; i < F.length; i++) FAC_CACHE[facClave(F[i])] = F[i];
+  var html = '<div class="fila entre"><div><h1>Facturación</h1><div class="muted">Las facturas de Alegra: las que pidieron los clientes en la página web (<b>Claude</b>) y las que hace la contadora (<b>Alegra</b>). Es sólo informativa: generar, cancelar o editar una factura se hace en Alegra, donde la atiende la contadora.</div></div>' +
+    (R.sincronizado_en ? '<span class="muted chico-t">Alegra leído ' + fmtFecha(R.sincronizado_en) + "</span>" : "") + "</div>" + facControles(v);
   html += '<div class="tiles">' +
-    '<div class="tile"><div class="v">' + (R.timbradas || 0) + '</div><div class="r">facturas timbradas</div></div>' +
-    '<div class="tile"><div class="v">' + h(pesos(R.monto)) + '</div><div class="r">facturado (lo que pagaron los clientes)</div></div>' +
+    '<div class="tile"><div class="v">' + (R.timbradas || 0) + '</div><div class="r">facturas timbradas · Claude ' + (R.timbradas_claude || 0) + " · Alegra " + (R.timbradas_alegra || 0) + "</div></div>" +
+    '<div class="tile"><div class="v">' + h(pesos(R.total)) + '</div><div class="r">total facturado (timbradas)</div></div>' +
+    '<div class="tile ' + (R.sin_ticket ? "ojo" : "ok") + '"><div class="v">' + (R.sin_ticket || 0) + '</div><div class="r">de la contadora sin recibo</div></div>' +
+    '<div class="tile"><div class="v">' + (R.canceladas || 0) + '</div><div class="r">canceladas</div></div>' +
     '<div class="tile ' + (R.reembolsadas ? "ojo" : "ok") + '"><div class="v">' + (R.reembolsadas || 0) + '</div><div class="r">reembolsadas después de facturar</div></div>' +
     '<div class="tile ' + (R.correo_no_salio ? "ojo" : "ok") + '"><div class="v">' + (R.correo_no_salio || 0) + '</div><div class="r">con el correo sin salir</div></div>' +
     '<div class="tile ' + (R.fallidos ? "ojo" : "ok") + '"><div class="v">' + (R.fallidos || 0) + '</div><div class="r">intentos fallidos' + (R.fallidos && !FAC_FALLIDAS ? " (ocultos)" : "") + "</div></div>" +
@@ -1730,22 +1753,23 @@ function facFallidas(valor) { FAC_FALLIDAS = !FAC_FALLIDAS; render(); }
 
 // Los dos envios abren un modal; la respuesta solo lo toca si ese modal sigue
 // abierto (FAC_MODAL), y la lista se recarga para que salga el envio nuevo.
-function facTitulo(f) { return f ? "ticket " + f.ticket + (f.serie && f.numero ? " (" + f.serie + "-" + f.numero + ")" : "") : "esta factura"; }
 function facReenviar(id) {
   var f = FAC_CACHE[id];
   FAC_MODAL++;
-  abrir("<h2>Reenviar factura</h2><p>Se vuelve a mandar la factura del " + h(facTitulo(f)) + (f && f.correo ? " a <b>" + h(f.correo) + "</b>" : " al correo que capturó el cliente") + ".</p>" +
+  abrir("<h2>Reenviar factura</h2><p>Se vuelve a mandar la factura (" + h(facTitulo(f)) + ")" + (f && f.correo ? " a <b>" + h(f.correo) + "</b>" : " al correo guardado") + ".</p>" +
     '<div id="fac-res"></div><div class="pie"><button type="button" ' + act("cerrar") + '>Cancelar</button><button type="button" class="primario" id="fac-ok" ' + act("facEnviar", id, false) + ">Reenviar</button></div>");
 }
 function facOtroCorreo(id) {
   var f = FAC_CACHE[id];
   FAC_MODAL++;
-  abrir("<h2>Enviar a otro correo</h2><p>La factura del " + h(facTitulo(f)) + " se manda una vez a este correo. El correo que capturó el cliente" + (f && f.correo ? " (" + h(f.correo) + ")" : "") + " y su contacto en Alegra no cambian.</p>" +
+  abrir("<h2>Enviar a otro correo</h2><p>La factura (" + h(facTitulo(f)) + ") se manda una vez a este correo. El correo guardado" + (f && f.correo ? " (" + h(f.correo) + ")" : "") + " y su contacto en Alegra no cambian.</p>" +
     '<div class="form"><div class="campo"><label for="fac-correo">Correo</label><input id="fac-correo" type="email" autocomplete="off" placeholder="nombre@ejemplo.com"></div></div>' +
     '<div id="fac-res"></div><div class="pie"><button type="button" ' + act("cerrar") + '>Cancelar</button><button type="button" class="primario" id="fac-ok" ' + act("facEnviar", id, true) + ">Enviar</button></div>");
 }
 function facEnviar(id, otro) {
-  var ok = $("#fac-ok"), res = $("#fac-res"), cuerpo = { id: id };
+  // "a:<id>" es una factura de la contadora (236); un numero, una de la web.
+  var ok = $("#fac-ok"), res = $("#fac-res");
+  var cuerpo = String(id).indexOf("a:") === 0 ? { alegra: String(id).slice(2) } : { id: id };
   if (otro) {
     var campo = $("#fac-correo"), c = campo ? String(campo.value || "") : "";
     c = c.replace(/^\s+|\s+$/g, "");

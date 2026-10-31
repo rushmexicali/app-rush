@@ -135,6 +135,11 @@
   .item:active { background:#21262d; }
   .item-nom { font-size:18px; font-weight:800; color:#e6edf3; }
   .item-sub { font-size:13px; color:#8b949e; margin-top:3px; }
+  /* El estado de la factura de un ticket (236), en la sección Tickets. */
+  .fac-chip { display:inline-block; vertical-align:middle; margin-left:6px; font-size:12px; font-weight:700; padding:1px 8px; border-radius:999px; border:1px solid #30363d; color:#8b949e; }
+  .fac-chip.verde { color:#3fb950; border-color:#3fb950; background:#132e1b; }
+  .fac-chip.ambar { color:#d29922; border-color:#d29922; background:#1a1408; }
+  .fac-chip.gris  { color:#8b949e; border-color:#484f58; }
   .item-badge {
     position:absolute; top:12px; right:12px;
     background:#132e1b; color:#3fb950; border:1px solid #3fb950;
@@ -1827,6 +1832,7 @@ function tikPagina() {
   });
 }
 
+var FAC_CHIP = { timbrada: ["Timbrada", "verde"], borrador: ["Borrador", "ambar"], cancelada: ["Cancelada", "gris"] };
 function tikAgregar(tickets) {
   var lista = document.getElementById("tik-lista");
   if (!lista) return;
@@ -1844,8 +1850,12 @@ function tikAgregar(tickets) {
     // El cliente ligado por su visita (180). Texto y no botón: el renglón
     // entero ya es el botón que abre el ticket, y ahí el nombre es clicable.
     if (t.cliente) sub.push("👤 " + escapar(titulo(t.cliente)));
+    // La factura del ticket (236): timbrada / borrador / cancelada, la haya
+    // hecho la página web o la contadora en Alegra. Sólo el indicador.
+    var fac = FAC_CHIP[t.factura];
     html += '<button class="item" data-ticket="' + escapar(num) + '">' +
-            '<div class="item-nom">Ticket ' + escapar(num) + "</div>" +
+            '<div class="item-nom">Ticket ' + escapar(num) +
+            (fac ? ' <span class="fac-chip ' + fac[1] + '">' + fac[0] + "</span>" : "") + "</div>" +
             (sub.length ? '<div class="item-sub">' + sub.join(" · ") + "</div>" : "") +
             "</button>";
   });
