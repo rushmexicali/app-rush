@@ -986,8 +986,7 @@ function cajaControles(v) {
   var hoy = hoyLocal();
   var presets = [["7", "Últimos 7 días"], ["sem", "Esta semana"], ["ant", "Semana pasada"], ["14", "Últimos 14 días"], ["mes", "Este mes"], ["ayer", "Ayer"]];
   var html = '<div class="card"><div class="rango">' +
-    '<div class="campo"><label for="caja-desde">Del</label><input type="date" id="caja-desde" value="' + h(v.desde) + '" max="' + hoy + '" ' + on("change", "cajaDesde") + "></div>" +
-    '<div class="campo"><label for="caja-hasta">al</label><input type="date" id="caja-hasta" value="' + h(v.hasta) + '" max="' + hoy + '" ' + on("change", "cajaHasta") + "></div>" +
+    rangoHTML("caja", v, RANGO_MAX.caja) +
     '<div class="presets">';
   for (var i = 0; i < presets.length; i++) html += '<button type="button" class="chico ' + (v.preset === presets[i][0] ? "on" : "") + '" ' + act("cajaPreset", presets[i][0]) + ">" + presets[i][1] + "</button>";
   html += "</div>" +
@@ -1151,14 +1150,55 @@ function cajaDia(cajera, dia) {
 function cajaSinTocarDia(cajera, dia) { cajaSinTocar(cajera, dia, dia); }
 // Dias entre dos fechas AAAA-MM-DD (b - a).
 function diasEntre(a, b) { var x = /^(\d{4})-(\d{2})-(\d{2})$/.exec(a), y = /^(\d{4})-(\d{2})-(\d{2})$/.exec(b); if (!x || !y) return 0; return Math.round((Date.UTC(+y[1], +y[2] - 1, +y[3]) - Date.UTC(+x[1], +x[2] - 1, +x[3])) / 86400000); }
-// El mismo tope que la base (120 dias), avisado aqui para no mandar una consulta que va a fallar.
-function cajaRangoValido(de, ha) {
-  if (de > ha) { toast("El primer día tiene que ser antes que el segundo."); return false; }
-  if (diasEntre(de, ha) > 120) { toast("El rango no puede pasar de 120 días."); return false; }
-  return true;
+// ---------------------------------------------------------------------
+// FILTROS DE FECHA (Luis, 1/nov/2026): cambiar una fecha NO busca. Se editan
+// las dos y "Aplicar" (o Enter en cualquiera de las dos) busca. Antes cada
+// fecha buscaba sola: no dejaba tocar la segunda, y con el tope de dias el
+// primer cambio ya chocaba (del 1/jun al 1/nov en Facturacion). Los atajos
+// (Hoy, Este mes...) siguen aplicando al instante porque traen las dos fechas.
+// Lo tecleado vive en RANGO_PEND hasta aplicar; se limpia al repintar las
+// casillas, que vuelven a mostrar lo que de verdad se esta viendo.
+// ---------------------------------------------------------------------
+var RANGO_PEND = {};
+function rangoHTML(pref, v, maxDias) {
+  var hoy = hoyLocal(), ap = pref + "Aplicar";
+  RANGO_PEND[pref] = {};
+  return '<div class="campo"><label for="' + pref + '-desde">Del</label><input type="date" id="' + pref + '-desde" value="' + h(v.desde) + '" max="' + hoy + '" ' + on("change", "rangoFecha", pref, "desde") + "></div>" +
+    '<div class="campo"><label for="' + pref + '-hasta">al</label><input type="date" id="' + pref + '-hasta" value="' + h(v.hasta) + '" max="' + hoy + '" ' + on("change", "rangoFecha", pref, "hasta") + "></div>" +
+    '<div class="campo"><button type="button" class="primario" ' + act(ap) + '>Aplicar</button><span class="nota">máx. ' + maxDias + " días</span></div>";
 }
-function cajaDesde(x) { if (!esFecha(x)) return; if (esFecha(VISTA.hasta) && !cajaRangoValido(x, VISTA.hasta)) { render(); return; } VISTA.desde = x; VISTA.preset = ""; render(); }
-function cajaHasta(x) { if (!esFecha(x)) return; if (esFecha(VISTA.desde) && !cajaRangoValido(VISTA.desde, x)) { render(); return; } VISTA.hasta = x; VISTA.preset = ""; render(); }
+// Una fecha tecleada o escogida: se apunta, no se busca.
+function rangoFecha(pref, campo, x) { if (!RANGO_PEND[pref]) RANGO_PEND[pref] = {}; RANGO_PEND[pref][campo] = x; }
+// Enter en una casilla: apunta lo que tenga (el `change` de una fecha a medio
+// teclear puede no haber salido) y aplica.
+function rangoEnter(pref, campo, e) {
+  if (!e || e.key !== "Enter") return;
+  if (e.preventDefault) e.preventDefault();
+  if (e.target && e.target.value !== undefined) rangoFecha(pref, campo, e.target.value);
+  var fn = ACT[pref + "Aplicar"]; if (fn) fn();
+}
+// Las dos fechas a aplicar (lo apuntado o, si no se toco, lo que se ve), ya
+// validadas; null y aviso si no sirven.
+function rangoLeido(pref, maxDias) {
+  var p = RANGO_PEND[pref] || {};
+  var de = p.desde !== undefined ? p.desde : VISTA.desde, ha = p.hasta !== undefined ? p.hasta : VISTA.hasta;
+  if (!esFecha(de) || !esFecha(ha)) { toast("Escribe las dos fechas completas."); return null; }
+  if (de > ha) { toast("El primer día tiene que ser antes que el segundo."); return null; }
+  // `max` de la casilla no detiene el teclado (con las flechas, el dia 1 menos uno da el 30).
+  if (ha > hoyLocal()) { toast("La fecha final no puede pasar de hoy."); return null; }
+  if (diasEntre(de, ha) > maxDias) { toast("El rango no puede pasar de " + maxDias + " días."); return null; }
+  return { desde: de, hasta: ha };
+}
+function rangoAplicar(pref, maxDias) {
+  var r = rangoLeido(pref, maxDias); if (!r) return;
+  VISTA.desde = r.desde; VISTA.hasta = r.hasta; VISTA.preset = ""; RANGO_PEND[pref] = {}; render();
+}
+// Los topes son los de la base: Caja y Supervisores 120 dias (211/221);
+// Facturacion 366 (241: son pocas filas y el dueno revisa meses completos).
+var RANGO_MAX = { caja: 120, sup: 120, fac: 366 };
+function cajaAplicar() { rangoAplicar("caja", RANGO_MAX.caja); }
+function supAplicar() { rangoAplicar("sup", RANGO_MAX.sup); }
+function facAplicar() { rangoAplicar("fac", RANGO_MAX.fac); }
 function cajaPreset(k) {
   var hoy = hoyLocal(), m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(hoy);
   // La semana corre de lunes a domingo, como el reporte del lunes.
@@ -1202,8 +1242,7 @@ function supControles(v) {
   var hoy = hoyLocal();
   var presets = [["7", "Últimos 7 días"], ["sem", "Esta semana"], ["ant", "Semana pasada"], ["14", "Últimos 14 días"], ["mes", "Este mes"], ["ayer", "Ayer"], ["hoy", "Hoy"]];
   var html = '<div class="card"><div class="rango">' +
-    '<div class="campo"><label for="sup-desde">Del</label><input type="date" id="sup-desde" value="' + h(v.desde) + '" max="' + hoy + '" ' + on("change", "supDesde") + "></div>" +
-    '<div class="campo"><label for="sup-hasta">al</label><input type="date" id="sup-hasta" value="' + h(v.hasta) + '" max="' + hoy + '" ' + on("change", "supHasta") + "></div>" +
+    rangoHTML("sup", v, RANGO_MAX.sup) +
     '<div class="presets">';
   for (var i = 0; i < presets.length; i++) html += '<button type="button" class="chico ' + (v.preset === presets[i][0] ? "on" : "") + '" ' + act("supPreset", presets[i][0]) + ">" + presets[i][1] + "</button>";
   return html + "</div></div></div>";
@@ -1311,8 +1350,6 @@ function supHTML(v, d) {
   return html;
 }
 
-function supDesde(x) { if (!esFecha(x)) return; if (esFecha(VISTA.hasta) && !cajaRangoValido(x, VISTA.hasta)) { render(); return; } VISTA.desde = x; VISTA.preset = ""; render(); }
-function supHasta(x) { if (!esFecha(x)) return; if (esFecha(VISTA.desde) && !cajaRangoValido(VISTA.desde, x)) { render(); return; } VISTA.hasta = x; VISTA.preset = ""; render(); }
 function supPreset(k) {
   var hoy = hoyLocal(), m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(hoy);
   var dow = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay(), lunes = sumarDias(hoy, -((dow + 6) % 7));
@@ -1625,7 +1662,7 @@ var FAC_MOTIVO = {
   no_cuadra: "El total no cuadró", sin_timbre: "Quedó sin timbre", alegra_caida: "Alegra no contestó", articulo_sin_mapear: "Artículo sin mapear",
   sin_id_de_retencion: "Falta la retención en el servidor", cancelada_en_alegra: "Cancelada en Alegra", sincronizacion_fallo: "No se pudo leer Alegra",
   no_puede_arrancar: "Falta un secreto en el servidor", intento_sin_terminar: "Un intento no terminó", timbrada_sin_fila: "Timbrada en Alegra sin registro web",
-  cancelada_no_libera: "Cancelada: el ticket no se libera", contacto_no_restaurado: "El contacto no volvió a sus datos", numeracion_atrasada: "La numeración W va atrasada"
+  cancelada_no_libera: "Cancelada: el ticket no se libera", contacto_no_restaurado: "El contacto no volvió a sus datos", numeracion_atrasada: "La numeración W va atrasada", numeracion_mal_configurada: "La numeración de Alegra está mal configurada"
 };
 // alegra_<status> (alegra_500, alegra_429…) lo deja facturar cuando Alegra contesta algo inesperado.
 function facMotivo(m) {
@@ -1652,8 +1689,7 @@ function facControles(v) {
   var hoy = hoyLocal();
   var presets = [["mes", "Este mes"], ["ant", "Mes pasado"], ["7", "Últimos 7 días"], ["30", "Últimos 30 días"], ["hoy", "Hoy"]];
   var html = '<div class="card"><div class="rango">' +
-    '<div class="campo"><label for="fac-desde">Del</label><input type="date" id="fac-desde" value="' + h(v.desde) + '" max="' + hoy + '" ' + on("change", "facDesde") + "></div>" +
-    '<div class="campo"><label for="fac-hasta">al</label><input type="date" id="fac-hasta" value="' + h(v.hasta) + '" max="' + hoy + '" ' + on("change", "facHasta") + "></div>" +
+    rangoHTML("fac", v, RANGO_MAX.fac) +
     '<div class="presets">';
   for (var i = 0; i < presets.length; i++) html += '<button type="button" class="chico ' + (v.preset === presets[i][0] ? "on" : "") + '" ' + act("facPreset", presets[i][0]) + ">" + presets[i][1] + "</button>";
   html += "</div>" +
@@ -1745,8 +1781,6 @@ function facHTML(v, d) {
   return html;
 }
 
-function facDesde(x) { if (!esFecha(x)) return; if (esFecha(VISTA.hasta) && !cajaRangoValido(x, VISTA.hasta)) { render(); return; } VISTA.desde = x; VISTA.preset = ""; render(); }
-function facHasta(x) { if (!esFecha(x)) return; if (esFecha(VISTA.desde) && !cajaRangoValido(VISTA.desde, x)) { render(); return; } VISTA.hasta = x; VISTA.preset = ""; render(); }
 function facPreset(k) {
   var hoy = hoyLocal(), primero = hoy.slice(0, 8) + "01";
   if (k === "mes") { VISTA.desde = primero; VISTA.hasta = hoy; }
@@ -1817,14 +1851,14 @@ var ACT = { ir: ir, volver: volver, cerrar: cerrar, render: render, confirmarAcc
   modalQuitar: modalQuitar, modalRestaurar: modalRestaurar, modalMover: modalMover, modalTipo: modalTipo, radioTipo: radioTipo, pintarDestinos: pintarDestinos, elegirDestino: elegirDestino,
   quedaRadio: quedaRadio, buscarTicket: buscarTicket, buscarTicketEnter: buscarTicketEnter, tipoAgregar: tipoAgregar, cambiarCliente: cambiarCliente,
   filtroQuien: filtroQuien, filtroAccion: filtroAccion, filtroTexto: filtroTexto, deshacer: deshacer,
-  cajaSinTocar: cajaSinTocar, cajaDia: cajaDia, cajaSinTocarDia: cajaSinTocarDia, cajaDesde: cajaDesde, cajaHasta: cajaHasta, cajaPreset: cajaPreset, cajaSinPu: cajaSinPu, cajaRegistrar: cajaRegistrar,
+  cajaSinTocar: cajaSinTocar, cajaDia: cajaDia, cajaSinTocarDia: cajaSinTocarDia, cajaAplicar: cajaAplicar, rangoFecha: rangoFecha, rangoEnter: rangoEnter, cajaPreset: cajaPreset, cajaSinPu: cajaSinPu, cajaRegistrar: cajaRegistrar,
   // Supervisores (221). Nacieron SIN registrar y los botones no hacian nada
   // (26/oct): pruebas/acciones-del-panel.sh exige desde entonces que todo
   // act()/on() de la pantalla este aqui.
-  supDesde: supDesde, supHasta: supHasta, supPreset: supPreset,
+  supAplicar: supAplicar, supPreset: supPreset,
   comMes: comMes, comTickets: comTickets, comPagar: comPagar, comTarifa: comTarifa, comTarifaProd: comTarifaProd, comTarifaCambio: comTarifaCambio, comTarifaGuardar: comTarifaGuardar,
   // Facturacion (235)
-  facDesde: facDesde, facHasta: facHasta, facPreset: facPreset, facFallidas: facFallidas, facReenviar: facReenviar, facOtroCorreo: facOtroCorreo, facEnviar: facEnviar };
+  facAplicar: facAplicar, facPreset: facPreset, facFallidas: facFallidas, facReenviar: facReenviar, facOtroCorreo: facOtroCorreo, facEnviar: facEnviar };
 function despachar(e, tipoEvento) {
   var el = e.target.closest("[data-act]"); if (!el) return;
   var esperado = el.getAttribute("data-on") || "click"; if (esperado !== tipoEvento) return;
@@ -1849,6 +1883,12 @@ document.addEventListener("click", function (e) { despachar(e, "click"); });
 document.addEventListener("input", function (e) { despachar(e, "input"); });
 document.addEventListener("change", function (e) { despachar(e, "change"); });
 document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("#modal-fondo").hidden) { cerrar(); return; } despachar(e, "keydown"); });
+// Enter en una casilla de rango aplica (regla del 1/nov/2026). Va aparte del despacho porque
+// la casilla ya usa su unico data-on para el `change`.
+document.addEventListener("keydown", function (e) {
+  var t = e.target, m = t && t.id ? /^(caja|sup|fac)-(desde|hasta)$/.exec(t.id) : null;
+  if (m && e.key === "Enter") rangoEnter(m[1], m[2], e);
+});
 $("#modal-fondo").addEventListener("click", function (e) { if (e.target.id === "modal-fondo") cerrar(); });
 
 cargarCredenciales();

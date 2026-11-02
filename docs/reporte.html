@@ -254,7 +254,7 @@
     <input type="date" id="desde">
     <label for="hasta">al</label>
     <input type="date" id="hasta">
-    <button id="ver-rango">Ver</button>
+    <button id="ver-rango">Aplicar</button>
   </div>
 
   <div id="contenido"></div>
@@ -291,6 +291,7 @@
     <input type="date" id="tik-desde">
     <label for="tik-hasta">al</label>
     <input type="date" id="tik-hasta">
+    <button id="tik-aplicar" type="button">Aplicar</button>
     <select id="tik-cat"><option value="">Todas las categorías</option></select>
     <select id="tik-prod"><option value="">Todos los productos</option></select>
     <select id="tik-caj"><option value="">Todas las cajeras</option></select>
@@ -322,7 +323,7 @@
     <input type="date" id="flo-desde">
     <label for="flo-hasta">al</label>
     <input type="date" id="flo-hasta">
-    <button id="flo-ver">Ver</button>
+    <button id="flo-ver">Aplicar</button>
   </div>
   <div id="flo-res"><div class="vacio">Elige una empresa y de qué día a qué día.</div></div>
 
@@ -398,6 +399,17 @@ function pedirCodigo(fallo) {
   document.getElementById("acceso").style.display = "flex";
   document.getElementById("malcodigo").style.display = fallo ? "block" : "none";
   document.getElementById("campo").focus();
+}
+
+// Enter en una casilla de fecha toca su boton "Aplicar" (Luis, 1/nov/2026: cambiar una fecha
+// no busca; se editan las dos y se aplica). Los atajos que traen las dos fechas aplican solos.
+function enterAplica(ids, boton) {
+  ids.forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); var b = document.getElementById(boton); if (b) b.click(); }
+    });
+  });
 }
 
 function escapar(t) {
@@ -1191,6 +1203,7 @@ document.getElementById("ver-rango").addEventListener("click", function () {
   if (desde > hasta)   { alert("El día inicial es posterior al final."); return; }
   cargarRango(desde, hasta);
 });
+enterAplica(["desde", "hasta"], "ver-rango");
 
 // --- Descargar respaldo -----------------------------------------------
 //
@@ -1566,8 +1579,8 @@ function floVer() {
 }
 document.getElementById("flo-ver").addEventListener("click", floVer);
 document.getElementById("flo-emp").addEventListener("change", floVer);
-document.getElementById("flo-desde").addEventListener("change", floVer);
-document.getElementById("flo-hasta").addEventListener("change", floVer);
+// Las fechas no buscan solas (Luis, 1/nov/2026): "Aplicar" (flo-ver) o Enter.
+enterAplica(["flo-desde", "flo-hasta"], "flo-ver");
 
 // Cuántos prepagos hubo, contando solo los cobros; una devolución (184) se
 // dice aparte y ya viene restada en `prepagado`.
@@ -1676,12 +1689,21 @@ document.getElementById("tik-q").addEventListener("input", function () {
 // texto que ya esté escrito. El de categoría además acorta el menú de
 // productos a los de esa categoría.
 var TIK_FILTROS = ["tik-desde", "tik-hasta", "tik-cat", "tik-prod", "tik-caj", "tik-pago", "tik-marca"];
+// Las dos FECHAS no buscan solas (Luis, 1/nov/2026): se editan las dos y "Aplicar" (o Enter)
+// busca. Los menus (categoria, cajera...) siguen buscando al cambiar: ahi no hay segunda casilla.
 TIK_FILTROS.forEach(function (id) {
+  if (id === "tik-desde" || id === "tik-hasta") return;   // las fechas van con "Aplicar"
   document.getElementById(id).addEventListener("change", function () {
     if (id === "tik-cat") tikPoblarProductos();
     tikNueva(document.getElementById("tik-q").value.trim());
   });
 });
+document.getElementById("tik-aplicar").addEventListener("click", function () {
+  var d = document.getElementById("tik-desde").value, a = document.getElementById("tik-hasta").value;
+  if (d && a && d > a) { alert("El día inicial es posterior al final."); return; }
+  tikNueva(document.getElementById("tik-q").value.trim());
+});
+enterAplica(["tik-desde", "tik-hasta"], "tik-aplicar");
 document.getElementById("tik-limpiar").addEventListener("click", function () {
   TIK_FILTROS.forEach(function (id) {
     document.getElementById(id).value = "";
@@ -2614,7 +2636,7 @@ function perfilTrabajador(w) {
 
   html += '<div class="barra rango">Del <input type="date" id="trab-desde" value="' + escapar(f.desde) + '">' +
           ' al <input type="date" id="trab-hasta" value="' + escapar(f.hasta) + '">' +
-          ' <button id="trab-ver">Ver</button>' +
+          ' <button id="trab-ver">Aplicar</button>' +
           (filtrado ? ' <button id="trab-limpiar">Quitar filtros</button>' : "") + "</div>";
 
   // Los contadores son de lo que se está mirando, no del histórico completo:
@@ -2662,6 +2684,7 @@ function perfilTrabajador(w) {
     trabFiltro.limite = 50;
     cargarTrabajador();
   });
+  enterAplica(["trab-desde", "trab-hasta"], "trab-ver");
   var lim = document.getElementById("trab-limpiar");
   if (lim) lim.addEventListener("click", function () {
     trabFiltro.desde = ""; trabFiltro.hasta = ""; trabFiltro.tipo = ""; trabFiltro.limite = 50;
