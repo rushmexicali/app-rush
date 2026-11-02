@@ -43,6 +43,8 @@
   button.peligro.suave { background:transparent; color:var(--rojo); }
   button.liso { background:transparent; border-color:transparent; color:var(--accent); padding:4px 8px; }
   button.chico { padding:4px 10px; font-size:13px; }
+  /* Un número de ticket que abre su detalle (Facturación): se ve como enlace, no como botón. */
+  button.enlace { background:transparent; border:0; border-radius:0; padding:0; color:var(--accent); text-decoration:underline; font:inherit; font-weight:inherit; }
   input[type=text], input[type=search], select, textarea { background:var(--card); border:1px solid var(--borde); border-radius:8px; padding:9px 11px; width:100%; }
   a { color:var(--accent); cursor:pointer; text-decoration:none; }
   h1 { font-size:22px; margin:0; }
@@ -1738,7 +1740,9 @@ function facFila(f) {
       '<button type="button" class="chico" ' + act("facOtroCorreo", clave) + ">Enviar a otro correo</button></div>"
     : "";
   var tks = f.tickets || (f.ticket != null ? [f.ticket] : []);
-  var titulo = tks.length ? (tks.length > 1 ? "Tickets " : "Ticket ") + h(tks.join(", ")) : "Factura " + facNumero(f);
+  // Cada ticket es un enlace a su detalle (lo mismo que el modal de la
+  // pestaña Tickets del reporte). Pedido del dueño, 2/nov/2026.
+  var titulo = tks.length ? (tks.length > 1 ? "Tickets " : "Ticket ") + facTicketsHTML(tks) : "Factura " + facNumero(f);
   var importe = f.monto != null
     ? h(pesos(f.monto)) + (f.total != null && Number(f.total) !== Number(f.monto) ? ' <span class="muted chico-t">(total de la factura ' + h(pesos(f.total)) + (f.retencion ? ", retención " + h(pesos(f.retencion)) : "") + ")</span>" : "")
     : (f.total != null ? "total " + h(pesos(f.total)) : "");
@@ -1770,7 +1774,7 @@ function facHTML(v, d) {
     "</div>";
   if (S.length) {
     var s = "";
-    for (i = 0; i < S.length; i++) s += '<div class="item"><div style="min-width:0;flex:1"><b>' + h(facMotivo(S[i].motivo)) + "</b>" + (S[i].ticket ? ' <span class="muted chico-t">ticket ' + h(S[i].ticket) + "</span>" : "") +
+    for (i = 0; i < S.length; i++) s += '<div class="item"><div style="min-width:0;flex:1"><b>' + h(facMotivo(S[i].motivo)) + "</b>" + (S[i].ticket ? ' <span class="muted chico-t">ticket ' + facTicketsHTML([S[i].ticket]) + "</span>" : "") +
       ' <span class="muted chico-t">· ' + fmtFecha(S[i].en) + (S[i].veces > 1 ? " · " + h(S[i].veces) + " veces" : "") + '</span><div class="chico-t muted">' + h(S[i].detalle) + "</div></div></div>";
     html += '<div class="card"><div class="fila entre"><h2>Avisos de facturación</h2><span class="nota">De tickets que no salen en la lista de abajo' + (FAC_FALLIDAS ? "" : " (o de intentos fallidos ocultos)") + "</span></div>" + s + "</div>";
   }
@@ -1840,6 +1844,122 @@ function facEnviar(id, otro) {
     if (ok) { ok.disabled = false; ok.textContent = "Intentar otra vez"; }
   });
 }
+
+// --- El detalle de un ticket (pedido del dueño, 2/nov/2026) ----------------
+// El número de ticket de cada factura abre un modal con lo que ya se sabe
+// del ticket: la MISMA información que el modal de la pestaña Tickets del
+// reporte (ticket_detalle: fecha, cajera, pago, cliente ligado, productos,
+// descuentos, total), más lo que el panel ya traía para "Agregar visita"
+// (carro, nota de la cajera, si está cancelado). No hay ruta nueva: es la
+// misma /venta de la función admin (admin_venta_por_ticket, migración 194).
+function facTicketsHTML(tks) {
+  var s = "";
+  for (var i = 0; i < tks.length; i++) {
+    if (i) s += ", ";
+    s += '<button type="button" class="enlace" ' + act("facVerTicket", tks[i]) + ">" + h(tks[i]) + "</button>";
+  }
+  return s;
+}
+// La marca como la manda Zettle (AMERICAN_EXPRESS, VISA_ELECTRON) en algo
+// legible; lo que no se conoce sale tal cual, con espacios. Igual que en el reporte.
+function facMarcaTxt(m) {
+  if (!m) return "";
+  var conocidas = { AMERICAN_EXPRESS: "AMEX", MASTERCARD: "Mastercard", VISA: "VISA", VISA_ELECTRON: "VISA Electron", DINERS: "Diners" };
+  return conocidas[m] || String(m).replace(/_/g, " ");
+}
+// El pago, desde `pago_detalle` (179): "Tarjeta de crédito AMEX · terminación
+// 1234", o "Efectivo · recibió $200, cambio $20". Sin detalle (archivo viejo)
+// cae al texto crudo de Zettle.
+function facPagoTxt(t) {
+  var d = t.pago_detalle;
+  if (!d || !d.tipo) {
+    var p = t.pago;
+    if (!p) return "—";
+    if (String(p).indexOf("CASH") >= 0) return "Efectivo";
+    if (String(p).indexOf("CARD") >= 0) return "Tarjeta";
+    return String(p);
+  }
+  if (d.tipo === "tarjeta") {
+    var s = d.clase === "credito" ? "Tarjeta de crédito" : d.clase === "debito" ? "Tarjeta de débito" : "Tarjeta";
+    if (d.marca) s += " " + facMarcaTxt(d.marca);
+    if (d.ultimos4) s += " · terminación " + d.ultimos4;
+    return s;
+  }
+  if (d.tipo === "efectivo") {
+    var e = "Efectivo";
+    if (d.recibido != null) e += " · recibió " + pesos(d.recibido);
+    if (d.cambio != null && Number(d.cambio) > 0) e += ", cambio " + pesos(d.cambio);
+    return e;
+  }
+  return String(d.tipo);
+}
+// "JUAN PEREZ" -> "Juan Perez", como lo pinta el reporte.
+function facNombre(s) {
+  if (s == null) return "";
+  return String(s).toLowerCase().replace(/(^|[\s'.\-])([a-záéíóúüñ])/g, function (_, sep, ch) { return sep + ch.toUpperCase(); });
+}
+function facVerTicket(num) {
+  FAC_MODAL++;
+  var mi = FAC_MODAL;
+  abrir("<h2>Ticket " + h(num) + "</h2>" + cargando("Buscando el ticket en Zettle…") + '<div class="pie"><button type="button" ' + act("cerrar") + ">Cerrar</button></div>");
+  pedirJSON("/venta?ticket=" + encodeURIComponent(num)).then(function (d) {
+    // Una respuesta tardía no pisa otro modal ni reabre uno ya cerrado.
+    var fondo = $("#modal-fondo");
+    if (mi !== FAC_MODAL || (fondo && fondo.hidden)) return;
+    abrir(facTicketHTML(num, d ? d.venta : null));
+  }, function (e) {
+    if (e && e.message === "codigo") return;
+    var fondo = $("#modal-fondo");
+    if (mi !== FAC_MODAL || (fondo && fondo.hidden)) return;
+    abrir(facTicketHTML(num, null, (e && e.message) || "error"));
+  });
+}
+// Cerrar el modal y abrir la ficha del cliente ligado al ticket.
+function facIrCliente(id) { cerrar(); ir({ n: "ficha", id: id }); }
+// `fallo`: la consulta NO contestó. Se distingue de `t` nulo, que es la
+// respuesta buena de "ese ticket no está en Zettle" (lección del reporte, 11/oct).
+function facTicketHTML(num, t, fallo) {
+  var pie = '<div class="pie"><button type="button" ' + act("cerrar") + ">Cerrar</button></div>";
+  if (fallo) {
+    return "<h2>Ticket " + h(num) + "</h2>" +
+      '<div class="aviso rojo"><b>No se pudo consultar el ticket.</b> Esto <b>no</b> quiere decir que no exista: la consulta falló (' + h(fallo) + "). Intenta otra vez.</div>" + pie;
+  }
+  if (!t) {
+    return "<h2>Ticket " + h(num) + "</h2>" +
+      '<div class="muted">No se encontró en Zettle (puede ser anterior a sep-2025, o un ticket mal anotado).</div>' + pie;
+  }
+  var html = "<h2>Ticket " + h(t.ticket != null ? t.ticket : num) + (t.cancelado ? ' <span class="chip rojo">Cancelado (devolución)</span>' : "") + "</h2>";
+  html += '<div class="venta">';
+  html += "<div><b>Fecha</b>" + fmtFecha(t.hora) + "</div>";
+  html += "<div><b>Cajera</b>" + h(t.cajero || "—") + "</div>";
+  html += "<div><b>Pago</b>" + h(facPagoTxt(t)) + "</div>";
+  // El cliente ligado (180): clicable a su ficha. Sin visita se dice, para
+  // que "no aparece" no se lea como "falló".
+  html += "<div><b>Cliente</b>" + (t.cliente_id != null
+    ? '<button type="button" class="enlace" ' + act("facIrCliente", t.cliente_id) + ">" + h(facNombre(t.cliente)) + "</button>"
+    : '<span class="muted">sin asignar a ningún cliente</span>') + "</div>";
+  html += "<div><b>Carro</b>" + (t.carro_id ? "#" + h(t.carro_id) : '<span class="muted">sin carro (archivo)</span>') + "</div>";
+  html += "<div><b>Nota de la cajera</b>" + (t.nota ? "«" + h(t.nota) + "»" : "—") + "</div>";
+  html += "</div>";
+  var prods = t.productos || [], descs = t.descuentos || [], i;
+  html += '<h2 style="margin-top:14px">Productos</h2>';
+  if (prods.length) {
+    html += "<table>";
+    for (i = 0; i < prods.length; i++) {
+      var p = prods[i], nom = p.nombre ? String(p.nombre) : "";
+      if (p.variante) nom += (nom ? " / " : "") + String(p.variante);
+      html += "<tr><td>" + h(nom || "—") + '</td><td class="num">' + (p.cantidad != null ? "×" + h(p.cantidad) : "") + '</td><td class="num">' + (p.precio != null ? h(pesos(p.precio)) : "") + "</td></tr>";
+    }
+    html += "</table>";
+  } else html += '<div class="muted">—</div>';
+  if (descs.length) {
+    html += '<h2 style="margin-top:14px">Descuentos</h2><table>';
+    for (i = 0; i < descs.length; i++) html += "<tr><td>" + h(descs[i].nombre || "—") + '</td><td class="num">−' + h(pesos(descs[i].monto)) + "</td></tr>";
+    html += "</table>";
+  }
+  html += '<div style="margin-top:12px;font-size:18px">Total: <b>' + h(pesos(t.monto)) + "</b></div>";
+  return html + pie;
+}
 // FIN FACTURACION (el arnes pruebas/panel-facturacion.sh corta aqui)
 
 // ---------------------------------------------------------------------
@@ -1858,7 +1978,8 @@ var ACT = { ir: ir, volver: volver, cerrar: cerrar, render: render, confirmarAcc
   supAplicar: supAplicar, supPreset: supPreset,
   comMes: comMes, comTickets: comTickets, comPagar: comPagar, comTarifa: comTarifa, comTarifaProd: comTarifaProd, comTarifaCambio: comTarifaCambio, comTarifaGuardar: comTarifaGuardar,
   // Facturacion (235)
-  facAplicar: facAplicar, facPreset: facPreset, facFallidas: facFallidas, facReenviar: facReenviar, facOtroCorreo: facOtroCorreo, facEnviar: facEnviar };
+  facAplicar: facAplicar, facPreset: facPreset, facFallidas: facFallidas, facReenviar: facReenviar, facOtroCorreo: facOtroCorreo, facEnviar: facEnviar,
+  facVerTicket: facVerTicket, facIrCliente: facIrCliente };
 function despachar(e, tipoEvento) {
   var el = e.target.closest("[data-act]"); if (!el) return;
   var esperado = el.getAttribute("data-on") || "click"; if (esperado !== tipoEvento) return;
