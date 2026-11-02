@@ -1623,9 +1623,15 @@ var FAC_MOTIVO = {
   pago_no_registrado: "Cobro no registrado en Alegra", correo_no_enviado: "El correo no salió", borrador_sobrante: "Borrador de más en Alegra",
   reembolso_facturado: "Reembolso de una venta facturada", factura_descartada: "Factura descartada", total_no_cuadra: "El total no cuadró",
   no_cuadra: "El total no cuadró", sin_timbre: "Quedó sin timbre", alegra_caida: "Alegra no contestó", articulo_sin_mapear: "Artículo sin mapear",
-  sin_id_de_retencion: "Falta la retención en el servidor", cancelada_en_alegra: "Cancelada en Alegra", sincronizacion_fallo: "No se pudo leer Alegra"
+  sin_id_de_retencion: "Falta la retención en el servidor", cancelada_en_alegra: "Cancelada en Alegra", sincronizacion_fallo: "No se pudo leer Alegra",
+  no_puede_arrancar: "Falta un secreto en el servidor", intento_sin_terminar: "Un intento no terminó", timbrada_sin_fila: "Timbrada en Alegra sin registro web"
 };
-function facMotivo(m) { return FAC_MOTIVO[m] || String(m || "Aviso"); }
+// alegra_<status> (alegra_500, alegra_429…) lo deja facturar cuando Alegra contesta algo inesperado.
+function facMotivo(m) {
+  if (FAC_MOTIVO[m]) return FAC_MOTIVO[m];
+  if (/^alegra_[0-9]{3}$/.test(String(m))) return "Alegra contestó " + String(m).slice(7);
+  return String(m || "Aviso");
+}
 
 function vFacturacion(v, pinta) {
   if (!VE_FAC) { VISTA = { n: "bandeja" }; render(); return; }
