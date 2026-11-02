@@ -403,6 +403,9 @@ function pedirCodigo(fallo) {
 
 // Enter en una casilla de fecha toca su boton "Aplicar" (Luis, 1/nov/2026: cambiar una fecha
 // no busca; se editan las dos y se aplica). Los atajos que traen las dos fechas aplican solos.
+// Una fecha con el anio a medias ("0202-11-01") pasa el type=date y le pide al servidor un
+// rango de siglos (mini auditoria 1/nov). Vacia vale (no filtra); con valor, anio de cuatro cifras 20xx.
+function anioCompleto(v) { return !v || /^20dd-dd-dd$/.test(v); }
 function enterAplica(ids, boton) {
   ids.forEach(function (id) {
     var el = document.getElementById(id);
@@ -1200,6 +1203,7 @@ document.getElementById("ver-rango").addEventListener("click", function () {
   var desde = document.getElementById("desde").value;
   var hasta = document.getElementById("hasta").value;
   if (!desde || !hasta) { alert("Escoge los dos días."); return; }
+  if (!anioCompleto(desde) || !anioCompleto(hasta)) { alert("Escribe el año completo en las fechas."); return; }
   if (desde > hasta)   { alert("El día inicial es posterior al final."); return; }
   cargarRango(desde, hasta);
 });
@@ -1700,6 +1704,7 @@ TIK_FILTROS.forEach(function (id) {
 });
 document.getElementById("tik-aplicar").addEventListener("click", function () {
   var d = document.getElementById("tik-desde").value, a = document.getElementById("tik-hasta").value;
+  if (!anioCompleto(d) || !anioCompleto(a)) { alert("Escribe el año completo en las fechas."); return; }
   if (d && a && d > a) { alert("El día inicial es posterior al final."); return; }
   tikNueva(document.getElementById("tik-q").value.trim());
 });
@@ -2679,6 +2684,7 @@ function perfilTrabajador(w) {
     var d = document.getElementById("trab-desde").value;
     var h = document.getElementById("trab-hasta").value;
     if (d && h && d > h) { alert("El día inicial es posterior al final."); return; }
+    if (!anioCompleto(d) || !anioCompleto(h)) { alert("Escribe el año completo en las fechas."); return; }
     trabFiltro.desde = d;
     trabFiltro.hasta = h;
     trabFiltro.limite = 50;
