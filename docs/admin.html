@@ -52,6 +52,9 @@
   .muted { color:var(--muted); }
   .chico-t { font-size:13px; }
   .mono { font-variant-numeric:tabular-nums; }
+  /* Facturacion: el numero de la factura, mas grande que el titulo y en
+     negrita, para que no se pierda junto a la fecha (2/nov/2026). */
+  .fac-num { font-size:18px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--fg); }
 
   #acceso { min-height:100vh; display:grid; place-items:center; padding:24px 16px; }
   #acceso .caja { background:var(--card); border:1px solid var(--borde); border-radius:14px; padding:28px; width:100%; max-width:420px; display:grid; gap:16px; }
@@ -1742,13 +1745,18 @@ function facFila(f) {
   var tks = f.tickets || (f.ticket != null ? [f.ticket] : []);
   // Cada ticket es un enlace a su detalle (lo mismo que el modal de la
   // pestaña Tickets del reporte). Pedido del dueño, 2/nov/2026.
-  var titulo = tks.length ? (tks.length > 1 ? "Tickets " : "Ticket ") + facTicketsHTML(tks) : "Factura " + facNumero(f);
+  // Sin ticket el titulo es solo "Factura": el numero ya va grande al lado
+  // (si se repitiera aqui saldria "Factura 497 497").
+  var titulo = tks.length ? (tks.length > 1 ? "Tickets " : "Ticket ") + facTicketsHTML(tks) : "Factura";
   var importe = f.monto != null
     ? h(pesos(f.monto)) + (f.total != null && Number(f.total) !== Number(f.monto) ? ' <span class="muted chico-t">(total de la factura ' + h(pesos(f.total)) + (f.retencion ? ", retención " + h(pesos(f.retencion)) : "") + ")</span>" : "")
     : (f.total != null ? "total " + h(pesos(f.total)) : "");
   return '<div class="item" style="align-items:flex-start">' +
     '<div style="min-width:0;flex:1">' +
-      '<div class="fila" style="gap:8px"><b>' + titulo + "</b>" + '<span class="muted chico-t">' + facNumero(f) + " · " + fmtFecha(f.fecha) + "</span> " + chips + "</div>" +
+      // El numero de la factura va grande y en negrita (pedido del dueño,
+      // 2/nov/2026: "se pierde en la fecha"). Sin numero (intento fallido)
+      // sigue en gris chico: no hay nada que resaltar.
+      '<div class="fila" style="gap:8px"><b>' + titulo + "</b>" + (f.numero ? '<span class="fac-num">' + facNumero(f) + "</span>" : '<span class="muted chico-t">' + facNumero(f) + "</span>") + '<span class="muted chico-t">' + fmtFecha(f.fecha) + "</span> " + chips + "</div>" +
       "<div>" + h(f.nombre || "—") + ' <span class="muted chico-t">' + h(f.rfc || "") + "</span>" + (importe ? " · " + importe : "") + "</div>" +
       '<div class="chico-t">Correo: ' + (f.correo ? "<b>" + h(f.correo) + "</b>" : '<span class="muted">sin correo en Alegra</span>') + (f.enviado_en ? ' <span class="muted">· enviada al facturar, ' + fmtFecha(f.enviado_en) + "</span>" : "") + "</div>" +
       env +
