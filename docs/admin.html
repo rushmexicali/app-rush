@@ -7,9 +7,9 @@
   para corregir el CRM: fusionar fichas duplicadas, borrar fichas vacias, quitar
   y agregar visitas, mover placas. No la usan ni el supervisor ni la cajera.
 
-  Habla con la Edge Function `admin` (NO con `app`): codigo propio del panel
-  (CODIGO_ADMIN) y cabecera x-quien, porque toda accion queda en bitacora con
-  nombre. Toda la logica vive en la base (migraciones 192-195): aqui no hay
+  Habla con la Edge Function `admin` (NO con `app`): cada usuario entra con su
+  propia clave (x-codigo, migracion 244), y esa clave dice quien es, porque
+  toda accion queda en bitacora con nombre. Toda la logica vive en la base (migraciones 192-195): aqui no hay
   copia de ninguna regla (ni lealtad, ni fonetica, ni tipos): lo que se pinta
   lo calculo el servidor. La VISTA PREVIA de cada accion es la misma funcion
   con `ensayo: true`, que calcula sin escribir.
@@ -229,7 +229,8 @@ var PEDIR_CORTE_MS = 20000;
 // 244: la clave es personal y decide quien eres y que pestañas ves (PESTANAS,
 // lo contesta /motivos). Ya no hay "quien eres" aparte.
 var CODIGO = "", QUIEN_ETIQUETA = "", PESTANAS = [];
-// clave -> nombre. Lo manda el servidor (/quienes, tabla admin_quienes): los
+// Los nombres de los usuarios del panel, para el filtro de la Bitacora. Los
+// manda /motivos (tabla admin_quienes) solo a quien ve la Bitacora: los
 // nombres de personas no viven en esta pagina, que es publica.
 var QUIENES = {};
 var MOTIVOS = [];
@@ -282,11 +283,16 @@ function cargando(t) { return '<div class="cargando">' + h(t || "Cargando…") +
 function errorHTML(e) {
   return '<div class="aviso rojo"><b>No se pudo consultar.</b> ' + h(e && e.message ? e.message : e) + ' Esto no quiere decir que no haya nada: quiere decir que la consulta falló. <a ' + act("render") + '>Reintentar</a></div>';
 }
+// (245) "y se puede deshacer" solo es cierto para quien ve la Bitacora: el
+// boton de deshacer vive ahi. Vive entre los helpers (h..retrasar) porque lo
+// usan Pendientes y Comisiones y los arneses extraen ese tramo.
+function txtDeshacer() { return typeof tiene === "function" && tiene("bitacora") ? " y se puede deshacer" : ""; }
 function retrasar(fn, ms) { var t; return function () { var a = arguments; clearTimeout(t); t = setTimeout(function () { fn.apply(null, a); }, ms); }; }
 
 // ---------------------------------------------------------------------
 // Peticiones. Igual que reporte.html (corte de 20 s, 401 pide el codigo, un
-// `ok:false` es error), mas la cabecera x-quien.
+// `ok:false` es error). Un 403 es "esta pestaña no es tuya" (244) y se pinta
+// donde se pidio; no manda al login.
 // ---------------------------------------------------------------------
 function pedir(ruta, opts) {
   opts = opts || {};
@@ -308,8 +314,11 @@ function pedir(ruta, opts) {
 function pedirJSON(ruta, opts) {
   return pedir(ruta, opts).then(function (r) {
     if (r.status === 401) { pedirCodigo(true); throw new Error("codigo"); }
-    if (r.status === 403) { pedirCodigo(false, "Falta decir quién eres"); throw new Error("codigo"); }
-    if (r.status === 503) { throw new Error("El servidor no tiene configurado el código del panel"); }
+    if (r.status === 403) {
+      var noEs = "Esta pestaña no está disponible para tu perfil";
+      return r.json().then(function (d) { throw new Error((d && d.error) || noEs); }, function () { throw new Error(noEs); });
+    }
+    if (r.status === 503) { throw new Error("El servidor no tiene usuarios con clave"); }
     return r.json().then(function (d) {
       if (!r.ok && (!d || d.ok === undefined)) throw new Error("El servidor respondió " + r.status);
       return d;
@@ -346,6 +355,8 @@ function accion(ruta, cuerpo) {
 // ---------------------------------------------------------------------
 function pedirCodigo(fallo, texto) {
   cerrar();   // F-9: un 401/403 con un modal abierto lo dejaba encima del login
+  // Una clave que el servidor rechazo no se vuelve a probar sola al recargar.
+  if (fallo) { try { localStorage.removeItem("rush_codigo_admin"); } catch (e) {} }
   $("#app").hidden = true;
   $("#acceso").hidden = false;
   $("#malcodigo").hidden = !fallo;
@@ -413,7 +424,13 @@ document.getElementById("salir").addEventListener("click", function () {
 function toast(t) { var el = $("#toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(function () { el.hidden = true; }, 2800); }
 function abrir(html, ancho) { $("#modal").innerHTML = html; $("#modal").classList.toggle("ancho", !!ancho); $("#modal-fondo").hidden = false; var f = $("#modal").querySelector("input,select,button"); if (f) f.focus(); }
 function cerrar() { $("#modal-fondo").hidden = true; ACC = null; }
-function ir(v, guardar) { if (guardar !== false) NAV.push(VISTA); VISTA = v; render(); window.scrollTo(0, 0); }
+// (245) Una vista de una pestaña que el usuario no tiene no se abre: se avisa y
+// se queda donde estaba, con lo tecleado. Antes el enlace llevaba a render(),
+// que rebotaba a su primera pestaña y perdia el estado.
+function ir(v, guardar) {
+  if (PESTANAS.length && v && !tiene(pestanaDeVista(v.n))) { toast("Esa pestaña no está disponible para tu perfil"); return; }
+  if (guardar !== false) NAV.push(VISTA); VISTA = v; render(); window.scrollTo(0, 0);
+}
 function volver() { VISTA = NAV.pop() || { n: "bandeja" }; render(); }
 
 function render() {
@@ -426,7 +443,7 @@ function render() {
   if (PESTANAS.length && !tiene(pestanaDeVista(VISTA.n))) { VISTA = { n: primeraPestana() }; NAV = []; }
   var html = "";
   for (var i = 0; i < tabs.length; i++) {
-    var n = tabs[i][0], on_ = VISTA.n === n || (n === "clientes" && (VISTA.n === "ficha" || VISTA.n === "fusionar" || VISTA.n === "agregar" || VISTA.n === "placa" || VISTA.n === "placas")) || (n === "trabajadores" && VISTA.n === "trabajador");
+    var n = tabs[i][0], on_ = pestanaDeVista(VISTA.n) === n;
     html += '<button type="button" class="' + (on_ ? "on" : "") + '" ' + act("ir", { n: n }) + ">" + tabs[i][1] +
             (n === "bandeja" && PENDIENTES_N ? '<span class="cuenta">' + PENDIENTES_N + "</span>" : "") + "</button>";
   }
@@ -672,8 +689,8 @@ function modalDescartarPar(a, b, na, nb) {
     ruta: "/descartar-par", cuerpo: function () { return { a: a, b: b }; }, motivoDefecto: "Otro (con nota)" });
 }
 // 196: "ya lo vi" de un pendiente calculado (no toca el dato, solo la notificacion).
-function pendienteVisto(clase, clave, texto) { abrirSimple("¿Ya lo viste?", "Deja de aparecer " + h(texto) + ". No se toca ningún dato; queda en la bitácora y se puede deshacer.", "/pendiente-visto", { clase: clase, clave: clave }, "Ya lo vi"); }
-function pendientesVistos(clase, claves) { abrirSimple("¿Ya viste estas " + claves.length + "?", "Dejan de aparecer en la bandeja. No se toca ningún dato; queda en la bitácora y se puede deshacer.", "/pendiente-visto", { clase: clase, claves: claves }, "Ya las vi"); }
+function pendienteVisto(clase, clave, texto) { abrirSimple("¿Ya lo viste?", "Deja de aparecer " + h(texto) + ". No se toca ningún dato; queda en la bitácora" + txtDeshacer() + ".", "/pendiente-visto", { clase: clase, clave: clave }, "Ya lo vi"); }
+function pendientesVistos(clase, claves) { abrirSimple("¿Ya viste estas " + claves.length + "?", "Dejan de aparecer en la bandeja. No se toca ningún dato; queda en la bitácora" + txtDeshacer() + ".", "/pendiente-visto", { clase: clase, claves: claves }, "Ya las vi"); }
 function dudosaVista(carro) { abrirSimple("¿Ya revisaste esta placa?", "El carro " + carro + " deja de aparecer en pendientes. Queda en la bitácora.", "/dudosa-vista", { carro: carro }, "Ya lo vi"); }
 function avisoAtendido(id) { abrirSimple("¿Atendido?", "El aviso deja de aparecer. Si vuelve a ocurrir, se vuelve a abrir solo.", "/aviso-atendido", { id: id }, "Ya lo atendí"); }
 function modalFecha(vid, nombre, fv, fventa, ticket) {
@@ -1603,7 +1620,7 @@ function comPagar(ym, cajeras) {
     partes.push("<b>" + h(c.cajera) + " " + h(pesos(c.total)) + "</b>" + (num(c.arrastre) ? ' <span class="muted chico-t">(incluye ' + h(pesos(c.arrastre)) + " del mes anterior)</span>" : ""));
   }
   if (!partes.length) { toast("No hay a quién pagarle"); return; }
-  abrirSimple("¿Marcar como pagado?", "Comisiones de <b>" + h(mesTxt(ym)) + "</b>: " + partes.join(", ") + ". Se guarda el desglose tal como está hoy. Queda en la bitácora y se puede deshacer.",
+  abrirSimple("¿Marcar como pagado?", "Comisiones de <b>" + h(mesTxt(ym)) + "</b>: " + partes.join(", ") + ". Se guarda el desglose tal como está hoy. Queda en la bitácora" + txtDeshacer() + ".",
     "/comision-pagar", { desde: rg.desde, hasta: rg.hasta, cajeras: cajeras }, "Sí, ya se pagó");
 }
 
@@ -2933,9 +2950,11 @@ function usrModal(u) {
   html += "</div></div>" +
     (u ? '<div class="campo"><label class="interruptor"><input type="checkbox" id="usr-activo"' + (u.activo ? " checked" : "") + "> Activo (puede entrar)</label></div>" : "") +
     '<div id="acc-prev"></div><div class="pie"><button type="button" ' + act("cerrar") + '>Cancelar</button><button type="button" id="acc-ok" class="primario" ' + act("usrGuardar", u ? u.clave : null) + ">Guardar</button></div></div>";
+  ACC = { usuario: u ? u.clave : null };   // la marca de ESTE modal (F-4): cerrar() la borra
   abrir(html);
 }
 function usrGuardar(clave) {
+  var cfg = ACC;   // si al volver ya no es el mismo modal, no se toca el que haya
   var nombre = recortar($("#usr-nombre") ? $("#usr-nombre").value : ""), codigo = recortar($("#usr-codigo") ? $("#usr-codigo").value : "");
   var cajas = document.querySelectorAll ? document.querySelectorAll("#usr-pest input") : [], pest = [], i;
   for (i = 0; i < cajas.length; i++) if (cajas[i].checked) pest.push(cajas[i].value);
@@ -2945,15 +2964,17 @@ function usrGuardar(clave) {
   if (!pest.length) { toast("Marca al menos una pestaña"); return; }
   var ok = $("#acc-ok"); if (ok) ok.disabled = true;
   accion("/usuario", { clave: clave, nombre: nombre, codigo: codigo, pestanas: pest, activo: activo }).then(function (r) {
-    if (!r.ok) { var p = $("#acc-prev"); if (p) p.innerHTML = pintarPrevia(r); if (ok) ok.disabled = false; return; }
-    toast(r.resumen || "Guardado"); cerrar();
-    // Si me cambie la clave o el nombre a mi mismo, la siguiente peticion ya va con lo nuevo.
+    var mismo = ACC === cfg;
+    if (!r.ok) { if (!mismo) return; var p = $("#acc-prev"); if (p) p.innerHTML = pintarPrevia(r); if (ok) ok.disabled = false; return; }
+    toast(r.resumen || "Guardado"); if (mismo) cerrar();
+    // Si me cambie la clave o el nombre a mi mismo, la siguiente peticion ya va
+    // con lo nuevo (aunque el modal ya no sea el mismo: el cambio si se guardo).
     if (USR_CACHE && clave && clave === USR_CACHE.yo) {
       CODIGO = codigo; QUIEN_ETIQUETA = nombre;
       try { localStorage.setItem("rush_codigo_admin", CODIGO); } catch (e) {}
     }
     render();
-  }, function (e) { if (e && e.message === "codigo") return; var p = $("#acc-prev"); if (p) p.innerHTML = errorHTML(e); if (ok) ok.disabled = false; });
+  }, function (e) { if (e && e.message === "codigo" || ACC !== cfg) return; var p = $("#acc-prev"); if (p) p.innerHTML = errorHTML(e); if (ok) ok.disabled = false; });
 }
 function usrBorrar(clave, nombre) {
   abrirSimple("¿Eliminar a " + h(nombre) + "?", "Deja de poder entrar al panel. Lo que ya hizo sigue en la Bitácora con su nombre.", "/usuario-borrar", { clave: clave }, "Eliminar");
@@ -3019,6 +3040,9 @@ document.addEventListener("keydown", function (e) {
 });
 $("#modal-fondo").addEventListener("click", function (e) { if (e.target.id === "modal-fondo") cerrar(); });
 
+// (245) Con una clave guardada se entra solo; la 244 dejo aqui dos nombres que
+// ya no existian (QUIEN, pedirQuienes) y toda recarga con clave tronaba antes
+// de arrancar. pruebas/panel-usuarios.sh vigila que esta linea no los nombre.
 cargarCredenciales();
-if (CODIGO && QUIEN) arrancar(); else { pedirCodigo(false); if (CODIGO) { $("#campo").value = CODIGO; pedirQuienes(); } }
+if (CODIGO) arrancar(); else pedirCodigo(false);
 </script>
