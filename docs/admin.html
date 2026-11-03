@@ -202,13 +202,9 @@
 <div id="acceso">
   <div class="caja">
     <div class="marca">RUSH · Panel de administración</div>
-    <div class="muted chico-t">Es el código del panel, no el de la app del supervisor.</div>
-    <div class="campo"><label for="campo">Código del panel</label><input id="campo" type="password" inputmode="text" autocapitalize="characters" autocomplete="off"></div>
-    <div class="campo"><label>¿Quién eres?</label>
-      <div class="quien" id="quienes"><div class="muted chico-t" style="grid-column:1/-1">Escribe el código y aparecen los nombres.</div></div>
-      <div class="muted chico-t">Tu nombre queda en la bitácora de cada cambio.</div>
-    </div>
-    <div id="malcodigo" class="aviso rojo" hidden>Código incorrecto</div>
+    <div class="muted chico-t">Tu clave es personal: con ella el panel sabe quién eres, qué ves, y tu nombre queda en la bitácora de cada cambio.</div>
+    <div class="campo"><label for="campo">Tu clave</label><input id="campo" type="password" inputmode="numeric" autocomplete="off"></div>
+    <div id="malcodigo" class="aviso rojo" hidden>Clave incorrecta</div>
     <div id="login-err" class="aviso rojo" hidden></div>
     <button class="primario" id="entrar" type="button" style="padding:14px;font-size:16px">Entrar</button>
   </div>
@@ -230,7 +226,9 @@
 var API = "https://rwoyfvddhlabmmuvkpjx.supabase.co/functions/v1/admin";
 var PEDIR_CORTE_MS = 20000;
 
-var CODIGO = "", QUIEN = "", QUIEN_ETIQUETA = "";
+// 244: la clave es personal y decide quien eres y que pestañas ves (PESTANAS,
+// lo contesta /motivos). Ya no hay "quien eres" aparte.
+var CODIGO = "", QUIEN_ETIQUETA = "", PESTANAS = [];
 // clave -> nombre. Lo manda el servidor (/quienes, tabla admin_quienes): los
 // nombres de personas no viven en esta pagina, que es publica.
 var QUIENES = {};
@@ -292,7 +290,7 @@ function retrasar(fn, ms) { var t; return function () { var a = arguments; clear
 // ---------------------------------------------------------------------
 function pedir(ruta, opts) {
   opts = opts || {};
-  opts.headers = Object.assign({ "x-codigo": CODIGO, "x-quien": QUIEN }, opts.headers || {});
+  opts.headers = Object.assign({ "x-codigo": CODIGO }, opts.headers || {});
   var reloj = null;
   if (typeof AbortController === "function" && !opts.signal) {
     var corta = new AbortController();
@@ -357,75 +355,54 @@ function pedirCodigo(fallo, texto) {
 function cargarCredenciales() {
   try {
     CODIGO = localStorage.getItem("rush_codigo_admin") || "";
-    QUIEN = localStorage.getItem("rush_admin_quien") || "";
-  } catch (e) { CODIGO = ""; QUIEN = ""; }
-  QUIEN_ETIQUETA = "";
+    localStorage.removeItem("rush_admin_quien");   // (244) ya no existe
+  } catch (e) { CODIGO = ""; }
+  QUIEN_ETIQUETA = ""; PESTANAS = [];
 }
-// Los botones de "quien eres" se pintan con lo que diga el servidor, que lo
-// contesta solo con el codigo correcto. Se piden al cargar (si ya hay codigo
-// guardado) y al terminar de teclear el codigo.
-var pedirQuienes = retrasar(function () {
-  var cont = $("#quienes");
-  if (!CODIGO) return;
-  pedirJSON("/quienes").then(function (d) {
-    var lista = listaDe(d, "quienes"), html = "";
-    QUIENES = {};
-    for (var i = 0; i < lista.length; i++) {
-      QUIENES[lista[i].clave] = lista[i].nombre;
-      html += '<button type="button" data-q="' + h(lista[i].clave) + '" class="' + (QUIEN === lista[i].clave ? "sel" : "") + '">' + h(lista[i].nombre) + "</button>";
-    }
-    cont.innerHTML = html;
-    $("#malcodigo").hidden = true;
-  }, function (e) {
-    if (e && e.message === "codigo") return;
-    cont.innerHTML = '<div class="muted chico-t" style="grid-column:1/-1">' + h(e.message) + "</div>";
-  });
-}, 400);
+// Que pestañas tiene este usuario, y cual es la primera (donde abre). El
+// orden es el de la barra; abre en Pendientes si la tiene.
+var TABS_TODAS = [["bandeja", "Pendientes"], ["operacion", "Operación"], ["clientes", "Clientes"], ["trabajadores", "Trabajadores"], ["tickets", "Tickets"], ["flotillas", "Flotillas"], ["caja", "Caja"], ["supervisores", "Supervisores"], ["comisiones", "Comisiones"], ["bitacora", "Bitácora"], ["facturacion", "Facturación"], ["usuarios", "Usuarios"]];
+function tiene(p) { for (var i = 0; i < PESTANAS.length; i++) if (PESTANAS[i] === p) return true; return false; }
+function primeraPestana() { for (var i = 0; i < TABS_TODAS.length; i++) if (tiene(TABS_TODAS[i][0])) return TABS_TODAS[i][0]; return "bandeja"; }
+// La pestaña a la que pertenece una vista (las vistas interiores cuelgan de su pestaña).
+function pestanaDeVista(n) {
+  if (n === "ficha" || n === "fusionar" || n === "agregar" || n === "placa" || n === "placas") return "clientes";
+  if (n === "trabajador") return "trabajadores";
+  return n;
+}
+// La entrada (244): la clave va en x-codigo y /motivos contesta quien eres,
+// tus pestañas y los nombres de todos (el filtro de la bitacora).
 function arrancar() {
   return pedirJSON("/motivos").then(function (d) {
     MOTIVOS = listaDe(d, "motivos");
-    QUIEN_ETIQUETA = d.quien || QUIEN;
-    // 235: la pestana Facturacion solo sale para quien la ve (la funcion
-    // ademas rechaza sus rutas a cualquier otro perfil).
-    VE_FAC = d.facturacion === true;
-    // F-8: con auto-login nadie habia pedido /quienes; el filtro de la bitacora los necesita
-    var qs = listaDe(d, "quienes"), i, k, ya = {};
-    for (k in QUIENES) if (QUIENES.hasOwnProperty(k)) ya[QUIENES[k]] = true;
-    for (i = 0; i < qs.length; i++) if (!ya[qs[i]]) QUIENES["_" + i] = qs[i];
-    try { localStorage.setItem("rush_codigo_admin", CODIGO); localStorage.setItem("rush_admin_quien", QUIEN); } catch (e) {}
+    QUIEN_ETIQUETA = d.quien || "";
+    PESTANAS = Array.isArray(d.pestanas) ? d.pestanas : [];
+    // 235: Facturacion solo sale para quien la tiene (la funcion ademas
+    // rechaza sus rutas a cualquier otro perfil).
+    VE_FAC = tiene("facturacion");
+    var qs = listaDe(d, "quienes"), i;
+    QUIENES = {};
+    for (i = 0; i < qs.length; i++) QUIENES["_" + i] = qs[i];
+    try { localStorage.setItem("rush_codigo_admin", CODIGO); } catch (e) {}
     $("#acceso").hidden = true; $("#app").hidden = false;
-    VISTA = { n: "bandeja" }; NAV = [];
+    VISTA = { n: primeraPestana() }; NAV = [];
     render();
   }).then(null, function (e) {
     if (e && e.message === "codigo") return;
     pedirCodigo(false, e.message);
   });
 }
-document.getElementById("quienes").addEventListener("click", function (e) {
-  var b = e.target.closest("button"); if (!b) return;
-  var todos = document.querySelectorAll("#quienes button");
-  for (var i = 0; i < todos.length; i++) todos[i].classList.toggle("sel", todos[i] === b);
-  QUIEN = b.getAttribute("data-q");
-});
 document.getElementById("entrar").addEventListener("click", function () {
-  var v = $("#campo").value.trim().toUpperCase();
-  if (!v) { pedirCodigo(false, "Falta el código"); return; }
+  var v = $("#campo").value.trim();
+  if (!v) { pedirCodigo(false, "Falta la clave"); return; }
   CODIGO = v;
-  if (!QUIEN) { pedirCodigo(false, "Elige quién eres"); pedirQuienes(); return; }
   arrancar();
 });
 document.getElementById("campo").addEventListener("keydown", function (ev) { if (ev.key === "Enter") $("#entrar").click(); });
-document.getElementById("campo").addEventListener("input", function () {
-  var v = $("#campo").value.trim().toUpperCase();
-  if (v.length >= 4) { CODIGO = v; pedirQuienes(); }
-});
 document.getElementById("salir").addEventListener("click", function () {
-  // F-11: salir es salir: tambien se olvida el codigo (antes reaparecia en claro al recargar)
-  try { localStorage.removeItem("rush_admin_quien"); localStorage.removeItem("rush_codigo_admin"); } catch (e) {}
-  QUIEN = ""; CODIGO = ""; VE_FAC = false; $("#campo").value = "";
-  // P-3 (mini auditoria 11/oct): los botones con los nombres tambien se
-  // quitan; el rotulo dice "escribe el codigo y aparecen los nombres".
-  $("#quienes").innerHTML = "";
+  // F-11: salir es salir: tambien se olvida la clave (antes reaparecia en claro al recargar)
+  try { localStorage.removeItem("rush_codigo_admin"); } catch (e) {}
+  CODIGO = ""; VE_FAC = false; PESTANAS = []; QUIEN_ETIQUETA = ""; $("#campo").value = "";
   QUIENES = {};
   pedirCodigo(false);
 });
@@ -441,9 +418,12 @@ function volver() { VISTA = NAV.pop() || { n: "bandeja" }; render(); }
 
 function render() {
   // 243: Operacion, Trabajadores, Tickets y Flotillas vienen del reporte del
-  // dueño; el panel sigue abriendo en Pendientes (decision del 2/nov/2026).
-  var tabs = [["bandeja", "Pendientes"], ["operacion", "Operación"], ["clientes", "Clientes"], ["trabajadores", "Trabajadores"], ["tickets", "Tickets"], ["flotillas", "Flotillas"], ["caja", "Caja"], ["supervisores", "Supervisores"], ["comisiones", "Comisiones"], ["bitacora", "Bitácora"]];
-  if (VE_FAC) tabs.push(["facturacion", "Facturación"]);
+  // dueño; el panel abre en Pendientes para quien la tiene (decision del
+  // 2/nov/2026). 244: solo salen las pestañas del usuario, y una vista que no
+  // le toca regresa a la primera suya (la funcion la rechazaria igual).
+  var tabs = [], ti;
+  for (ti = 0; ti < TABS_TODAS.length; ti++) if (tiene(TABS_TODAS[ti][0])) tabs.push(TABS_TODAS[ti]);
+  if (PESTANAS.length && !tiene(pestanaDeVista(VISTA.n))) { VISTA = { n: primeraPestana() }; NAV = []; }
   var html = "";
   for (var i = 0; i < tabs.length; i++) {
     var n = tabs[i][0], on_ = VISTA.n === n || (n === "clientes" && (VISTA.n === "ficha" || VISTA.n === "fusionar" || VISTA.n === "agregar" || VISTA.n === "placa" || VISTA.n === "placas")) || (n === "trabajadores" && VISTA.n === "trabajador");
@@ -455,7 +435,7 @@ function render() {
   TOKEN++;
   var t = TOKEN, v = VISTA;
   var V = { bandeja: vBandeja, clientes: vClientes, ficha: vFicha, fusionar: vFundir, agregar: vAgregar, caja: vCaja, supervisores: vSupervisores, comisiones: vComisiones, bitacora: vBitacora, facturacion: vFacturacion,
-            operacion: vOperacion, trabajadores: vTrabajadores, trabajador: vTrabajador, tickets: vTickets, flotillas: vFlotillas, placas: vPlacas, placa: vPlaca };
+            operacion: vOperacion, trabajadores: vTrabajadores, trabajador: vTrabajador, tickets: vTickets, flotillas: vFlotillas, placas: vPlacas, placa: vPlaca, usuarios: vUsuarios };
   V[v.n](v, function (html2) {
     if (t !== TOKEN) return;   // llego tarde: ya se pinto otra vista
     $("#vista").innerHTML = html2;
@@ -2438,7 +2418,13 @@ var TRAB_TIPOS = [["", "Todos"], ["con_aspirado", "Completos"], ["sin_aspirado",
 function trabRangoPorOmision(v) {
   if (esFecha(v.desde) && esFecha(v.hasta)) return;
   if (TRAB_RANGO) { v.desde = TRAB_RANGO.desde; v.hasta = TRAB_RANGO.hasta; v.preset = TRAB_RANGO.preset; }
-  else { var hoy = hoyLocal(); v.desde = hoy.slice(0, 8) + "01"; v.hasta = hoy; v.preset = "mes"; }
+  // Abre en "Esta semana" (lunes a hoy), a pedido del dueño (2/nov/2026): es
+  // lo que mira a diario. El perfil hereda el rango de la tabla.
+  else {
+    var hoy = hoyLocal(), m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(hoy);
+    var dow = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).getUTCDay();
+    v.desde = sumarDias(hoy, -((dow + 6) % 7)); v.hasta = hoy; v.preset = "sem";
+  }
 }
 function trabControles(v, extra) {
   return '<div class="card"><div class="rango">' + rangoHTML("trab", v, RANGO_MAX.trab) + presetsHTML(PRESETS_TRAB, v) + (extra || "") + "</div></div>";
@@ -2894,6 +2880,87 @@ function ultimosLavadosHTML(carros) {
 // FIN CLIENTES DEL REPORTE
 
 // ---------------------------------------------------------------------
+// USUARIOS: quien entra al panel, con que clave y que ve (migracion 244,
+// 2/nov/2026). La clave es la identidad: la tabla admin_quienes guarda
+// nombre, clave y pestañas, y la funcion admin decide por la clave quien es
+// cada peticion y que rutas le sirve. Aqui las claves se VEN (el dueño las
+// administra); por eso la pestaña solo la tiene quien el dueño diga. Las
+// reglas (clave unica, 4-8 digitos, nadie se quita Usuarios a si mismo, el
+// ultimo con Usuarios lo conserva) viven en la base; la pantalla solo las
+// repite como aviso. Sin metodos de arreglo: el arnes JScript lo ejecuta.
+// ---------------------------------------------------------------------
+var USR_CACHE = null;
+function vUsuarios(v, pinta) {
+  pinta(cargando());
+  var token = TOKEN;
+  pedirJSON("/usuarios").then(function (d) {
+    if (token !== TOKEN) return;
+    var lista = listaDe(d, "usuarios"), pest = listaDe(d, "pestanas");
+    USR_CACHE = { usuarios: lista, pestanas: pest, yo: d.yo };
+    pinta(usrHTML(lista, pest, d.yo));
+  }, function (e) { if (token !== TOKEN) return; if (e.message !== "codigo") pinta(errorHTML(e)); });
+}
+function usrTiene(lista, p) { for (var i = 0; i < (lista || []).length; i++) if (lista[i] === p) return true; return false; }
+function usrNombrePestana(pest, clave) { for (var i = 0; i < pest.length; i++) if (pest[i].clave === clave) return pest[i].nombre; return clave; }
+function usrBusca(clave) { var l = USR_CACHE ? USR_CACHE.usuarios : []; for (var i = 0; i < l.length; i++) if (l[i].clave === clave) return l[i]; return null; }
+function usrHTML(lista, pest, yo) {
+  var html = '<div class="fila entre"><div><h1>Usuarios</h1><div class="muted">Cada quien entra con su clave y ve sólo sus pestañas. Las claves se ven aquí porque tú las administras: no las compartas.</div></div>' +
+    '<button type="button" class="primario" ' + act("usrNuevo") + ">+ Agregar usuario</button></div>";
+  html += '<div class="card"><div class="tabla-wrap"><table><thead><tr><th>Nombre</th><th>Clave</th><th>Pestañas que ve</th><th></th></tr></thead><tbody>';
+  for (var i = 0; i < lista.length; i++) {
+    var u = lista[i], chips = "", k, n = 0;
+    for (k = 0; k < pest.length; k++) if (usrTiene(u.pestanas, pest[k].clave)) { chips += '<span class="chip ' + (pest[k].clave === "usuarios" ? "ambar" : "verde") + '">' + h(pest[k].nombre) + "</span> "; n++; }
+    html += '<tr class="' + (u.activo ? "" : "apagada") + '"><td><b>' + h(u.nombre) + "</b>" + (u.clave === yo ? ' <span class="chip cian">tú</span>' : "") + (u.activo ? "" : ' <span class="chip rojo">inactivo</span>') +
+      '<div class="mini">' + h(u.clave) + "</div></td>" +
+      '<td class="mono">' + (u.codigo ? "<b>" + h(u.codigo) + "</b>" : '<span class="chip rojo">sin clave: no puede entrar</span>') + "</td>" +
+      "<td>" + (n ? chips : '<span class="tenue">ninguna</span>') + "</td>" +
+      '<td class="acc"><div class="acciones"><button type="button" class="chico" ' + act("usrEditar", u.clave) + ">Editar</button>" +
+      (u.clave === yo ? "" : '<button type="button" class="chico peligro suave" ' + act("usrBorrar", u.clave, u.nombre) + ">Eliminar</button>") + "</div></td></tr>";
+  }
+  html += "</tbody></table></div>" +
+    '<div class="nota" style="margin-top:10px">Nadie se quita a sí mismo el acceso a Usuarios ni se elimina, y el último con ese acceso lo conserva: así el panel nunca se queda sin quien lo administre. Cada alta, cambio y baja queda en la Bitácora, sin la clave. Un usuario inactivo no puede entrar pero conserva su historial.</div></div>';
+  return html;
+}
+function usrNuevo() { usrModal(null); }
+function usrEditar(clave) { var u = usrBusca(clave); if (!u) { toast("Ese usuario ya no está en la lista: vuelve a cargar"); return; } usrModal(u); }
+function usrModal(u) {
+  var pest = USR_CACHE ? USR_CACHE.pestanas : [], i;
+  var html = "<h2>" + (u ? "Editar a " + h(u.nombre) : "Agregar usuario") + '</h2><div class="form">' +
+    '<div class="campo"><label for="usr-nombre">Nombre</label><input type="text" id="usr-nombre" value="' + h(u ? u.nombre : "") + '" autocomplete="off"></div>' +
+    '<div class="campo"><label for="usr-codigo">Clave (4 a 8 dígitos)</label><input type="text" id="usr-codigo" inputmode="numeric" value="' + h(u && u.codigo ? u.codigo : "") + '" autocomplete="off"></div>' +
+    '<div class="campo"><label>Pestañas que ve</label><div class="radios" id="usr-pest">';
+  for (i = 0; i < pest.length; i++) html += '<label><input type="checkbox" value="' + h(pest[i].clave) + '"' + (u && usrTiene(u.pestanas, pest[i].clave) ? " checked" : "") + "> " + h(pest[i].nombre) + "</label>";
+  html += "</div></div>" +
+    (u ? '<div class="campo"><label class="interruptor"><input type="checkbox" id="usr-activo"' + (u.activo ? " checked" : "") + "> Activo (puede entrar)</label></div>" : "") +
+    '<div id="acc-prev"></div><div class="pie"><button type="button" ' + act("cerrar") + '>Cancelar</button><button type="button" id="acc-ok" class="primario" ' + act("usrGuardar", u ? u.clave : null) + ">Guardar</button></div></div>";
+  abrir(html);
+}
+function usrGuardar(clave) {
+  var nombre = recortar($("#usr-nombre") ? $("#usr-nombre").value : ""), codigo = recortar($("#usr-codigo") ? $("#usr-codigo").value : "");
+  var cajas = document.querySelectorAll ? document.querySelectorAll("#usr-pest input") : [], pest = [], i;
+  for (i = 0; i < cajas.length; i++) if (cajas[i].checked) pest.push(cajas[i].value);
+  var ca = $("#usr-activo"), activo = ca ? !!ca.checked : true;
+  if (!nombre) { toast("Falta el nombre"); return; }
+  if (!/^[0-9]{4,8}$/.test(codigo)) { toast("La clave son de 4 a 8 dígitos"); return; }
+  if (!pest.length) { toast("Marca al menos una pestaña"); return; }
+  var ok = $("#acc-ok"); if (ok) ok.disabled = true;
+  accion("/usuario", { clave: clave, nombre: nombre, codigo: codigo, pestanas: pest, activo: activo }).then(function (r) {
+    if (!r.ok) { var p = $("#acc-prev"); if (p) p.innerHTML = pintarPrevia(r); if (ok) ok.disabled = false; return; }
+    toast(r.resumen || "Guardado"); cerrar();
+    // Si me cambie la clave o el nombre a mi mismo, la siguiente peticion ya va con lo nuevo.
+    if (USR_CACHE && clave && clave === USR_CACHE.yo) {
+      CODIGO = codigo; QUIEN_ETIQUETA = nombre;
+      try { localStorage.setItem("rush_codigo_admin", CODIGO); } catch (e) {}
+    }
+    render();
+  }, function (e) { if (e && e.message === "codigo") return; var p = $("#acc-prev"); if (p) p.innerHTML = errorHTML(e); if (ok) ok.disabled = false; });
+}
+function usrBorrar(clave, nombre) {
+  abrirSimple("¿Eliminar a " + h(nombre) + "?", "Deja de poder entrar al panel. Lo que ya hizo sigue en la Bitácora con su nombre.", "/usuario-borrar", { clave: clave }, "Eliminar");
+}
+// FIN USUARIOS (el arnes pruebas/panel-usuarios.sh corta aqui)
+
+// ---------------------------------------------------------------------
 // DESPACHO DE ACCIONES Y ARRANQUE
 // ---------------------------------------------------------------------
 var ACT = { ir: ir, volver: volver, cerrar: cerrar, render: render, confirmarAccion: confirmarAccion, confirmarSimple: confirmarSimple, previaRetrasada: previaRetrasada,
@@ -2914,6 +2981,8 @@ var ACT = { ir: ir, volver: volver, cerrar: cerrar, render: render, confirmarAcc
   setTikQ: setTikQ, tikFiltro: tikFiltro, tikFecha: tikFecha, tikAplicar: tikAplicar, tikLimpiar: tikLimpiar, tikMas: tikMas,
   floAplicar: floAplicar, floPreset: floPreset, floEmpresa: floEmpresa, floMes: floMes,
   setPlQ: setPlQ, placaGaleria: placaGaleria,
+  // Usuarios (244)
+  usrNuevo: usrNuevo, usrEditar: usrEditar, usrGuardar: usrGuardar, usrBorrar: usrBorrar,
   comMes: comMes, comTickets: comTickets, comPagar: comPagar, comTarifa: comTarifa, comTarifaProd: comTarifaProd, comTarifaCambio: comTarifaCambio, comTarifaGuardar: comTarifaGuardar,
   // Facturacion (235)
   facAplicar: facAplicar, facPreset: facPreset, facFallidas: facFallidas, facReenviar: facReenviar, facOtroCorreo: facOtroCorreo, facEnviar: facEnviar,
