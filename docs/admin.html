@@ -2111,7 +2111,7 @@ function opcion(valor, texto, actual) { return '<option value="' + h(valor) + '"
 // "Hoy" se refresca solo cada minuto: en un escritorio que se deja abierto,
 // un numero viejo tiene cara de actual.
 // ---------------------------------------------------------------------
-var OP_RANGO = null, OP_CACHE = null, OP_TIMER = null, OP_REFRESCO_MS = 60000;
+var OP_RANGO = null, OP_CACHE = null, OP_TIMER = null, OP_REFRESCO_MS = 60000, OP_RESPALDANDO = false;
 var PRESETS_OP = [["hoy", "Hoy"], ["ayer", "Ayer"], ["sem", "Esta semana"], ["ant", "Semana pasada"], ["mes", "Este mes"]];
 var DIAS_PLURAL = ["domingos", "lunes", "martes", "miércoles", "jueves", "viernes", "sábados"];
 function vOperacion(v, pinta) {
@@ -2138,7 +2138,13 @@ function opCargar(v, pinta, silencioso) {
   function listo() {
     faltan--; if (faltan) return;
     if (token !== TOKEN) return;   // llego tarde: ya se pidio otra cosa
-    if (res.err.r) { pinta(opControles(v) + errorHTML(res.err.r)); return; }
+    if (res.err.r) {
+      // En un refresco callado un corte de wifi NO tapa los numeros con un
+      // error ni apaga el refresco: se deja lo que habia y se reintenta al
+      // minuto (refutador del 2/nov, hallazgo 2).
+      if (silencioso) { opProgramarRefresco(v); return; }
+      pinta(opControles(v) + errorHTML(res.err.r)); return;
+    }
     OP_CACHE = { desde: v.desde, hasta: v.hasta, res: res, fresca: false };
     pinta(opHTML(v, res));
     opProgramarRefresco(v);
@@ -2162,6 +2168,9 @@ function opProgramarRefresco(v) {
     for (kk in pend) if (pend.hasOwnProperty(kk)) tecleando = true;
     var foco = (typeof document !== "undefined" && document.activeElement) ? document.activeElement.id : "";
     if (tecleando || foco === "op-desde" || foco === "op-hasta") { opProgramarRefresco(VISTA); return; }
+    // Ni mientras baja el respaldo (~4 min): el repintado se llevaba el boton
+    // con su avance y dejaba uno nuevo habilitado (refutador del 2/nov, hallazgo 1).
+    if (OP_RESPALDANDO) { opProgramarRefresco(VISTA); return; }
     TOKEN++;
     opCargar(VISTA, function (html) { var el = $("#vista"); if (el) el.innerHTML = html; }, true);
   }, OP_REFRESCO_MS);
@@ -2366,9 +2375,10 @@ function opPie() {
 // es peor que ninguno). Corte propio y largo: una pagina son hasta 1,000
 // renglones de payloads crudos.
 function opRespaldo() {
-  var boton = $("#op-respaldo"); if (!boton || boton.disabled) return;
-  var textoOriginal = boton.textContent; boton.disabled = true;
+  var boton = $("#op-respaldo"); if (!boton || boton.disabled || OP_RESPALDANDO) return;
+  var textoOriginal = boton.textContent; boton.disabled = true; OP_RESPALDANDO = true;
   function avisar(t) { boton.textContent = t; }
+  function termino() { OP_RESPALDANDO = false; }
   function pedirPagina(ruta) {
     return pedir(ruta, { corteMs: 120000 }).then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .then(function (d) { if (!d || d.ok === false) throw new Error((d && d.error) || "respuesta con error"); return d; });
@@ -2404,9 +2414,11 @@ function opRespaldo() {
       a.click();
       URL.revokeObjectURL(a.href);
       avisar("Listo: " + bajadas + " renglones");
+      termino();
       setTimeout(function () { boton.textContent = textoOriginal; boton.disabled = false; }, 6000);
     });
   }).then(null, function (e) {
+    termino();
     boton.textContent = textoOriginal; boton.disabled = false;
     if (e && e.message === "codigo") return;
     toast("No se pudo bajar el respaldo y NO se guardó nada a medias: " + (e && e.message ? e.message : e));
