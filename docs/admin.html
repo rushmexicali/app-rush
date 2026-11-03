@@ -1264,6 +1264,10 @@ function cajaPreset(k) {
   if (k === "14") { VISTA.desde = sumarDias(hoy, -13); VISTA.hasta = hoy; }
   if (k === "mes") { VISTA.desde = hoy.slice(0, 8) + "01"; VISTA.hasta = hoy; }
   if (k === "ayer") { VISTA.desde = sumarDias(hoy, -1); VISTA.hasta = VISTA.desde; }
+  // "hoy" lo usan Operacion y Trabajadores (243), que reusan este despacho.
+  // Nacio sin esta rama y el chip se encendia sin mover el rango (mini
+  // auditoria del 2/nov, hallazgo 1).
+  if (k === "hoy") { VISTA.desde = hoy; VISTA.hasta = hoy; }
   VISTA.preset = k; render();
 }
 function cajaSinPu() { var el = $("#caja-sinpu"); CAJA_SIN_PU = !!(el && el.checked); if (CAJA_CACHE) CAJA_CACHE.fresca = true; render(); }
@@ -2150,8 +2154,14 @@ function opProgramarRefresco(v) {
   if (v.desde !== hoy || v.hasta !== hoy) return;
   OP_TIMER = setTimeout(function () {
     if (VISTA.n !== "operacion" || VISTA.desde !== hoy || VISTA.hasta !== hoy) return;
-    // No se pisa un modal abierto (el del ticket): se vuelve a intentar al minuto.
+    // No se pisa un modal abierto (el del ticket) ni una fecha a medio teclear
+    // (RANGO_PEND con algo, o el foco en una casilla del rango): el repintado
+    // repone las casillas y se perderia lo tecleado. Se vuelve a intentar al minuto.
     var fondo = $("#modal-fondo"); if (fondo && !fondo.hidden) { opProgramarRefresco(VISTA); return; }
+    var pend = RANGO_PEND.op || {}, tecleando = false, kk;
+    for (kk in pend) if (pend.hasOwnProperty(kk)) tecleando = true;
+    var foco = (typeof document !== "undefined" && document.activeElement) ? document.activeElement.id : "";
+    if (tecleando || foco === "op-desde" || foco === "op-hasta") { opProgramarRefresco(VISTA); return; }
     TOKEN++;
     opCargar(VISTA, function (html) { var el = $("#vista"); if (el) el.innerHTML = html; }, true);
   }, OP_REFRESCO_MS);
@@ -2272,7 +2282,7 @@ function opNumeros(v, res, esHoy) {
                  t ? opSerie(t, "secado_con_seg", spt.con_aspirado, esHoy) : null, ref && ref.secado_con_seg, true, contra, minTxt);
   html += opTile(duracion(spt.sin_aspirado), 'secado · express<br><span class="mini">sin aspirado</span>',
                  t ? opSerie(t, "secado_sin_seg", spt.sin_aspirado, esHoy) : null, ref && ref.secado_sin_seg, true, contra, minTxt);
-  html += opTile(placasPct == null ? "—" : placasPct + "%", "placas leídas<br><span class=\"mini\">" + (placas.con_placa || 0) + " de " + (placas.carros || 0) + (placas.tecleadas ? " · " + placas.tecleadas + " escritas a mano en caja" : "") + "</span>",
+  html += opTile(placasPct == null ? "—" : placasPct + "%", "placas leídas<br><span class=\"mini\">" + (placas.con_placa || 0) + " de " + (placas.carros || 0) + (placas.con_foto != null ? " · " + placas.con_foto + " tuvieron foto" : "") + (placas.tecleadas ? " · " + placas.tecleadas + " escritas a mano en caja" : "") + "</span>",
                  t ? opSerie(t, "placas_pct", placasPct, esHoy) : null, ref && ref.placas_pct, false, contra, pctTxt2);
   // Solo cuando no son cero: un cero permanente se vuelve invisible, y estos
   // importan justo el dia que NO son cero.
