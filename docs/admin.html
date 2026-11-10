@@ -1789,9 +1789,14 @@ function facFila(f) {
   var clave = facClave(f);
   // Reenviar va al correo guardado: una de la contadora sin correo en Alegra
   // solo ofrece "Enviar a otro correo".
+  // Descargar PDF / XML (pedido del dueño, 9/nov/2026): las mismas facturas
+  // que se pueden enviar (timbradas). Van en su propio renglon, debajo.
   var botones = f.puede_enviar
-    ? '<div class="fila" style="gap:8px">' + (f.correo ? '<button type="button" class="chico" ' + act("facReenviar", clave) + ">Reenviar factura</button>" : "") +
-      '<button type="button" class="chico" ' + act("facOtroCorreo", clave) + ">Enviar a otro correo</button></div>"
+    ? '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">' +
+      '<div class="fila" style="gap:8px">' + (f.correo ? '<button type="button" class="chico" ' + act("facReenviar", clave) + ">Reenviar factura</button>" : "") +
+      '<button type="button" class="chico" ' + act("facOtroCorreo", clave) + ">Enviar a otro correo</button></div>" +
+      '<div class="fila" style="gap:8px"><button type="button" class="chico" id="' + h(facBotonId(clave, "pdf")) + '" ' + act("facDescargar", clave, "pdf") + ">Descargar PDF</button>" +
+      '<button type="button" class="chico" id="' + h(facBotonId(clave, "xml")) + '" ' + act("facDescargar", clave, "xml") + ">Descargar XML</button></div></div>"
     : "";
   var tks = f.tickets || (f.ticket != null ? [f.ticket] : []);
   // Cada ticket es un enlace a su detalle (lo mismo que el modal de la
@@ -1901,6 +1906,47 @@ function facEnviar(id, otro) {
     if (mi !== FAC_MODAL || !$("#fac-ok")) { toast("No se pudo enviar: " + (e.message || e)); return; }
     if (res) res.innerHTML = '<div class="aviso rojo">' + h(e.message || e) + "</div>";
     if (ok) { ok.disabled = false; ok.textContent = "Intentar otra vez"; }
+  });
+}
+
+// --- Descargar el PDF o el XML (pedido del dueño, 9/nov/2026) --------------
+// La función admin se lo pide a Alegra y lo devuelve en base64 con su nombre
+// (/factura-archivo, migración 247); aquí sólo se guarda. Mientras baja, el
+// botón dice "Descargando…" y un segundo toque no pide otra vez.
+var FAC_BAJANDO = {};
+function facBotonId(clave, tipo) { return "fac-d-" + tipo + "-" + String(clave).replace(/[^A-Za-z0-9]/g, "_"); }
+function facBoton(clave, tipo) { return document.getElementById ? document.getElementById(facBotonId(clave, tipo)) : null; }
+function facGuardarArchivo(nombre, mime, base64) {
+  var bin = atob(base64), bytes = new Uint8Array(bin.length), i;
+  for (i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  var liga = URL.createObjectURL(new Blob([bytes], { type: mime || "application/octet-stream" }));
+  var a = document.createElement("a");
+  a.href = liga; a.download = nombre; a.style.display = "none";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function () { URL.revokeObjectURL(liga); }, 60000);
+}
+function facDescargar(id, tipo) {
+  var llave = tipo + ":" + id, que = tipo === "pdf" ? "PDF" : "XML";
+  if (FAC_BAJANDO[llave]) return;
+  FAC_BAJANDO[llave] = true;
+  var b = facBoton(id, tipo);
+  if (b) { b.disabled = true; b.textContent = "Descargando…"; }
+  // La lista pudo repintarse mientras bajaba: el botón se busca otra vez.
+  function listo() {
+    FAC_BAJANDO[llave] = false;
+    var x = facBoton(id, tipo);
+    if (x) { x.disabled = false; x.textContent = "Descargar " + que; }
+  }
+  var quien = String(id).indexOf("a:") === 0 ? "alegra=" + encodeURIComponent(String(id).slice(2)) : "id=" + encodeURIComponent(id);
+  pedirJSON("/factura-archivo?" + quien + "&tipo=" + tipo, { corteMs: 60000 }).then(function (d) {
+    listo();
+    if (!d || !d.base64 || !d.nombre) { toast("No se pudo descargar el " + que + ": la respuesta no trae el archivo"); return; }
+    try { facGuardarArchivo(d.nombre, d.mime, d.base64); toast("Descargado: " + d.nombre); }
+    catch (e) { toast("No se pudo guardar el " + que + " en este navegador"); }
+  }, function (e) {
+    listo();
+    if (e && e.message === "codigo") return;
+    toast("No se pudo descargar el " + que + ": " + ((e && e.message) || e));
   });
 }
 
@@ -3006,7 +3052,7 @@ var ACT = { ir: ir, volver: volver, cerrar: cerrar, render: render, confirmarAcc
   usrNuevo: usrNuevo, usrEditar: usrEditar, usrGuardar: usrGuardar, usrBorrar: usrBorrar,
   comMes: comMes, comTickets: comTickets, comPagar: comPagar, comTarifa: comTarifa, comTarifaProd: comTarifaProd, comTarifaCambio: comTarifaCambio, comTarifaGuardar: comTarifaGuardar,
   // Facturacion (235)
-  facAplicar: facAplicar, facPreset: facPreset, facFallidas: facFallidas, facReenviar: facReenviar, facOtroCorreo: facOtroCorreo, facEnviar: facEnviar,
+  facAplicar: facAplicar, facPreset: facPreset, facFallidas: facFallidas, facReenviar: facReenviar, facOtroCorreo: facOtroCorreo, facEnviar: facEnviar, facDescargar: facDescargar,
   facVerTicket: facVerTicket, facIrCliente: facIrCliente };
 function despachar(e, tipoEvento) {
   var el = e.target.closest("[data-act]"); if (!el) return;
