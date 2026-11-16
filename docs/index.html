@@ -502,6 +502,52 @@
   }
   #detalle-cerrar:active { background:#30363d; }
 
+  /* "Ver ticket": el ticket de venta del carro. Boton chico y claramente
+     secundario (borde gris, sin relleno) debajo del servicio, con 44 px de
+     alto para que el dedo le atine. Va ahi y no junto a la (i) y la camara:
+     con texto, ese grupo aplastaba la columna izquierda en un telefono. */
+  .ver-ticket {
+    display:inline-flex; align-items:center; gap:6px;
+    min-height:44px; padding:0 14px; margin-top:8px;
+    font-size:16px; font-weight:800; color:#e6edf3; background:transparent;
+    border:2px solid #6e7681; border-radius:12px; cursor:pointer; white-space:nowrap;
+  }
+  .ver-ticket:active { background:#30363d; }
+  .ver-ticket svg { width:18px; height:18px; flex:none; }
+  .demorado .ver-ticket { border-color:#fff; }
+
+  /* La pantalla del ticket: mismo patron que el desglose (#detalle). */
+  #ticket {
+    display:none; position:fixed; inset:0; z-index:47;
+    background:#0d1117; overflow-y:auto; padding:0 14px 40px;
+  }
+  #ticket-cabecera { position:sticky; top:0; background:#0d1117; padding:14px 0 10px; }
+  #ticket-cerrar {
+    width:100%; min-height:52px; background:#21262d; color:#e6edf3;
+    border:1px solid #30363d; border-radius:12px; font-size:18px; font-weight:700;
+  }
+  #ticket-cerrar:active { background:#30363d; }
+  #ticket h2 { font-size:28px; font-weight:800; margin:6px 0 2px; line-height:1.15; }
+  #ticket .sub { font-size:17px; color:#8b949e; margin-bottom:14px; }
+  .t-nota {
+    background:#161b22; border-left:5px solid #58a6ff; border-radius:10px;
+    padding:10px 12px; font-size:19px; font-weight:700; margin-bottom:16px;
+  }
+  .t-nota small { display:block; font-size:14px; font-weight:600; color:#8b949e; margin-bottom:2px; }
+  .t-titulo {
+    font-size:15px; font-weight:800; color:#8b949e; text-transform:uppercase;
+    letter-spacing:.6px; margin:18px 0 6px;
+  }
+  .t-renglon { display:flex; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid #21262d; }
+  .t-renglon .que { font-size:21px; font-weight:800; line-height:1.2; }
+  .t-renglon .que small { display:block; font-size:16px; font-weight:600; color:#adbac7; margin-top:2px; }
+  .t-renglon .cuanto { font-size:21px; font-weight:800; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .t-renglon.desc .que, .t-renglon.desc .cuanto { color:#7ee787; font-size:18px; }
+  .t-total { display:flex; justify-content:space-between; padding:14px 0 4px; font-size:28px; font-weight:900; }
+  .t-dato { display:flex; justify-content:space-between; gap:12px; padding:9px 0; font-size:18px; border-bottom:1px solid #21262d; }
+  .t-dato span:first-child { color:#8b949e; }
+  .t-dato span:last-child { font-weight:700; text-align:right; }
+
   #detalle h2 { font-size:28px; font-weight:800; margin:6px 0 2px; line-height:1.15; }
   #detalle .sub { font-size:17px; color:#8b949e; margin-bottom:16px; }
 
@@ -957,6 +1003,14 @@
   <div id="detalle-cuerpo"></div>
 </div>
 
+<!-- El ticket de venta de un carro. Se abre con "Ver ticket" en su tarjeta. -->
+<div id="ticket">
+  <div id="ticket-cabecera">
+    <button id="ticket-cerrar">&#8592;&nbsp; Volver a la cola</button>
+  </div>
+  <div id="ticket-cuerpo"></div>
+</div>
+
 <!-- Ver la foto en grande. Se abre al tocar la miniatura de una tarjeta
      (con boton para reemplazarla) o la foto del desglose (sin el, porque
      ahi ya se entrego y se asume correcta). -->
@@ -1320,7 +1374,15 @@ function pintar() {
     var secTarjeta = (c.secadores && c.secadores.length)
       ? '<div class="secadores-tarjeta">' + escapar(c.secadores.join(", ")) + '</div>'
       : "";
-    html +=   '<div class="servicio">' + escapar(servicio) + secTarjeta + '</div>';
+    // "Ver ticket": abre el ticket de venta del carro. Va dentro del bloque
+    // del servicio (es de lo que habla) para no reacomodar la rejilla.
+    var btTicket = '<div><button class="ver-ticket" data-ticket="' + c.id + '">' +
+                   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+                   'stroke-linecap="round" stroke-linejoin="round">' +
+                   '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"></path>' +
+                   '<line x1="9" y1="8" x2="15" y2="8"></line><line x1="9" y1="12" x2="15" y2="12"></line>' +
+                   '</svg>Ver ticket</button></div>';
+    html +=   '<div class="servicio">' + escapar(servicio) + secTarjeta + btTicket + '</div>';
     // Foto: si ya hay, se ve la miniatura; si no, el icono de camara.
     // Nunca estorba ni bloquea: el carro puede salir sin foto.
     //
@@ -3106,6 +3168,117 @@ function cerrarDetalle() {
 
 document.getElementById("detalle-cerrar").addEventListener("click", function () { cerrarPantalla(); });
 
+// ---------------------------------------------------------------------
+// "Ver ticket": el ticket de venta del carro, tal como se cobro en caja.
+// Solo lectura. Mismo patron que el desglose: pantalla completa, token
+// para descartar una respuesta que llega tarde, y el cierre por la pila.
+// ---------------------------------------------------------------------
+var ticketToken = 0;
+
+function pesosTicket(n) {
+  var v = Number(n);
+  if (!isFinite(v)) return "";
+  var t = Math.abs(v).toFixed(2).replace(/\.00$/, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return (v < 0 ? "-$" : "$") + t;
+}
+
+function pagoDelTicket(p) {
+  if (!p || !p.tipo) return "";
+  if (p.tipo === "efectivo") {
+    var rec = Number(p.recibido), cam = Number(p.cambio);
+    // Una devolucion trae "recibido" negativo: se dice solo "Efectivo".
+    if (rec > 0) return "Efectivo · recibió " + pesosTicket(rec) + (cam > 0 ? ", cambio " + pesosTicket(cam) : "");
+    return "Efectivo";
+  }
+  var clase = p.clase === "credito" ? " de crédito" : p.clase === "debito" ? " de débito" : "";
+  return "Tarjeta" + clase + (p.marca ? " " + p.marca : "");
+}
+
+function cuandoDelTicket(iso) {
+  if (!iso) return "";
+  try {
+    var d = new Date(iso);
+    var zona = { timeZone: "America/Tijuana" };
+    var dia = d.toLocaleDateString("es-MX", { timeZone: zona.timeZone, day: "numeric", month: "short" });
+    var hoy = new Date().toLocaleDateString("es-MX", { timeZone: zona.timeZone, day: "numeric", month: "short" });
+    var hora = d.toLocaleTimeString("es-MX", { timeZone: zona.timeZone, hour: "numeric", minute: "2-digit", hour12: true });
+    return (dia === hoy ? "Hoy" : dia) + " · " + hora;
+  } catch (e) { return ""; }
+}
+
+function cuerpoTicket(t, carro) {
+  var h = '<h2>Ticket ' + escapar(t.ticket) + '</h2>';
+  var titulo = carro ? describir(carro) : "";
+  var placa = carro && carro.placa ? escapar(carro.placa_display || carro.placa) : "";
+  // describir() ya devuelve HTML escapado (o el "Sin datos" en gris).
+  h += '<div class="sub">' + titulo + (titulo && placa ? " · " : "") + placa + '</div>';
+  if (t.nota) h += '<div class="t-nota"><small>Nota de la cajera</small>' + escapar(t.nota) + '</div>';
+
+  h += '<div class="t-titulo">Lo que se cobró</div>';
+  var prods = Array.isArray(t.productos) ? t.productos : [];
+  for (var i = 0; i < prods.length; i++) {
+    var p = prods[i], cant = Number(p.cantidad);
+    h += '<div class="t-renglon"><div class="que">' +
+         (cant && cant !== 1 ? escapar(cant) + " × " : "") + escapar(p.nombre || "Monto libre") +
+         (p.variante ? '<small>' + escapar(p.variante) + '</small>' : '') +
+         '</div><div class="cuanto">' + pesosTicket(p.precio) + '</div></div>';
+  }
+  if (!prods.length) h += '<div class="sub">El ticket no trae productos.</div>';
+  var descs = Array.isArray(t.descuentos) ? t.descuentos : [];
+  for (var k = 0; k < descs.length; k++) {
+    var m = Number(descs[k].monto);
+    h += '<div class="t-renglon desc"><div class="que">Descuento' +
+         (descs[k].nombre ? ": " + escapar(String(descs[k].nombre).trim()) : "") +
+         '</div><div class="cuanto">' + (isFinite(m) && m ? pesosTicket(-Math.abs(m)) : "") + '</div></div>';
+  }
+  h += '<div class="t-total"><span>Total</span><span>' + pesosTicket(t.monto) + '</span></div>';
+
+  h += '<div class="t-titulo">Datos de la venta</div>';
+  var cuando = cuandoDelTicket(t.hora), pago = pagoDelTicket(t.pago);
+  if (cuando)   h += '<div class="t-dato"><span>Hora del cobro</span><span>' + escapar(cuando) + '</span></div>';
+  if (t.cajero) h += '<div class="t-dato"><span>Cajera</span><span>' + escapar(t.cajero) + '</span></div>';
+  if (pago)     h += '<div class="t-dato"><span>Forma de pago</span><span>' + escapar(pago) + '</span></div>';
+  return h;
+}
+
+function abrirTicket(id) {
+  var miToken = ++ticketToken;
+  // El carro como esta en la cola, para el encabezado (ya lo tenemos).
+  var carro = null;
+  for (var i = 0; i < carros.length; i++) if (carros[i].id === id) carro = carros[i];
+
+  var cuerpo = document.getElementById("ticket-cuerpo");
+  document.getElementById("ticket").style.display = "block";
+  cuerpo.innerHTML = '<div class="sub">Cargando…</div>';
+  document.getElementById("ticket").scrollTop = 0;
+  registrarPantalla(cerrarTicket);   // el back del telefono la cierra
+
+  pedir("/ticket-del-carro?id=" + encodeURIComponent(id))
+    .then(function (r) { return r.json(); })
+    .then(function (t) {
+      if (miToken !== ticketToken) return;   // llego tarde: ya se cerro o se abrio otro
+      // Un error se dice como error, con el motivo del servidor si lo trae
+      // ("Este carro no tiene ticket de venta").
+      if (!t || t.ok === false || t.error || t.ticket == null) {
+        cuerpo.innerHTML = '<div class="sub">' +
+          escapar((t && t.error) || "No se pudo cargar el ticket.") + '</div>';
+        return;
+      }
+      cuerpo.innerHTML = cuerpoTicket(t, carro);
+    })
+    .catch(function () {
+      if (miToken !== ticketToken) return;
+      cuerpo.innerHTML = '<div class="sub">Sin conexión. Vuelve e inténtalo otra vez.</div>';
+    });
+}
+
+function cerrarTicket() {
+  ticketToken++;   // invalida lo que venga en camino
+  document.getElementById("ticket").style.display = "none";
+}
+
+document.getElementById("ticket-cerrar").addEventListener("click", function () { cerrarPantalla(); });
+
 // Tocar la foto del desglose la abre en grande, sin boton de reemplazo.
 document.getElementById("detalle-cuerpo").addEventListener("click", function (ev) {
   var f = ev.target.closest("[data-ver-foto]");
@@ -3615,6 +3788,13 @@ document.getElementById("lista").addEventListener("click", function (ev) {
   var info = ev.target.closest("button[data-info]");
   if (info) {
     abrirDetalle(Number(info.dataset.info), true);
+    return;
+  }
+
+  // "Ver ticket": igual, solo abre una pantalla de lectura.
+  var tk = ev.target.closest("button[data-ticket]");
+  if (tk) {
+    abrirTicket(Number(tk.dataset.ticket));
     return;
   }
 
