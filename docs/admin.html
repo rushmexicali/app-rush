@@ -1783,7 +1783,7 @@ function facFila(f) {
   var avisos = f.avisos || [], av = "";
   if (avisos.length) {
     av = '<details style="margin-top:6px"><summary class="chico-t">' + pl(avisos.length, "aviso de este ticket", "avisos de este ticket") + "</summary>";
-    for (i = 0; i < avisos.length; i++) av += '<div class="chico-t muted" style="margin-top:4px"><b>' + h(facMotivo(avisos[i].motivo)) + "</b> · " + fmtFecha(avisos[i].en) + "<br>" + h(avisos[i].detalle) + "</div>";
+    for (i = 0; i < avisos.length; i++) av += '<div class="chico-t muted" style="margin-top:4px"><b>' + h(facMotivo(avisos[i].motivo)) + "</b> · " + fmtFecha(avisos[i].en) + "<br>" + h(avisos[i].detalle) + (avisos[i].id ? ' <button type="button" class="chico" ' + act("avisoAtendido", avisos[i].id) + ">Ya lo atendí</button>" : "") + "</div>";
     av += "</details>";
   }
   var clave = facClave(f);
@@ -1839,7 +1839,7 @@ function facHTML(v, d) {
   if (S.length) {
     var s = "";
     for (i = 0; i < S.length; i++) s += '<div class="item"><div style="min-width:0;flex:1"><b>' + h(facMotivo(S[i].motivo)) + "</b>" + (S[i].ticket ? ' <span class="muted chico-t">ticket ' + facTicketsHTML([S[i].ticket]) + "</span>" : "") +
-      ' <span class="muted chico-t">· ' + fmtFecha(S[i].en) + (S[i].veces > 1 ? " · " + h(S[i].veces) + " veces" : "") + '</span><div class="chico-t muted">' + h(S[i].detalle) + "</div></div></div>";
+      ' <span class="muted chico-t">· ' + fmtFecha(S[i].en) + (S[i].veces > 1 ? " · " + h(S[i].veces) + " veces" : "") + '</span><div class="chico-t muted">' + h(S[i].detalle) + "</div></div>" + (S[i].id ? '<div class="acciones"><button type="button" class="chico" ' + act("avisoAtendido", S[i].id) + ">Ya lo atendí</button></div>" : "") + "</div>";
     html += '<div class="card"><div class="fila entre"><h2>Avisos de facturación</h2><span class="nota">De tickets que no salen en la lista de abajo' + (FAC_FALLIDAS ? "" : " (o de intentos fallidos ocultos)") + "</span></div>" + s + "</div>";
   }
   if (!F.length) return html + '<div class="card vacio">No hay facturas entre el ' + fmtFecha(v.desde) + " y el " + fmtFecha(v.hasta) + "." + (R.fallidos && !FAC_FALLIDAS ? " Hay " + pl(R.fallidos, "intento fallido", "intentos fallidos") + ": prende \"Ver también los intentos fallidos\"." : "") + "</div>";
